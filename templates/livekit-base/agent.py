@@ -1,6 +1,6 @@
 """livekit-base: starter scaffold for awesome-voice-apps demos.
 
-Copy this folder into demos/YYYY-MM-DD-<slug>/ to start a new demo.
+Copy this folder into demos/<slug>/ to start a new demo.
 Customize the Assistant instructions, add @function_tool methods, or
 swap any of the providers below. Keep net new code under ~300 lines.
 """

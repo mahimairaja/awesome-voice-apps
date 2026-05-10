@@ -57,7 +57,7 @@ agent-starter-react.
 
 ## File conventions
 
-A finished demo is the folder `demos/YYYY-MM-DD-<slug>/` containing
+A finished demo is the folder `demos/<slug>/` containing
 exactly six files:
 
 | File | Purpose |
@@ -93,7 +93,7 @@ Conventional commits, scoped to the affected area:
 - `feat(demo): drive-thru coffee with totals tool` for a new demo
 - `chore(template): bump livekit-agents to 1.6` for template updates
 - `docs: clarify quick-start step 3` for repo-level docs
-- `fix(demo): correct cartesia voice ID in 2026-05-14-url-summarizer`
+- `fix(demo): correct cartesia voice ID in url-summarizer`
 
 Subject line: imperative mood, lowercase, under 70 characters. Body:
 explain why, not what. Reference Linear issues with `Refs MAH-NNN` on a
@@ -119,7 +119,7 @@ synthesis, so anything fancy bleeds through.
 - A pattern that needs more than the template provides: a template
   extension under `templates/`, not a demo. Cleared with the operator
   first.
-- A one-off voice idea: a demo under `demos/YYYY-MM-DD-<slug>/`.
+- A one-off voice idea: a demo under `demos/<slug>/`.
 - A subagent, slash command, or hook: into `.claude/`. Currently empty.
   Lands in M2.
 - A planning artifact (Refinery doc, Foundry blueprint, design notes):

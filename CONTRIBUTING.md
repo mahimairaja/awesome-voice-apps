@@ -10,7 +10,7 @@ For the AI-collaborator version of these conventions, see
 
 ## What a demo looks like
 
-Every demo lives at `demos/YYYY-MM-DD-<slug>/` and contains exactly six
+Every demo lives at `demos/<slug>/` and contains exactly six
 files:
 
 | File | What it is |
@@ -38,12 +38,12 @@ If a demo cannot fit, it becomes either a template extension under
 
 ## Adding a demo
 
-1. Pick a date (today) and a slug. Confirm with the operator that the
-   idea fits the cookbook.
+1. Pick a slug. Confirm with the operator that the idea fits the
+   cookbook.
 2. Copy the template:
 
    ```sh
-   cp -r templates/livekit-base demos/YYYY-MM-DD-<slug>
+   cp -r templates/livekit-base demos/<slug>
    ```
 
 3. Customize `agent.py`. The usual edits: the `Assistant` instructions
@@ -76,7 +76,7 @@ Conventional commits, scoped:
 - `feat(demo): drive-thru coffee with totals tool`
 - `chore(template): bump livekit-agents to 1.6`
 - `docs: clarify quick-start step 3`
-- `fix(demo): correct cartesia voice ID in 2026-05-14-url-summarizer`
+- `fix(demo): correct cartesia voice ID in url-summarizer`
 
 Subject line: imperative mood, lowercase, under 70 characters. Body
 explains why, not what. Reference Linear issues on a trailing
@@ -98,7 +98,7 @@ No em dashes. Use colons, periods, semicolons, or parentheses.
 - A pattern reused across demos: in `templates/livekit-base/`.
 - A pattern needing more than the template provides: a separate
   template extension under `templates/`, cleared with the operator first.
-- A one-off voice idea: a demo under `demos/YYYY-MM-DD-<slug>/`.
+- A one-off voice idea: a demo under `demos/<slug>/`.
 - Subagents, slash commands, hooks: under `.claude/`. Empty for now;
   fills up during M2.
 

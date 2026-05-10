@@ -54,7 +54,7 @@ Cartesia.
 
 ## Use it for a demo
 
-Copy the whole folder into `demos/YYYY-MM-DD-<slug>/` and customize from
+Copy the whole folder into `demos/<slug>/` and customize from
 there. The usual edits per demo:
 
 - The `instructions` string on the `Assistant` class.
