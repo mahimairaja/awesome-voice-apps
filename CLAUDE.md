@@ -67,7 +67,7 @@ exactly six files:
 | `pyproject.toml` | uv-managed deps. Same as template plus any demo-specific extras. |
 | `.env.example` | Same six keys as the template plus any demo-specific keys. |
 | `README.md` | What the demo does, who it is for, four-step run instructions, link to the recorded walkthrough. |
-| `blog.md` | Unwind AI voice. 800 to 1200 words. Sections: problem, stack, walkthrough, try it. |
+| `blog.md` | Walkthrough post. 800 to 1200 words. Sections: problem, stack, walkthrough, try it. |
 | `reel.md` | 30 to 45 second vertical-video script. Hook in the first three seconds. |
 
 The `<slug>` is short, kebab-case, descriptive. Examples:

@@ -19,7 +19,7 @@ files:
 | `pyproject.toml` | uv-managed dependencies. Template defaults plus any demo extras. |
 | `.env.example` | The credentials a reader needs to fill in to run the demo. |
 | `README.md` | One paragraph on the idea, who it is for, four-step run instructions, walkthrough link. |
-| `blog.md` | 800 to 1200 word walkthrough in Unwind AI style. |
+| `blog.md` | 800 to 1200 word walkthrough post. Sections: problem, stack, walkthrough, try it. |
 | `reel.md` | 30 to 45 second vertical-video script. Hook in the first three seconds. |
 
 The slug is short, kebab-case, descriptive of the agent's job, never
