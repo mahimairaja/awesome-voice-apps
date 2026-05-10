@@ -2,13 +2,12 @@
 
 Operating instructions for any Claude session working in this repo.
 Auto loaded by Claude Code. The shorter and sharper this file is, the
-better the daily ship cadence holds up.
+better the cookbook holds up.
 
 ## What this repo is
 
-A public cookbook of voice AI demos, shipped one per day. Mahimai is the
-sole operator. Each demo is a self-contained folder under `demos/` and
-exists to:
+A public cookbook of voice AI demos. Mahimai is the sole operator. Each
+demo is a self-contained folder under `demos/` and exists to:
 
 1. Drive awareness for Mahimai AI (the voice agent agency).
 2. Seed ShipVoice (the paid voice AI starter kit).
@@ -43,8 +42,8 @@ agent-starter-react.
 
 ## Hard constraints
 
-- One demo per day. The forcing function.
-- Build budget: under two hours, end to end (code + record + write + ship).
+- Build budget: each demo ships in under two hours, end to end (code,
+  record, write, publish).
 - Code budget: under 300 lines of net new code per demo, on top of
   `templates/livekit-base/`.
 - Never modify `templates/livekit-base/` from inside a demo folder. If
@@ -74,9 +73,9 @@ The `<slug>` is short, kebab-case, descriptive. Examples:
 `url-summarizer`, `drive-thru-coffee`, `intake-form-spanish`. No
 trailing words like `agent` or `demo`.
 
-When a demo ships, append a row to `INDEX.md` with date, title, slug,
-category, one-line description, status (`shipped`), and link to the
-demo folder.
+When a demo ships, link the demo folder under the matching category in
+`README.md`. Drop a bold demo name and a one-line description so a
+visitor sees what the demo does without clicking in.
 
 ## Categories
 
@@ -130,15 +129,15 @@ synthesis, so anything fancy bleeds through.
 
 - Anything ShipVoice shaped. Separate repo, separate product.
 - The branded playground. Separate repo, lands in M1.
-- Daily automation (slash commands, subagents, cron). Lands in M2.
+- Build automation (slash commands, subagents, cron). Lands in M2.
 - Per-demo custom frontends. Default is the run instructions.
 - An automated test suite for demos. Demos that need tests can add them
   per-demo, but no top-level pytest harness.
 
-## When the operator asks for "today's demo"
+## When the operator asks for the next demo
 
-1. Read the most recent five rows of `INDEX.md` so you do not propose a
-   near duplicate.
+1. Skim the README's category sections and the most recent folders
+   under `demos/` so you do not propose a near duplicate.
 2. Propose three demo ideas with: hook, category, stack delta from
    `templates/livekit-base/`, build estimate.
 3. Wait for the operator to pick one.

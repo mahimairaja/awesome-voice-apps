@@ -1,9 +1,9 @@
 # Contributing
 
-This cookbook is the daily ship log of one operator. External
-contributions are welcome but not the primary loop. If you want to add
-a demo or fix something, read this once and you have all the context
-you need.
+This cookbook is one operator's working log of voice AI demos.
+External contributions are welcome but not the primary loop. If you
+want to add a demo or fix something, read this once and you have all
+the context you need.
 
 For the AI-collaborator version of these conventions, see
 [CLAUDE.md](CLAUDE.md). The two files agree.
@@ -54,9 +54,9 @@ If a demo cannot fit, it becomes either a template extension under
    needs.
 6. Write the four prose files: `README.md`, `blog.md`, `reel.md`. Record
    the walkthrough.
-7. Append a row to [INDEX.md](INDEX.md) and add the slug under the
-   matching category in [README.md](README.md) if it is the first demo
-   in that category.
+7. Link the demo folder under its category in
+   [README.md](README.md). Use a bold demo name and a one-line
+   description so a visitor sees what it does without clicking.
 
 ## Tech stack
 

@@ -1,176 +1,71 @@
-<div align="center">
+# Awesome Voice Apps
 
-# 🎙️ Awesome Voice Apps
+Voice AI agents that don't stop at hello.
 
-<p><strong>Voice AI agents you can clone, customize, and ship. One demo per day.</strong><br/>
-Receptionists · Drive-thrus · Customer support · Companions · Multilingual · Telephony · Multi-agent</p>
+> **Customer:** I'd like a 12oz iced latte, oat milk, light ice.  
+> **Agent:** Got it. Anything else, or should I total it for you?  
+> **Customer:** Add a chocolate croissant.  
+> **Agent:** One iced latte, light ice, oat milk. One chocolate croissant. That's $9.40. What name do I put on it?
 
-<p>
-<a href="https://github.com/mahimairaja/awesome-voice-apps/stargazers"><img src="https://img.shields.io/github/stars/mahimairaja/awesome-voice-apps?style=for-the-badge&logo=github&color=FFD700" alt="Stars"></a>
-<a href="https://github.com/mahimairaja/awesome-voice-apps/network/members"><img src="https://img.shields.io/github/forks/mahimairaja/awesome-voice-apps?style=for-the-badge&logo=github&color=4FC3F7" alt="Forks"></a>
-<a href="https://github.com/mahimairaja/awesome-voice-apps/graphs/contributors"><img src="https://img.shields.io/github/contributors/mahimairaja/awesome-voice-apps?style=for-the-badge&color=22C55E" alt="Contributors"></a>
-<a href="LICENSE"><img src="https://img.shields.io/github/license/mahimairaja/awesome-voice-apps?style=for-the-badge&color=8B5CF6" alt="License"></a>
-<img src="https://img.shields.io/github/last-commit/mahimairaja/awesome-voice-apps?style=for-the-badge&color=F97316" alt="Last Commit">
-</p>
+Each folder under [`demos/`](demos/) is a self-contained voice agent
+that you clone, fill with your own credentials, and have a real
+conversation with. Built on [LiveKit Agents](https://docs.livekit.io)
+1.x with Deepgram STT, OpenAI LLMs, and Cartesia TTS by default. Any
+provider swappable in a config change. All Apache-2.0.
 
-<p>
-<a href="#-quick-start"><kbd> &nbsp; 🚀 Quick Start &nbsp; </kbd></a>
-<a href="#-browse-demos"><kbd> &nbsp; 📂 Browse Demos &nbsp; </kbd></a>
-<a href="#-latest-demo"><kbd> &nbsp; 🔥 Latest &nbsp; </kbd></a>
-</p>
+## Run the template
 
-</div>
-
----
-
-## 💡 Why this exists
-
-Most voice AI tutorials stop at "agent says hello." This cookbook ships
-a runnable voice demo every day, end to end.
-
-- 🛠️ **Hand built, not curated.** Every demo is original work, tested before it ships.
-- 🧪 **Runs in four commands.** Bring your own LiveKit and provider keys, talk to it.
-- 🧠 **Real voice stack.** LiveKit Agents 1.x, Deepgram STT, OpenAI LLM, Cartesia TTS, Silero VAD, multilingual turn detection.
-- 🌐 **Provider agnostic.** Swap Deepgram for Whisper, Cartesia for ElevenLabs, OpenAI for Anthropic with one config change.
-- 💸 **Apache-2.0.** Fork it, ship it, sell it. No paywall, no signup, no telemetry.
-
-> ⭐ **If this saves you time, [star the repo](https://github.com/mahimairaja/awesome-voice-apps/stargazers) so the next builder finds it.**
-
-## 🚀 Quick Start
-
-Run your first voice agent in under a minute:
-
-```bash
+```sh
 git clone https://github.com/mahimairaja/awesome-voice-apps.git
 cd awesome-voice-apps/templates/livekit-base
-cp .env.example .env  # fill in six keys
+cp .env.example .env  # six keys: LiveKit, OpenAI, Deepgram, Cartesia
 uv sync
 uv run python agent.py download-files
 uv run python agent.py dev
 ```
 
 Open [agents-playground.livekit.io](https://agents-playground.livekit.io)
-in a browser, connect, and talk to the agent.
-
-You need a free [LiveKit Cloud](https://cloud.livekit.io) project (or a
-self-hosted LiveKit server), API keys for OpenAI, Deepgram, and
-Cartesia, and [uv](https://docs.astral.sh/uv) installed locally.
-
-## 🔥 Latest Demo
-
-_None yet. Demo #1 lands during M0.5._
-
-| Date | Demo | Category | What it does |
-|------|------|----------|--------------|
-| _coming soon_ | | | |
-
-## 📑 Table of Contents
-
-<details open>
-<summary><strong>10 categories. Click to expand.</strong></summary>
-
-- [🏨 Receptionist & Booking](#-receptionist--booking)
-- [🛒 Drive-thru & Ordering](#-drive-thru--ordering)
-- [🎧 Customer Support](#-customer-support)
-- [🧘 Companion & Coaching](#-companion--coaching)
-- [📚 Education](#-education)
-- [📋 Data Extraction](#-data-extraction)
-- [🛠️ Tool Calling](#-tool-calling)
-- [🌍 Multilingual](#-multilingual)
-- [🤝 Multi-Agent](#-multi-agent)
-- [📞 Telephony & SIP](#-telephony--sip)
-
-</details>
-
-## 📂 Browse Demos
-
-### 🏨 Receptionist & Booking
-*Voice agents that take inbound calls, qualify the caller, and schedule
-or capture an appointment.*
-
-_No demos yet. First one lands during M0.5._
-
-### 🛒 Drive-thru & Ordering
-*Voice agents that take an order, modify items mid-flow, run totals, and
-hand off to a human or POS.*
-
-_No demos yet._
-
-### 🎧 Customer Support
-*Status questions, returns, account changes, and warm handoff to a human
-when the conversation hits its limits.*
-
-_No demos yet._
-
-### 🧘 Companion & Coaching
-*Practice partners, journaling assistants, accountability coaches,
-language tutors. Longer, more open conversations.*
-
-_No demos yet._
-
-### 📚 Education
-*Voice agents that teach. Flashcards, Socratic Q&A, reading helpers,
-quiz drills.*
-
-_No demos yet._
-
-### 📋 Data Extraction
-*Structured data through conversation. Intake forms, surveys, KYC,
-application questionnaires.*
-
-_No demos yet._
-
-### 🛠️ Tool Calling
-*Voice agents that call out to tools, APIs, or MCP servers mid
-conversation. Lookups, bookings, payments, web search.*
-
-_No demos yet._
-
-### 🌍 Multilingual
-*Language switching, code switching, translation within a single
-conversation.*
-
-_No demos yet._
-
-### 🤝 Multi-Agent
-*Specialised personas handing off to each other. Triage to specialist,
-sales to support, narrator to NPC.*
-
-_No demos yet._
-
-### 📞 Telephony & SIP
-*Real phone calls via SIP. Inbound IVR, outbound surveys, warm transfer
-to a human.*
-
-_No demos yet._
-
-## 🧰 Templates
-
-There is one starter template, on purpose.
-
+in a browser, connect, and talk to the agent. The starter at
 [`templates/livekit-base/`](templates/livekit-base/) is what every demo
-copies from. Most demos change the agent instructions, add a
-`@function_tool` or two, optionally swap a provider, and ship.
+copies from. Most demos change the `Assistant` instructions, add a
+`@function_tool`, optionally swap a provider, and ship.
 
-If a demo would need to materially extend the template, it becomes a
-template extension under `templates/`, not a daily demo.
+## Categories
 
-## 🤝 Contributing
+| Category | What kind of voice agent fits here |
+| --- | --- |
+| **Receptionist & Booking** | Picks up an inbound call, qualifies the caller, schedules an appointment. |
+| **Drive-thru & Ordering** | Takes an order, modifies items mid-flow, runs totals, hands off cleanly. |
+| **Customer Support** | Status, returns, account changes, warm handoff to a human. |
+| **Companion & Coaching** | Practice partners, journaling assistants, accountability coaches, language tutors. |
+| **Education** | Flashcards, Socratic Q&A, reading helpers, quiz drills. |
+| **Data Extraction** | Captures structured data through conversation: intake forms, surveys, KYC. |
+| **Tool Calling** | Calls APIs, MCP servers, web search mid conversation. |
+| **Multilingual** | Switches language, handles code switching, translates within a single conversation. |
+| **Multi-Agent** | Specialised personas hand off to each other: triage to specialist, sales to support. |
+| **Telephony & SIP** | Real phone calls. Inbound IVR, outbound surveys, warm transfer. |
 
-This is the operator's daily ship cookbook, not yet a community
-contribution magnet. To add a demo or fix a bug, see
-[CONTRIBUTING.md](CONTRIBUTING.md) for the conventions: folder layout,
-naming, build budget, commit style.
+When demos exist, each category links to its demos here, with a bold
+name and a one-line description per demo.
 
-## 🙏 Built by
+## What you get with each demo
 
-Created and maintained by **Mahimai Raja**, founder of
-[Mahimai AI](https://mahimai.com), a voice agent agency. Each demo
-doubles as a public artifact (the code), a tutorial (the blog), a reel
-(the short form video), and a sales touchpoint. Every demo also seeds
-[ShipVoice](https://shipvoice.dev), the paid voice AI starter kit for
-indie hackers.
+Every demo folder ships with the same six files: `agent.py`,
+`pyproject.toml`, `.env.example`, a demo-specific `README.md`, a written
+walkthrough (`blog.md`), and a short reel script (`reel.md`). Run the
+demo on its own, or open the folder and read the walkthrough top to
+bottom.
 
-## 📜 License
+## Adding a demo
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the folder layout, naming
+convention, and the build budget.
+
+## License
 
 [Apache 2.0](LICENSE). Fork it, ship it, sell it.
+
+## Built by
+
+[Mahimai Raja](https://mahimai.com), founder of
+[Mahimai AI](https://mahimai.com), a voice agent agency.

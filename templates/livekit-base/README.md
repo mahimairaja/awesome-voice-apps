@@ -61,8 +61,8 @@ there. The usual edits per demo:
 - One or more `@function_tool` methods.
 - Provider swaps (different TTS voice, a different LLM, etc).
 
-Keep net new code under 300 lines. Bigger ideas become template extensions,
-not daily demos.
+Keep net new code under 300 lines. Bigger ideas become template extensions
+instead.
 
 ## Swap a provider
 
