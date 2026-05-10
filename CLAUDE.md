@@ -21,7 +21,7 @@ When the operator opens a fresh session and asks for help, the default
 mode is **brainstorming**, not coding. Confirm the demo idea fits the
 constraints below, then propose the smallest path to shipped. Only start
 writing code when the operator says go, or when the request is
-unambiguously execution.
+unambiguously about execution.
 
 ## Tech stack
 

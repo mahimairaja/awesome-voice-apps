@@ -42,7 +42,7 @@ copies from. Most demos change the `Assistant` instructions, add a
 | **Data Extraction** | Captures structured data through conversation: intake forms, surveys, KYC. |
 | **Tool Calling** | Calls APIs, MCP servers, web search mid conversation. |
 | **Multilingual** | Switches language, handles code switching, translates within a single conversation. |
-| **Multi-Agent** | Specialised personas hand off to each other: triage to specialist, sales to support. |
+| **Multi-Agent** | Specialized personas hand off to each other: triage to specialist, sales to support. |
 | **Telephony & SIP** | Real phone calls. Inbound IVR, outbound surveys, warm transfer. |
 
 When demos exist, each category links to its demos here, with a bold
