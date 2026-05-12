@@ -33,9 +33,10 @@ provider swappable in a config change. All Apache 2.0.
 git clone https://github.com/mahimairaja/awesome-voice-apps.git
 cd awesome-voice-apps/templates/livekit-base
 cp .env.example .env  # six keys: LiveKit, OpenAI, Deepgram, Cartesia
-uv sync
-uv run python agent.py download-files
-uv run python agent.py dev
+uv venv
+uv pip install -r requirements.txt
+uv run --no-project python agent.py download-files
+uv run --no-project python agent.py dev
 ```
 
 Open [agents-playground.livekit.io](https://agents-playground.livekit.io)
@@ -51,28 +52,28 @@ awesome-voice-apps/
 ├── README.md                this file, with the demo catalog by category
 ├── CONTRIBUTING.md          folder layout, naming, build budget
 ├── CLAUDE.md                operating instructions for any Claude session in this repo
+├── catalog.json             playground metadata for every shipped demo
 ├── templates/
 │   └── livekit-base/        the starter every demo copies from
 ├── demos/
-│   └── <slug>/              one folder per demo, six files
+│   └── <slug>/              one folder per demo, two files
 └── LICENSE
 ```
 
 ## 🚧 Up next
 
-The first demo lands in **Drive-thru & Ordering**: a coffee-order agent
-that takes orders, modifies items mid-flow, totals the cart, and ends
-the call cleanly. When it ships, the row below populates and every
-category turns into a clickable section.
+The first demo has shipped. Up next: TBD. Open a discussion to suggest
+the next small voice agent.
 
-| Slug | What it does | Category | Status |
-| --- | --- | --- | :---: |
-| `drive-thru-coffee` | Takes a coffee order, modifies items, runs totals, hands off | Drive-thru & Ordering | 🟡 In flight |
+| Slug | What it does | Category | Status | Recording |
+| --- | --- | --- | :---: | --- |
+| [`drive-thru-coffee`](demos/drive-thru-coffee/agent.py) | Takes a coffee order, modifies items, runs totals, hands off | Drive-thru & Ordering | 🟢 Shipped | Recording coming |
 
 ## 📚 Categories (10)
 
 Ten lanes for voice agents. Click a row to see the demos in it when
-they exist; right now the table is the index, the demos come next.
+they exist. Each demo folder has two files: `agent.py` and
+`requirements.txt`. Playground metadata lives in the root `catalog.json`.
 
 | Category | What kind of voice agent fits here |
 | --- | --- |
@@ -87,16 +88,16 @@ they exist; right now the table is the index, the demos come next.
 | 👥 **Multi-Agent** | Specialized personas hand off to each other: triage to specialist, sales to support. |
 | 📞 **Telephony & SIP** | Real phone calls. Inbound IVR, outbound surveys, warm transfer. |
 
-When demos land, each category gets a section here with bold demo
-names, one-line descriptions, and links to their folders.
+### Drive-thru & Ordering
+
+- **[drive-thru-coffee](demos/drive-thru-coffee/agent.py)** - Takes a coffee order, modifies items mid-flow, runs totals, hands off to pickup.
 
 ## 📦 What you get with each demo
 
-Every demo folder ships with the same six files: `agent.py`,
-`pyproject.toml`, `.env.example`, a demo-specific `README.md`, a written
-walkthrough (`blog.md`), and a short reel script (`reel.md`). Run the
-demo on its own, or open the folder and read the walkthrough top to
-bottom.
+Every demo folder ships with the same two files: `agent.py` and
+`requirements.txt`. Run the demo on its own, or scan `catalog.json` to
+see the title, category, credentials, recording link, and playground UI
+components.
 
 ## 🤝 Adding a demo
 
