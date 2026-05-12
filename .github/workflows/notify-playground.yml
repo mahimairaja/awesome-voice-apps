@@ -1,0 +1,23 @@
+name: Notify playground of demo change
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'demos/**'
+      - 'catalog.json'
+
+jobs:
+  rebuild-playground:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel rebuild of voice-playground
+        env:
+          HOOK_URL: ${{ secrets.PLAYGROUND_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK_URL" ]; then
+            echo "PLAYGROUND_DEPLOY_HOOK secret not set; skipping rebuild trigger."
+            exit 0
+          fi
+          curl -fSs -X POST "$HOOK_URL"
+          echo "Playground rebuild triggered."
