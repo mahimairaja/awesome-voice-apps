@@ -33,7 +33,7 @@ def publish_ui_event(
     component: str,
     action: Literal["mount", "update", "unmount"],
     props: dict | None = None,
-    id: str | None = None,
+    event_id: str | None = None,
 ) -> None:
     """Publish a playground UI event; see protocol.ts and demo component registries."""
     envelope = {
@@ -42,8 +42,8 @@ def publish_ui_event(
         "action": action,
         "props": props or {},
     }
-    if id is not None:
-        envelope["id"] = id
+    if event_id is not None:
+        envelope["id"] = event_id
 
     try:
         payload = json.dumps(envelope).encode("utf-8")

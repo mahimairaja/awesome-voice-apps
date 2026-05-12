@@ -57,7 +57,7 @@ def publish_ui_event(
     component: str,
     action: Literal["mount", "update", "unmount"],
     props: dict | None = None,
-    id: str | None = None,
+    component_id: str | None = None,
 ) -> None:
     """Publish a playground UI event; see protocol.ts and demo component registries."""
     envelope = {
@@ -66,8 +66,8 @@ def publish_ui_event(
         "action": action,
         "props": props or {},
     }
-    if id is not None:
-        envelope["id"] = id
+    if component_id is not None:
+        envelope["id"] = component_id
 
     try:
         payload = json.dumps(envelope).encode("utf-8")
@@ -121,20 +121,33 @@ def _render(item: dict) -> dict:
     return rendered
 
 
+def _ui_action(room: rtc.Room, component_id: str) -> Literal["mount", "update"]:
+    mounted = getattr(room, "_awesome_voice_ui_mounted", None)
+    if mounted is None:
+        mounted = set()
+        setattr(room, "_awesome_voice_ui_mounted", mounted)
+
+    if component_id in mounted:
+        return "update"
+
+    mounted.add(component_id)
+    return "mount"
+
+
 def _publish_cart(room: rtc.Room, cart: list[dict]) -> None:
     subtotal = _subtotal(cart)
     publish_ui_event(
         room,
         "Order",
-        "mount",
-        id="order",
+        _ui_action(room, "order"),
+        component_id="order",
         props={"items": [_render(item) for item in cart]},
     )
     publish_ui_event(
         room,
         "Total",
-        "mount",
-        id="total",
+        _ui_action(room, "total"),
+        component_id="total",
         props={
             "items": [
                 {"label": "subtotal", "value": _fmt(subtotal)},
@@ -148,17 +161,12 @@ class DriveThruAttendant(Agent):
     def __init__(self, room: rtc.Room) -> None:
         super().__init__(
             instructions=(
-                "You are a friendly drive-thru voice attendant for a coffee shop. "
-                "Take the customer's order, suggest add-ons sparingly, only one "
-                "if the order is small, confirm modifications, and run the "
-                "running total in your head as items are added. When the "
-                "customer says they are done, read the order and total back, "
-                "take a name for the cup, and end politely. Keep replies short. "
-                "Plain text only. No markdown, no emojis. The cart updates on "
-                "the customer's screen as you add items; rely on it being "
-                "visible. After submit_order succeeds, wrap up the call within "
-                "a couple of turns. Use add_item with these exact item keys: "
-                f"{_menu_prompt()}."
+                "You are a friendly drive-thru coffee attendant. Take orders, "
+                "confirm modifications, suggest one add-on sparingly, and keep "
+                "a running total in your head. Keep replies short, plain text, "
+                "no markdown or emojis. Use add_item with these exact keys: "
+                f"{_menu_prompt()}. After submit_order succeeds, read back the "
+                "order and total, get a name, and end within a couple of turns."
             ),
         )
         self.room = room
@@ -214,8 +222,8 @@ class DriveThruAttendant(Agent):
         publish_ui_event(
             self.room,
             "Checkout",
-            "mount",
-            id="checkout",
+            _ui_action(self.room, "checkout"),
+            component_id="checkout",
             props={
                 "title": "ready when you are",
                 "buttons": [
