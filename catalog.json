@@ -1,0 +1,18 @@
+{
+  "drive-thru-coffee": {
+    "title": "Drive-thru coffee",
+    "category": "Drive-thru & Ordering",
+    "description": "Takes a coffee order, modifies items mid-flow, totals the cart.",
+    "who_for": "Cafes that want voice ordering without ripping out their POS.",
+    "recording_url": null,
+    "required_credentials": [
+      "openai_api_key",
+      "deepgram_api_key",
+      "cartesia_api_key",
+      "livekit_url",
+      "livekit_api_key",
+      "livekit_api_secret"
+    ],
+    "ui_components": ["Order", "Total", "Checkout"]
+  }
+}

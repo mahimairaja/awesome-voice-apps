@@ -10,21 +10,47 @@ For the AI-collaborator version of these conventions, see
 
 ## What a demo looks like
 
-Every demo lives at `demos/<slug>/` and contains exactly six
+Every demo lives at `demos/<slug>/` and contains exactly two
 files:
 
 | File | What it is |
 | --- | --- |
 | `agent.py` | The voice agent, copied from `templates/livekit-base/` and customized. |
-| `pyproject.toml` | uv-managed dependencies. Template defaults plus any demo extras. |
-| `.env.example` | The credentials a reader needs to fill in to run the demo. |
-| `README.md` | One paragraph on the idea, who it is for, four-step run instructions, walkthrough link. |
-| `blog.md` | 800 to 1200 word walkthrough post. Sections: problem, stack, walkthrough, try it. |
-| `reel.md` | 30 to 45 second vertical-video script. Hook in the first three seconds. |
+| `requirements.txt` | pip-format runtime dependencies. Template defaults plus any demo extras. |
 
 The slug is short, kebab-case, descriptive of the agent's job, never
 ending in `agent` or `demo`. Examples: `url-summarizer`,
 `drive-thru-coffee`, `intake-form-spanish`.
+
+The shared env example is `templates/livekit-base/.env.example`. Demo
+folders do not duplicate it.
+
+## Where metadata goes
+
+The root `catalog.json` holds the playground metadata for every shipped
+demo. The file is keyed by slug, and the slug must match the demo folder.
+Validate changes against `catalog.schema.json` before committing.
+
+```json
+{
+  "drive-thru-coffee": {
+    "title": "Drive-thru coffee",
+    "category": "Drive-thru & Ordering",
+    "description": "Takes a coffee order, modifies items mid-flow, totals the cart.",
+    "who_for": "Cafes that want voice ordering without ripping out their POS.",
+    "recording_url": null,
+    "required_credentials": [
+      "openai_api_key",
+      "deepgram_api_key",
+      "cartesia_api_key",
+      "livekit_url",
+      "livekit_api_key",
+      "livekit_api_secret"
+    ],
+    "ui_components": ["Order", "Total", "Checkout"]
+  }
+}
+```
 
 ## Build budget
 
@@ -40,28 +66,26 @@ If a demo cannot fit, it becomes either a template extension under
 
 1. Pick a slug. Confirm with the operator that the idea fits the
    cookbook.
-2. Copy the template:
+2. Create the demo folder and copy the two demo files:
 
    ```sh
-   cp -r templates/livekit-base demos/<slug>
+   mkdir -p demos/<slug>
+   cp templates/livekit-base/agent.py demos/<slug>/agent.py
+   cp templates/livekit-base/requirements.txt demos/<slug>/requirements.txt
    ```
 
 3. Customize `agent.py`. The usual edits: the `Assistant` instructions
    string, one or more `@function_tool` methods, optional provider swap.
-4. Update `pyproject.toml` if you added or removed a `livekit-agents`
-   extra, then run `uv sync`.
-5. Update `.env.example` to reflect any extra credentials the demo
-   needs.
-6. Write the four prose files: `README.md`, `blog.md`, `reel.md`. Record
-   the walkthrough.
-7. Link the demo folder under its category in
-   [README.md](README.md). Use a bold demo name and a one-line
-   description so a visitor sees what it does without clicking.
+4. Trim `requirements.txt` to the providers the demo uses.
+5. Add the demo entry to `catalog.json`.
+6. Link the demo's `agent.py` under its category in [README.md](README.md).
+   Use a bold demo name and a one-line description so a visitor sees
+   what it does without clicking.
 
 ## Tech stack
 
 - Python 3.11.
-- uv for dependencies. Never pip.
+- uv for dependency workflows. Dependencies stay in requirements files.
 - ruff for linting and formatting. Never black plus flake8.
 - livekit-agents 1.x with direct provider plugins (Deepgram, OpenAI,
   Cartesia, Silero, turn-detector).

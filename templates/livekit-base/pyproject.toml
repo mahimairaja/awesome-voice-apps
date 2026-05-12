@@ -1,9 +1,0 @@
-[project]
-name = "livekit-base"
-version = "0.1.0"
-description = "Starter scaffold for awesome-voice-apps demos."
-requires-python = ">=3.11"
-dependencies = [
-    "livekit-agents[deepgram,openai,cartesia,silero,turn-detector]>=1.5,<2.0",
-    "python-dotenv>=1.0",
-]

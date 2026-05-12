@@ -28,7 +28,7 @@ unambiguously about execution.
 | Layer | Choice |
 | --- | --- |
 | Language | Python 3.11 (`.python-version` pinned) |
-| Package manager | uv (never pip) |
+| Package manager | uv with requirements.txt inputs |
 | Linter / formatter | ruff (never black plus flake8) |
 | Voice runtime | livekit-agents 1.x with direct provider plugins |
 | Default STT / LLM / TTS | Deepgram Nova-3 / OpenAI gpt-4o-mini / Cartesia Sonic-2 |
@@ -58,24 +58,53 @@ agent-starter-react.
 ## File conventions
 
 A finished demo is the folder `demos/<slug>/` containing
-exactly six files:
+exactly two files:
 
 | File | Purpose |
 | --- | --- |
 | `agent.py` | The voice agent. Copied from the template, then customized. |
-| `pyproject.toml` | uv-managed deps. Same as template plus any demo-specific extras. |
-| `.env.example` | Same six keys as the template plus any demo-specific keys. |
-| `README.md` | What the demo does, who it is for, four-step run instructions, link to the recorded walkthrough. |
-| `blog.md` | Walkthrough post. 800 to 1200 words. Sections: problem, stack, walkthrough, try it. |
-| `reel.md` | 30 to 45 second vertical-video script. Hook in the first three seconds. |
+| `requirements.txt` | pip-format runtime deps. Same as template plus any demo-specific extras. |
 
 The `<slug>` is short, kebab-case, descriptive. Examples:
 `url-summarizer`, `drive-thru-coffee`, `intake-form-spanish`. No
 trailing words like `agent` or `demo`.
 
-When a demo ships, link the demo folder under the matching category in
-`README.md`. Drop a bold demo name and a one-line description so a
-visitor sees what the demo does without clicking in.
+The shared six-key environment example lives at
+`templates/livekit-base/.env.example`. Demo folders do not carry their
+own env examples unless a demo needs extra credentials and the operator
+clears the exception first.
+
+When a demo ships, link the demo's `agent.py` under the matching
+category in `README.md`. Drop a bold demo name and a one-line
+description so a visitor sees what the demo does without clicking in.
+
+## Where metadata goes
+
+The root `catalog.json` is the source of truth for playground metadata.
+Every shipped demo gets one entry keyed by its slug. Keep the slug equal
+to the folder name. The category must match one of the ten cookbook
+categories.
+
+```json
+{
+  "drive-thru-coffee": {
+    "title": "Drive-thru coffee",
+    "category": "Drive-thru & Ordering",
+    "description": "Takes a coffee order, modifies items mid-flow, totals the cart.",
+    "who_for": "Cafes that want voice ordering without ripping out their POS.",
+    "recording_url": null,
+    "required_credentials": [
+      "openai_api_key",
+      "deepgram_api_key",
+      "cartesia_api_key",
+      "livekit_url",
+      "livekit_api_key",
+      "livekit_api_secret"
+    ],
+    "ui_components": ["Order", "Total", "Checkout"]
+  }
+}
+```
 
 ## Categories
 
@@ -129,7 +158,7 @@ synthesis, so anything fancy bleeds through.
 
 - Anything ShipVoice shaped. Separate repo, separate product.
 - The branded playground. Separate repo, lands in M1.
-- Build automation (slash commands, subagents, cron). Lands in M2.
+- Build automation beyond the playground rebuild hook.
 - Per-demo custom frontends. Default is the run instructions.
 - An automated test suite for demos. Demos that need tests can add them
   per-demo, but no top-level pytest harness.

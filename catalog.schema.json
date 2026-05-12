@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mahimairaja/awesome-voice-apps/catalog.schema.json",
+  "title": "Awesome Voice Apps catalog",
+  "type": "object",
+  "propertyNames": {
+    "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+  },
+  "additionalProperties": {
+    "type": "object",
+    "required": [
+      "title",
+      "category",
+      "description",
+      "who_for",
+      "recording_url",
+      "required_credentials",
+      "ui_components"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "title": {
+        "type": "string",
+        "minLength": 1
+      },
+      "category": {
+        "type": "string",
+        "enum": [
+          "Receptionist & Booking",
+          "Drive-thru & Ordering",
+          "Customer Support",
+          "Companion & Coaching",
+          "Education",
+          "Data Extraction",
+          "Tool Calling",
+          "Multilingual",
+          "Multi-Agent",
+          "Telephony & SIP"
+        ]
+      },
+      "description": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 140
+      },
+      "who_for": {
+        "type": "string",
+        "minLength": 1
+      },
+      "recording_url": {
+        "type": ["string", "null"],
+        "format": "uri"
+      },
+      "required_credentials": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "uniqueItems": true
+      },
+      "ui_components": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "uniqueItems": true
+      }
+    }
+  }
+}
