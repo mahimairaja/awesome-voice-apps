@@ -14,7 +14,7 @@ blog. No reel. No catalog edit. No commit message body.
 ## Inputs the subagent accepts
 
 1. **A filled-in GitHub issue** with the five-field template:
-   ```
+   ```md
    ## Slug
    medical-discharge
 
