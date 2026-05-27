@@ -166,7 +166,7 @@ synthesis, so anything fancy bleeds through.
 
 ## Out of scope for this repo
 
-- Anything ShipVoice shaped. Separate repo, separate product.
+- Anything ShipVoice-shaped. Separate repo, separate product.
 - The branded playground. Separate repo, lands in M1.
 - Per-demo custom frontends. Default is the run instructions.
 - An automated test suite for demos. Demos that need tests can add them
