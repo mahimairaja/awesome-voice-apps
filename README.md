@@ -33,8 +33,7 @@ provider swappable in a config change. All Apache 2.0.
 git clone https://github.com/mahimairaja/awesome-voice-apps.git
 cd awesome-voice-apps/templates/livekit-base
 cp .env.example .env  # six keys: LiveKit, OpenAI, Deepgram, Cartesia
-uv venv
-uv pip install -r requirements.txt
+uv sync
 uv run --no-project python agent.py download-files
 uv run --no-project python agent.py dev
 ```
@@ -67,7 +66,7 @@ the next small voice agent.
 
 | Slug | What it does | Category | Status | Recording |
 | --- | --- | --- | :---: | --- |
-| [`drive-thru-coffee`](demos/drive-thru-coffee/agent.py) | Takes a coffee order, modifies items, runs totals, hands off | Drive-thru & Ordering | 🟢 Shipped | Recording coming |
+| [`drive-thru-coffee`](demos/drive-thru-coffee/) | Takes a coffee order, modifies items, runs totals, hands off | Drive-thru & Ordering | 🟢 Shipped | Recording coming |
 
 ## 📚 Categories (10)
 
@@ -90,7 +89,7 @@ they exist. Each demo folder has two files: `agent.py` and
 
 ### Drive-thru & Ordering
 
-- **[drive-thru-coffee](demos/drive-thru-coffee/agent.py)** - Takes a coffee order, modifies items mid-flow, runs totals, hands off to pickup.
+- **[drive-thru-coffee](demos/drive-thru-coffee/)** - Takes a coffee order, modifies items mid-flow, runs totals, hands off to pickup.
 
 ## 📦 What you get with each demo
 
