@@ -36,7 +36,16 @@ CATALOG_FIELDS = (
 
 def load_demo(playground_path: Path) -> dict:
     with playground_path.open("r", encoding="utf-8") as fh:
-        raw = json.load(fh)
+        try:
+            raw = json.load(fh)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"{playground_path}: invalid JSON ({exc.msg} at line {exc.lineno})"
+            ) from exc
+    if not isinstance(raw, dict):
+        raise ValueError(
+            f"{playground_path}: expected a JSON object, got {type(raw).__name__}"
+        )
     return {field: raw[field] for field in CATALOG_FIELDS if field in raw}
 
 
