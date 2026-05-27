@@ -1,0 +1,30 @@
+name: Daily demo prompt
+
+on:
+  schedule:
+    - cron: '0 13 * * *'  # 13:00 UTC. Change to your wake time.
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  open-prompt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Open today's demo issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TODAY=$(date -u +%Y-%m-%d)
+          TITLE="what are we building today? ${TODAY}"
+          gh label create daily-demo --color C2E0C6 \
+            --description "Daily demo prompt" --force >/dev/null 2>&1 || true
+          gh issue create \
+            --title "$TITLE" \
+            --body-file .github/ISSUE_TEMPLATE/daily-demo.md \
+            --label "daily-demo"
