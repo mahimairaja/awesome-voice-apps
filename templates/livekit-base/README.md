@@ -9,7 +9,7 @@ VAD, and the LiveKit multilingual turn detector.
 The template keeps the shared files demos copy from.
 
 - `agent.py`: ~50 lines of voice agent code, ready to customize.
-- `requirements.txt`: pip-format runtime dependencies.
+- `pyproject.toml`: uv-managed runtime dependencies.
 - `.python-version`: Python 3.11.
 - `.env.example`: the credentials you need to fill.
 - `.gitignore`: keeps `.env` and friends out of git.
@@ -26,12 +26,11 @@ Cartesia.
    cp .env.example .env
    ```
 
-2. Create a local environment and install dependencies with
+2. Sync the environment with
    [uv](https://docs.astral.sh/uv/).
 
    ```sh
-   uv venv
-   uv pip install -r requirements.txt
+   uv sync
    ```
 
 3. Download the Silero VAD weights and the turn detector model.
@@ -70,6 +69,6 @@ instead.
 ## Swap a provider
 
 To use a different STT / LLM / TTS, edit `AgentSession` in `agent.py` and
-update `requirements.txt` to add or remove the matching `livekit-agents`
-extra (for example, `[elevenlabs]` for ElevenLabs TTS), then reinstall
-with `uv pip install -r requirements.txt`.
+update the `livekit-agents` extras in `pyproject.toml` to add or remove
+the matching extra (for example, `[elevenlabs]` for ElevenLabs TTS),
+then run `uv sync`.
