@@ -6,10 +6,10 @@ VAD, and the LiveKit multilingual turn detector.
 
 ## What you get
 
-Five files. No more.
+The template keeps the shared files demos copy from.
 
 - `agent.py`: ~50 lines of voice agent code, ready to customize.
-- `pyproject.toml`: uv-managed dependencies.
+- `pyproject.toml`: uv-managed runtime dependencies.
 - `.python-version`: Python 3.11.
 - `.env.example`: the credentials you need to fill.
 - `.gitignore`: keeps `.env` and friends out of git.
@@ -26,7 +26,8 @@ Cartesia.
    cp .env.example .env
    ```
 
-2. Install dependencies with [uv](https://docs.astral.sh/uv/).
+2. Sync the environment with
+   [uv](https://docs.astral.sh/uv/).
 
    ```sh
    uv sync
@@ -35,13 +36,13 @@ Cartesia.
 3. Download the Silero VAD weights and the turn detector model.
 
    ```sh
-   uv run python agent.py download-files
+   uv run --no-project python agent.py download-files
    ```
 
 4. Start the agent in dev mode and connect a frontend.
 
    ```sh
-   uv run python agent.py dev
+   uv run --no-project python agent.py dev
    ```
 
    Then open one of:
@@ -54,12 +55,13 @@ Cartesia.
 
 ## Use it for a demo
 
-Copy the whole folder into `demos/<slug>/` and customize from
-there. The usual edits per demo:
+Create `demos/<slug>/`, copy `agent.py` and `requirements.txt` into it,
+and customize from there. The usual edits per demo:
 
 - The `instructions` string on the `Assistant` class.
 - One or more `@function_tool` methods.
 - Provider swaps (different TTS voice, a different LLM, etc).
+- The matching entry in the root `catalog.json`.
 
 Keep net new code under 300 lines. Bigger ideas become template extensions
 instead.
@@ -67,6 +69,6 @@ instead.
 ## Swap a provider
 
 To use a different STT / LLM / TTS, edit `AgentSession` in `agent.py` and
-update `pyproject.toml` to add or remove the matching `livekit-agents`
-extra (for example, `[elevenlabs]` for ElevenLabs TTS), then re-run
-`uv sync`.
+update the `livekit-agents` extras in `pyproject.toml` to add or remove
+the matching extra (for example, `[elevenlabs]` for ElevenLabs TTS),
+then run `uv sync`.

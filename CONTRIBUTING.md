@@ -6,25 +6,75 @@ want to add a demo or fix something, read this once and you have all
 the context you need.
 
 For the AI-collaborator version of these conventions, see
-[CLAUDE.md](CLAUDE.md). The two files agree.
+[AGENTS.md](AGENTS.md). [CLAUDE.md](CLAUDE.md) is a one-line import of
+the same file so Claude Code auto-loads it.
+
+## One-time setup
+
+```sh
+make hooks
+```
+
+Points git at `.githooks/`. The pre-commit hook regenerates
+`catalog.json` from each demo's `playground.json` when a `demos/`
+file is staged. The hook is the only thing keeping the root catalog
+in sync; without it, `catalog.json` drifts.
+
+If you also want the daily-issue and `@claude` GitHub flows wired up
+(see "The daily loop" below), the operator one-time setup is:
+
+1. Install the Claude Code GitHub App on this repo.
+2. Add `ANTHROPIC_API_KEY` as a repo secret.
+3. Paste your LiveKit Docs MCP URL into `.claude/mcp.json`.
 
 ## What a demo looks like
 
-Every demo lives at `demos/<slug>/` and contains exactly six
-files:
+Every demo lives at `demos/<slug>/` and carries these files:
 
 | File | What it is |
 | --- | --- |
 | `agent.py` | The voice agent, copied from `templates/livekit-base/` and customized. |
-| `pyproject.toml` | uv-managed dependencies. Template defaults plus any demo extras. |
-| `.env.example` | The credentials a reader needs to fill in to run the demo. |
-| `README.md` | One paragraph on the idea, who it is for, four-step run instructions, walkthrough link. |
-| `blog.md` | 800 to 1200 word walkthrough post. Sections: problem, stack, walkthrough, try it. |
-| `reel.md` | 30 to 45 second vertical-video script. Hook in the first three seconds. |
+| `pyproject.toml` | uv-managed runtime dependencies. Template defaults plus any demo extras. |
+| `README.md` | Short visitor entry: one-line hook, what it does, four uv commands, recording placeholder. |
+| `playground.json` | Only when the demo emits playground UI events. Title, category, description, who_for, required_credentials, ui_components. |
+
+No `blog.md`, no `reel.md`, no marketing content here. Those live
+elsewhere.
 
 The slug is short, kebab-case, descriptive of the agent's job, never
 ending in `agent` or `demo`. Examples: `url-summarizer`,
 `drive-thru-coffee`, `intake-form-spanish`.
+
+The shared env example is `templates/livekit-base/.env.example`. Demo
+folders do not duplicate it.
+
+## Where metadata goes
+
+`catalog.json` at the repo root is **derived** from each demo's
+`playground.json`. The pre-commit hook (`scripts/build_catalog.py`)
+rebuilds it on every commit that touches `demos/`. Do not hand-edit
+`catalog.json`. Edit the demo's `playground.json` instead.
+
+A `playground.json` looks like:
+
+```json
+{
+  "title": "Drive-thru coffee",
+  "category": "Drive-thru & Ordering",
+  "description": "Takes a coffee order, modifies items mid-flow, totals the cart.",
+  "who_for": "Cafes that want voice ordering without ripping out their POS.",
+  "recording_url": null,
+  "required_credentials": [
+    "openai_api_key",
+    "deepgram_api_key",
+    "cartesia_api_key",
+    "livekit_url",
+    "livekit_api_key",
+    "livekit_api_secret"
+  ],
+  "ui_components": ["Order", "Total", "Checkout"]
+}
+```
 
 ## Build budget
 
@@ -36,32 +86,56 @@ ending in `agent` or `demo`. Examples: `url-summarizer`,
 If a demo cannot fit, it becomes either a template extension under
 `templates/` or a future milestone. Not a demo.
 
-## Adding a demo
+## The daily loop
 
-1. Pick a slug. Confirm with the operator that the idea fits the
-   cookbook.
-2. Copy the template:
+The canonical entry point. Works from a phone.
+
+1. A GitHub Actions cron opens an issue each morning titled
+   `what are we building today? YYYY-MM-DD`. The body is a five-field
+   template: slug, one-line hook, category, stack (STT/LLM/TTS),
+   tools or UI components.
+2. Fill in the body. Then comment `@claude scaffold this when ready`.
+3. The Claude Code GitHub Action invokes the `demo-builder` subagent,
+   scaffolds `demos/<slug>/{agent.py, pyproject.toml, README.md}`
+   (plus `playground.json` when UI is listed), opens a PR titled
+   `feat(demo): <slug> with <stt>/<llm>/<tts> stack`.
+4. Review the PR. Merge.
+
+For offline work, the same subagent is reachable as `/build` in a
+local Claude Code session.
+
+## Adding a demo by hand (offline fallback)
+
+If you are not using the GitHub flow:
+
+1. Pick a slug. Confirm the idea fits the cookbook.
+2. Create the demo folder and copy the draft files:
 
    ```sh
-   cp -r templates/livekit-base demos/<slug>
+   mkdir -p demos/<slug>
+   cp templates/livekit-base/agent.py demos/<slug>/agent.py
+   cp templates/livekit-base/pyproject.toml demos/<slug>/pyproject.toml
    ```
 
-3. Customize `agent.py`. The usual edits: the `Assistant` instructions
-   string, one or more `@function_tool` methods, optional provider swap.
-4. Update `pyproject.toml` if you added or removed a `livekit-agents`
-   extra, then run `uv sync`.
-5. Update `.env.example` to reflect any extra credentials the demo
-   needs.
-6. Write the four prose files: `README.md`, `blog.md`, `reel.md`. Record
-   the walkthrough.
-7. Link the demo folder under its category in
-   [README.md](README.md). Use a bold demo name and a one-line
-   description so a visitor sees what it does without clicking.
+3. Edit the `name` and `description` fields in `pyproject.toml`.
+   Trim the `livekit-agents[...]` extras to the providers the demo
+   uses.
+4. Customize `agent.py`. The usual edits: the `Assistant` class name
+   and `instructions` string, one or more `@function_tool` methods,
+   optional provider swap (update imports plus `AgentSession`
+   constructor).
+5. When the demo emits playground UI events, add a `playground.json`
+   manifest.
+6. Write a short `README.md` (hook, what it does, four uv commands,
+   recording placeholder).
+7. Link the demo's folder under its category in [README.md](README.md).
+   Use a bold demo name and a one-line description so a visitor sees
+   what it does without clicking.
 
 ## Tech stack
 
 - Python 3.11.
-- uv for dependencies. Never pip.
+- uv for dependency workflows. Dependencies in `pyproject.toml`.
 - ruff for linting and formatting. Never black plus flake8.
 - livekit-agents 1.x with direct provider plugins (Deepgram, OpenAI,
   Cartesia, Silero, turn-detector).
@@ -99,8 +173,7 @@ No em dashes. Use colons, periods, semicolons, or parentheses.
 - A pattern needing more than the template provides: a separate
   template extension under `templates/`, cleared with the operator first.
 - A one-off voice idea: a demo under `demos/<slug>/`.
-- Subagents, slash commands, hooks: under `.claude/`. Empty for now;
-  fills up during M2.
+- Subagents, slash commands, hooks: under `.claude/`. Filled by M2.
 
 ## License
 

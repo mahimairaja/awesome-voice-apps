@@ -5,7 +5,13 @@ Customize the Assistant instructions, add @function_tool methods, or
 swap any of the providers below. Keep net new code under ~300 lines.
 """
 
+import asyncio
+import json
+import logging
+from typing import Literal
+
 from dotenv import load_dotenv
+from livekit import rtc
 from livekit.agents import (
     Agent,
     AgentServer,
@@ -18,6 +24,52 @@ from livekit.plugins import cartesia, deepgram, openai, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
+
+
+def publish_ui_event(
+    room: rtc.Room,
+    component: str,
+    action: Literal["mount", "update", "unmount"],
+    props: dict | None = None,
+    event_id: str | None = None,
+) -> None:
+    """Publish a playground UI event; see protocol.ts and demo component registries."""
+    envelope = {
+        "type": "ui_event",
+        "component": component,
+        "action": action,
+        "props": props or {},
+    }
+    if event_id is not None:
+        envelope["id"] = event_id
+
+    try:
+        payload = json.dumps(envelope).encode("utf-8")
+    except (TypeError, ValueError):
+        logger.exception("failed to encode playground ui event")
+        return
+
+    try:
+        task = asyncio.create_task(
+            room.local_participant.publish_data(
+                payload,
+                topic="ui",
+                reliable=True,
+            )
+        )
+    except RuntimeError:
+        logger.exception("failed to schedule playground ui event")
+        return
+
+    def log_publish_failure(task: asyncio.Task[None]) -> None:
+        try:
+            task.result()
+        except Exception:
+            logger.exception("failed to publish playground ui event")
+
+    task.add_done_callback(log_publish_failure)
 
 
 class Assistant(Agent):
