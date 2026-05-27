@@ -162,11 +162,11 @@ class DriveThruAttendant(Agent):
         super().__init__(
             instructions=(
                 "You are a friendly drive-thru coffee attendant. Take orders, "
-                "confirm modifications, suggest one add-on sparingly, and keep "
-                "a running total in your head. Keep replies short, plain text, "
-                "no markdown or emojis. Use add_item with these exact keys: "
-                f"{_menu_prompt()}. After submit_order succeeds, read back the "
-                "order and total, get a name, and end within a couple of turns."
+                "confirm modifications, suggest one add-on sparingly. Keep "
+                "replies short, plain text, no markdown or emojis. Use "
+                f"add_item with these keys: {_menu_prompt()}. After "
+                "submit_order, read back the order and total, ask for a name, "
+                "and end."
             ),
         )
         self.room = room
