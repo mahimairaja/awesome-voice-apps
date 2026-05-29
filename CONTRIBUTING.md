@@ -24,7 +24,11 @@ If you also want the daily-issue and `@claude` GitHub flows wired up
 (see "The daily loop" below), the operator one-time setup is:
 
 1. Install the Claude Code GitHub App on this repo.
-2. Add `ANTHROPIC_API_KEY` as a repo secret.
+2. Add `CLAUDE_CODE_OAUTH_TOKEN` as a repo secret. Generate it locally
+   with `claude setup-token` (needs a Claude Pro or Max plan). To bill a
+   metered API key instead, switch the `claude_code_oauth_token` input in
+   `.github/workflows/claude-code.yml` back to `anthropic_api_key` and add
+   an `ANTHROPIC_API_KEY` secret from console.anthropic.com.
 3. Paste your LiveKit Docs MCP URL into `.claude/mcp.json`.
 
 ## What a demo looks like
