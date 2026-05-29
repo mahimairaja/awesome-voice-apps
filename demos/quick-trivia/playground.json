@@ -1,0 +1,16 @@
+{
+  "title": "Quick trivia",
+  "category": "Education",
+  "description": "Quizzes the caller with one short trivia question at a time and keeps score.",
+  "who_for": "Anyone who wants a quick voice-based trivia game or wants to see live score UI updates.",
+  "recording_url": null,
+  "required_credentials": [
+    "openai_api_key",
+    "deepgram_api_key",
+    "cartesia_api_key",
+    "livekit_url",
+    "livekit_api_key",
+    "livekit_api_secret"
+  ],
+  "ui_components": ["Score"]
+}
