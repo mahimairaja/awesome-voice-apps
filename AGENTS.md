@@ -112,6 +112,13 @@ A `playground.json` looks like:
 }
 ```
 
+`ui_components` and any `publish_ui_event` calls must use only the
+components the playground renders. The supported set and their prop
+shapes are documented in `docs/playground-components.md`. The playground
+skips any component outside that set, so do not invent names; if a demo
+needs UI beyond the set, that is a deliberate playground change, not a
+demo declaration.
+
 ## Categories
 
 Demos are tagged with one of: Receptionist & Booking, Drive-thru &
