@@ -1,0 +1,79 @@
+name: Catalog
+
+# Keeps catalog.json in lockstep with demos/*/playground.json.
+#
+# The pre-commit hook regenerates the catalog on a developer's machine, but it
+# never runs in CI: the demo-builder action commits through the GitHub API,
+# which bypasses local git hooks, and the runner never sets core.hooksPath. So
+# a scaffolded demo would land its playground.json with a stale catalog.json,
+# and the playground (which reads only catalog.json) would never see the demo.
+#
+# This workflow closes that gap. On a same-repo PR it regenerates and commits
+# the catalog onto the PR branch so the diff is reviewable and merges correct.
+# On fork PRs and direct pushes to main it cannot push a fix, so it fails loud
+# instead, telling the author to run make catalog.
+
+on:
+  pull_request:
+    paths:
+      - 'demos/**'
+      - 'catalog.json'
+      - 'scripts/build_catalog.py'
+  push:
+    branches: [main]
+    paths:
+      - 'demos/**'
+      - 'catalog.json'
+      - 'scripts/build_catalog.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: catalog-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  catalog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - name: Regenerate catalog.json from demos
+        run: python3 scripts/build_catalog.py
+
+      - name: Detect drift
+        id: drift
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- catalog.json; then
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit regenerated catalog to the PR branch
+        if: |
+          steps.drift.outputs.stale == 'true' &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add catalog.json
+          git commit -m "chore(catalog): regenerate from demos"
+          git push origin "HEAD:$HEAD_REF"
+
+      - name: Fail when catalog is stale and cannot be auto-fixed
+        if: |
+          steps.drift.outputs.stale == 'true' &&
+          (github.event_name == 'push' ||
+           github.event.pull_request.head.repo.full_name != github.repository)
+        run: |
+          echo "::error::catalog.json is out of date. Run make catalog (or python3 scripts/build_catalog.py) and commit the result." >&2
+          exit 1
