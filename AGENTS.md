@@ -35,11 +35,11 @@ unambiguously about execution.
 | Default STT / LLM / TTS | Deepgram Nova-3 / OpenAI gpt-4o-mini / Cartesia Sonic-2 |
 | VAD | Silero |
 | Turn detector | LiveKit MultilingualModel |
-| Frontend | None per demo. Connect via the public LiveKit Agents Playground or a local clone of `livekit-examples/agent-starter-react`. |
+| Frontend | None per demo. Visitors run the agent locally and talk to it at `playground.mahimai.ca/demos/<slug>`, pasting their own three LiveKit values. |
 
-A branded playground is planned for M1. Until it ships, demos always
-run against the public LiveKit Agents Playground or a local
-agent-starter-react.
+The branded playground at playground.mahimai.ca is live. Each shipped
+demo runs at playground.mahimai.ca/demos/<slug>; point READMEs and the
+agent.py run block there, not at the generic LiveKit Agents Playground.
 
 ## Hard constraints
 

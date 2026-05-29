@@ -131,7 +131,11 @@ Then edit:
   - "Run it" with the four uv commands
     (`uv sync`, `uv run --no-project python agent.py download-files`,
     `uv run --no-project python agent.py dev`, plus the
-    `cp .env.example .env` line)
+    `cp .env.example .env` line), then a closing line that tells the
+    reader to open `playground.mahimai.ca/demos/<slug>`, paste their
+    three LiveKit values, and start talking. Never point at
+    agents-playground.livekit.io or agent-starter-react; the branded
+    playground is where these demos run.
   - "Recording" with a single line: `Coming after the demo is recorded.`
 - `playground.json` (only when Tools / UI components is non-empty):
   ```json
