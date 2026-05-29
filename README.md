@@ -91,6 +91,10 @@ they exist. Each demo folder has two files: `agent.py` and
 
 - **[drive-thru-coffee](demos/drive-thru-coffee/)** - Takes a coffee order, modifies items mid-flow, runs totals, hands off to pickup.
 
+### Companion & Coaching
+
+- **[water-tracker](demos/water-tracker/)** - Logs glasses of water by voice and tracks progress toward a daily goal.
+
 ### Education
 
 - **[quick-trivia](demos/quick-trivia/)** - Quizzes the caller with one trivia question at a time and keeps score.
