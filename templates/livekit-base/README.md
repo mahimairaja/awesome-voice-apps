@@ -39,29 +39,29 @@ Cartesia.
    uv run --no-project python agent.py download-files
    ```
 
-4. Start the agent in dev mode and connect a frontend.
+4. Start the agent in dev mode.
 
    ```sh
    uv run --no-project python agent.py dev
    ```
 
-   Then open one of:
-
-   - [agents-playground.livekit.io](https://agents-playground.livekit.io) (free, hosted, works out of the box)
-   - The local [agent-starter-react](https://github.com/livekit-examples/agent-starter-react) frontend (clone, `pnpm dev`)
-
-   You should hear the agent greet you within a few seconds. Speak; it
-   responds.
+   Then open the playground at
+   [playground.mahimai.ca](https://playground.mahimai.ca) (a shipped demo
+   lives at playground.mahimai.ca/demos/its-slug), paste your three
+   LiveKit values when prompted, and start talking. You should hear the
+   agent greet you within a few seconds.
 
 ## Use it for a demo
 
-Create `demos/<slug>/`, copy `agent.py` and `requirements.txt` into it,
+Create `demos/<slug>/`, copy `agent.py` and `pyproject.toml` into it,
 and customize from there. The usual edits per demo:
 
 - The `instructions` string on the `Assistant` class.
 - One or more `@function_tool` methods.
 - Provider swaps (different TTS voice, a different LLM, etc).
-- The matching entry in the root `catalog.json`.
+- A `playground.json` when the demo emits playground UI events. The root
+  `catalog.json` is derived from it automatically; never hand-edit the
+  catalog.
 
 Keep net new code under 300 lines. Bigger ideas become template extensions
 instead.
