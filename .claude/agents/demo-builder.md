@@ -118,7 +118,9 @@ Then edit:
   - if Tools / UI components is non-empty, copy in the
     `publish_ui_event` helper from
     `demos/drive-thru-coffee/agent.py` and wire one `_publish_*`
-    call into `entrypoint`
+    call into `entrypoint`. The playground renders ONLY the components
+    listed in `docs/playground-components.md`; emit only those names and
+    their documented prop shapes. Do not invent a component name.
 - `pyproject.toml`:
   - `name = "<slug>"`
   - `description = "<hook>"`
@@ -146,7 +148,7 @@ Then edit:
     "who_for": "<one sentence>",
     "recording_url": null,
     "required_credentials": [<env vars from each provider's docs page>],
-    "ui_components": [<list from the Tools / UI field>]
+    "ui_components": [<names from docs/playground-components.md only>]
   }
   ```
 
@@ -196,3 +198,4 @@ includes `Closes #<issue>`.
 | Issue body does not match the template | Comment with the missing field, stop. |
 | LiveKit Docs MCP unavailable | Surface in a comment, stop. Do not guess. |
 | Net new code over 300 LOC | Scaffold anyway, flag in the PR body. |
+| UI needed that is not in `docs/playground-components.md` | Use the closest supported component, or scaffold without that UI and note the gap in the PR. Do not invent a component. |
