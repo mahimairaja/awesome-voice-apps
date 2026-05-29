@@ -1,0 +1,9 @@
+[project]
+name = "quick-trivia"
+version = "0.1.0"
+description = "Quizzes the caller with one short trivia question at a time and keeps score."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero,turn-detector]>=1.5,<2.0",
+    "python-dotenv>=1.0",
+]

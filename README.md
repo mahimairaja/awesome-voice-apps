@@ -91,6 +91,10 @@ they exist. Each demo folder has two files: `agent.py` and
 
 - **[drive-thru-coffee](demos/drive-thru-coffee/)** - Takes a coffee order, modifies items mid-flow, runs totals, hands off to pickup.
 
+### Education
+
+- **[quick-trivia](demos/quick-trivia/)** - Quizzes the caller with one short trivia question at a time and keeps score.
+
 ## 📦 What you get with each demo
 
 Every demo folder ships with the same two files: `agent.py` and
