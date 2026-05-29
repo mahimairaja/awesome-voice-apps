@@ -1,0 +1,9 @@
+[project]
+name = "water-tracker"
+version = "0.1.0"
+description = "Logs glasses of water by voice and tracks progress toward a daily goal."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero,turn-detector]>=1.5,<2.0",
+    "python-dotenv>=1.0",
+]
