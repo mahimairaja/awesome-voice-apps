@@ -34,6 +34,15 @@ jobs:
       - uses: anthropics/claude-code-action@537ffff2eff706bd7e3e1c3daf2d4b39067a9f85  # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Author commits as the repo owner, not claude[bot]. git-config.ts sets
+          # the git identity to bot_name / <bot_id>+<bot_name>@users.noreply, and
+          # that noreply form links the commit to the owner's GitHub account.
+          bot_name: mahimairaja
+          bot_id: "81288263"
+          # Strip the co-author trailer and the "Generated with Claude Code"
+          # footer from commits and PRs. attribution is the current key; the
+          # legacy includeCoAuthoredBy covers older bundled CLI versions.
+          settings: '{"attribution":{"commit":"","pr":""},"includeCoAuthoredBy":false}'
           claude_args: >-
             --model claude-sonnet-4-6
             --mcp-config .claude/mcp.json
