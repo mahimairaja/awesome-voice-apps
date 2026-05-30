@@ -96,7 +96,7 @@ A `playground.json` looks like:
 ```json
 {
   "title": "Drive-thru coffee",
-  "category": "Drive-thru & Ordering",
+  "category": "restaurant",
   "description": "Takes a coffee order, modifies items mid-flow, totals the cart.",
   "who_for": "Cafes that want voice ordering without ripping out their POS.",
   "recording_url": null,
@@ -121,12 +121,19 @@ demo declaration.
 
 ## Categories
 
-Demos are tagged with one of: Receptionist & Booking, Drive-thru &
-Ordering, Customer Support, Companion & Coaching, Education, Data
-Extraction, Tool Calling, Multilingual, Multi-Agent, Telephony & SIP.
+A demo is tagged with one industry it serves. Single lowercase word, one
+of: healthcare, legal, finance, realestate, hospitality, restaurant,
+automotive, education, retail, recruiting, construction, travel, fitness,
+beauty, logistics, insurance, nonprofit, gov, media.
 
-Add a new category only when no existing one fits, and only after
-clearing it with the operator.
+These are industries, not use cases. A multilingual healthcare intake is
+`healthcare`, not a "multilingual" or "data extraction" tag. `restaurant`
+is split from `hospitality` (hotels, bars, cafes); do not split
+hospitality further until each sub-vertical has 5 or more demos. `gov` is
+government and public sector.
+
+Add a new tag only when no existing one fits, only after clearing it with
+the operator, and keep the total inside 18 to 20.
 
 ## Commit conventions
 
