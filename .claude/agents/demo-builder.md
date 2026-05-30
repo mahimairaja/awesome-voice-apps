@@ -22,7 +22,7 @@ blog. No reel. No catalog edit. No commit message body.
    Plain-English discharge instructions, on demand.
 
    ## Category
-   Customer Support
+   healthcare
 
    ## Stack
    STT: speechmatics

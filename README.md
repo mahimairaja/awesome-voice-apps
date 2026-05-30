@@ -66,36 +66,45 @@ the next small voice agent.
 
 | Slug | What it does | Category | Status | Recording |
 | --- | --- | --- | :---: | --- |
-| [`drive-thru-coffee`](demos/drive-thru-coffee/) | Takes a coffee order, modifies items, runs totals, hands off | Drive-thru & Ordering | 🟢 Shipped | Recording coming |
+| [`drive-thru-coffee`](demos/drive-thru-coffee/) | Takes a coffee order, modifies items, runs totals, hands off | restaurant | 🟢 Shipped | Recording coming |
 
-## 📚 Categories (10)
+## 📚 Categories (19 industries)
 
-Ten lanes for voice agents. Click a row to see the demos in it when
-they exist. Each demo folder has two files: `agent.py` and
-`requirements.txt`. Playground metadata lives in the root `catalog.json`.
+Each demo is tagged with the one industry it serves. Single lowercase
+word, so the tag is short and URL-friendly. Playground metadata lives in
+the root `catalog.json`.
 
-| Category | What kind of voice agent fits here |
+| Tag | The industry it serves |
 | --- | --- |
-| 🛎️ **Receptionist & Booking** | Picks up an inbound call, qualifies the caller, schedules an appointment. |
-| 🥤 **Drive-thru & Ordering** | Takes an order, modifies items mid-flow, runs totals, hands off cleanly. |
-| 💬 **Customer Support** | Status, returns, account changes, warm handoff to a human. |
-| 🧘 **Companion & Coaching** | Practice partners, journaling assistants, accountability coaches, language tutors. |
-| 🎓 **Education** | Flashcards, Socratic Q&A, reading helpers, quiz drills. |
-| 📋 **Data Extraction** | Captures structured data through conversation: intake forms, surveys, KYC. |
-| 🔧 **Tool Calling** | Calls APIs, MCP servers, web search mid conversation. |
-| 🌍 **Multilingual** | Switches language, handles code switching, translates within a single conversation. |
-| 👥 **Multi-Agent** | Specialized personas hand off to each other: triage to specialist, sales to support. |
-| 📞 **Telephony & SIP** | Real phone calls. Inbound IVR, outbound surveys, warm transfer. |
+| 🩺 **healthcare** | Clinics, providers, pharmacy, patient intake and follow-up. |
+| ⚖️ **legal** | Law firms, intake, scheduling, document Q&A. |
+| 💳 **finance** | Banking, lending, payments, account servicing. |
+| 🏠 **realestate** | Listings, showings, tenant and buyer enquiries. |
+| 🛎️ **hospitality** | Hotels, bars, cafes, front-desk and concierge. |
+| 🥤 **restaurant** | QSR and dining: ordering, drive-thru, reservations. |
+| 🚗 **automotive** | Dealers, service centres, parts, roadside. |
+| 🎓 **education** | Tutoring, drills, quizzes, course support. |
+| 🛍️ **retail** | Storefronts, order status, returns, product help. |
+| 🧑‍💼 **recruiting** | Screening, scheduling interviews, candidate Q&A. |
+| 🏗️ **construction** | Trades, quotes, dispatch, site coordination. |
+| ✈️ **travel** | Trip booking, changes, itineraries, support. |
+| 🏋️ **fitness** | Gyms, coaching, habits, wellness tracking. |
+| 💅 **beauty** | Salons, spas, bookings, product advice. |
+| 📦 **logistics** | Shipping, tracking, warehousing, dispatch. |
+| 🛡️ **insurance** | Quotes, claims, policy servicing, FNOL. |
+| 🤝 **nonprofit** | Donations, volunteering, member and outreach lines. |
+| 🏛️ **gov** | Government and public sector services and info lines. |
+| 🎬 **media** | Publishing, streaming, events, audience support. |
 
-### Drive-thru & Ordering
+### restaurant
 
 - **[drive-thru-coffee](demos/drive-thru-coffee/)** - Takes a coffee order, modifies items mid-flow, runs totals, hands off to pickup.
 
-### Companion & Coaching
+### fitness
 
 - **[water-tracker](demos/water-tracker/)** - Logs glasses of water by voice and tracks progress toward a daily goal.
 
-### Education
+### education
 
 - **[quick-trivia](demos/quick-trivia/)** - Quizzes the caller with one trivia question at a time and keeps score.
 

@@ -1,6 +1,6 @@
 {
   "title": "Quick trivia",
-  "category": "Education",
+  "category": "education",
   "description": "Quizzes the caller with one short trivia question at a time and keeps score.",
   "who_for": "Anyone who wants a quick voice-based trivia game or wants to see live score UI updates.",
   "recording_url": null,

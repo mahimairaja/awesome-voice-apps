@@ -3,7 +3,7 @@
 Voice agent that takes a coffee order, modifies items mid-flow, runs a
 live total in the playground UI, and closes with a pickup name.
 
-Category: Drive-thru & Ordering.
+Category: restaurant.
 
 ## What it does
 
