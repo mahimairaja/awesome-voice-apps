@@ -12,7 +12,7 @@ labels: ["daily-demo"]
 <one sentence>
 
 ## Category
-<one of: Receptionist & Booking, Drive-thru & Ordering, Customer Support, Companion & Coaching, Education, Data Extraction, Tool Calling, Multilingual, Multi-Agent, Telephony & SIP>
+<one industry tag, lowercase: healthcare, legal, finance, realestate, hospitality, restaurant, automotive, education, retail, recruiting, construction, travel, fitness, beauty, logistics, insurance, nonprofit, gov, media>
 
 ## Stack
 STT:

@@ -1,7 +1,7 @@
 {
   "drive-thru-coffee": {
     "title": "Drive-thru coffee",
-    "category": "Drive-thru & Ordering",
+    "category": "restaurant",
     "description": "Takes a coffee order, modifies items mid-flow, totals the cart.",
     "who_for": "Cafes that want voice ordering without ripping out their POS.",
     "recording_url": null,
@@ -21,7 +21,7 @@
   },
   "quick-trivia": {
     "title": "Quick trivia",
-    "category": "Education",
+    "category": "education",
     "description": "Quizzes the caller with one short trivia question at a time and keeps score.",
     "who_for": "Anyone who wants a quick voice-based trivia game or wants to see live score UI updates.",
     "recording_url": null,
@@ -39,7 +39,7 @@
   },
   "water-tracker": {
     "title": "Water tracker",
-    "category": "Companion & Coaching",
+    "category": "fitness",
     "description": "Logs glasses of water by voice and tracks progress toward a daily goal.",
     "who_for": "Anyone who wants a voice-powered hydration reminder throughout the day.",
     "recording_url": null,
