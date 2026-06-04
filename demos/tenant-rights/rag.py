@@ -94,12 +94,27 @@ def _require_key() -> str:
     return key
 
 
+_async_client = None
+
+
+def _async_embed_client():
+    """Build the NIM embeddings client once and reuse it across turns.
+
+    Reusing one AsyncOpenAI keeps its keep-alive connection pool warm, so each
+    turn skips a fresh TLS handshake and nothing is left dangling for the GC.
+    The openai import stays lazy so this module imports without the package.
+    """
+    global _async_client
+    if _async_client is None:
+        from openai import AsyncOpenAI
+
+        _async_client = AsyncOpenAI(base_url=NIM_BASE_URL, api_key=_require_key())
+    return _async_client
+
+
 async def embed_query(text: str) -> list[float]:
     """Embed one user question for retrieval (NIM, query mode)."""
-    from openai import AsyncOpenAI
-
-    client = AsyncOpenAI(base_url=NIM_BASE_URL, api_key=_require_key())
-    resp = await client.embeddings.create(
+    resp = await _async_embed_client().embeddings.create(
         model=EMBED_MODEL,
         input=[text],
         extra_body={"input_type": "query", "truncate": "END"},

@@ -30,6 +30,7 @@ from livekit.agents import (
     ChatMessage,
     JobContext,
     JobProcess,
+    StopResponse,
     cli,
 )
 from livekit.plugins import nvidia, openai, silero
@@ -154,7 +155,9 @@ class RentersGuide(Agent):
     ) -> None:
         question = (new_message.text_content or "").strip()
         if not question:
-            return
+            # Empty or garbled transcript: suppress the reply entirely rather
+            # than let the framework generate one with no grounding note.
+            raise StopResponse()
 
         try:
             query_vec = await embed_query(question)

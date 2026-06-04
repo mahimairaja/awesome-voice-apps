@@ -227,3 +227,6 @@ __marimo__/
 
 # Per-template uv lockfiles (committed inside demos, not the template)
 templates/**/uv.lock
+
+# Per-demo prebaked retrieval index (operator builds it locally with their key)
+demos/*/data/index.npz
