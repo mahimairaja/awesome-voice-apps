@@ -18,6 +18,11 @@ question goes past what a document can answer.
 Full NVIDIA stack: Riva STT, NIM LLM, Riva TTS, and NIM embeddings, all under
 one `NVIDIA_API_KEY`.
 
+Because the stack is NVIDIA-only, this demo carries its own four-key
+`.env.example` (`NVIDIA_API_KEY` plus the three LiveKit values) instead of the
+shared six-key template env. That is a deliberate, operator-cleared exception to
+the one-env-example rule.
+
 ## Build the index (once)
 
 The agent retrieves from a prebaked index. Build it once with your NVIDIA key

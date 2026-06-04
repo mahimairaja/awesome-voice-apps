@@ -235,7 +235,7 @@ async def entrypoint(ctx: JobContext) -> None:
         llm=openai.LLM(
             model=NIM_LLM_MODEL,
             base_url=NIM_BASE_URL,
-            api_key=os.environ.get("NVIDIA_API_KEY"),
+            api_key=os.environ["NVIDIA_API_KEY"],
         ),
         tts=nvidia.TTS(voice="Magpie-Multilingual.EN-US.Leo", language_code="en-US"),
         vad=ctx.proc.userdata["vad"],
