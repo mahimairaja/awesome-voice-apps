@@ -199,9 +199,10 @@ class RentersGuide(Agent):
             turn_ctx.add_message(
                 role="assistant",
                 content=(
-                    "System note: retrieval is temporarily unavailable. Tell the "
-                    "user you cannot look that up right now and ask them to try "
-                    "again in a moment."
+                    "System note: retrieval is temporarily unavailable, so you "
+                    "have no source passages for this turn. Do not answer the "
+                    "question from general knowledge. Tell the user you cannot "
+                    "look that up right now and ask them to try again in a moment."
                 ),
             )
             return
@@ -255,10 +256,11 @@ def prewarm(proc: JobProcess) -> None:
         )
     index = load_index(INDEX_PATH)
     backend = embedding_backend()
-    if index["model"] and index["model"] != backend.model:
+    if index["model"] != backend.model:
+        built = index["model"] or "an unknown model"
         raise RuntimeError(
-            f"index was built with embeddings '{index['model']}' but the current "
-            f"keys select '{backend.model}'. Rebuild it: "
+            f"index was built with embeddings '{built}' but the current keys "
+            f"select '{backend.model}'. Rebuild it: "
             "uv run --no-project python build_index.py"
         )
     proc.userdata["index"] = index
