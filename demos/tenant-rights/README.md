@@ -15,26 +15,29 @@ question goes past what a document can answer.
   when a question is not covered or needs facts about a specific lease or state.
 - Never invents statute numbers, dollar amounts, deadlines, or citations.
 
-Full NVIDIA stack: Riva STT, NIM LLM, Riva TTS, and NIM embeddings, all under
-one `NVIDIA_API_KEY`.
+Primary stack is full NVIDIA: Riva STT, NIM LLM, Riva TTS, and NIM embeddings,
+all under one `NVIDIA_API_KEY`. If you do not set `NVIDIA_API_KEY` but do set
+`OPENAI_API_KEY`, the demo falls back to OpenAI for STT, LLM, TTS, and
+embeddings, so you can run it with whichever key you have.
 
-Because the stack is NVIDIA-only, this demo carries its own four-key
-`.env.example` (`NVIDIA_API_KEY` plus the three LiveKit values) instead of the
-shared six-key template env. That is a deliberate, operator-cleared exception to
-the one-env-example rule.
+This demo carries its own `.env.example` (`NVIDIA_API_KEY` or `OPENAI_API_KEY`,
+plus the three LiveKit values) instead of the shared template env. That is a
+deliberate, operator-cleared exception to the one-env-example rule.
 
 ## Build the index (once)
 
-The agent retrieves from a prebaked index. Build it once with your NVIDIA key
-before the first run:
+The agent retrieves from a prebaked index. Build it once before the first run,
+with the same provider you will run with:
 
 ```sh
-cp .env.example .env   # then fill NVIDIA_API_KEY
+cp .env.example .env   # fill NVIDIA_API_KEY, or OPENAI_API_KEY for the fallback
 uv sync
 uv run --no-project python build_index.py
 ```
 
-Rerun `build_index.py` whenever you change the documents in `data/`.
+The index records which embedding model produced it, and the agent refuses to
+start if your keys select a different one. Rerun `build_index.py` whenever you
+change the documents in `data/` or switch providers.
 
 ## Run it
 

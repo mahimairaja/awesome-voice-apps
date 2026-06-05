@@ -21,7 +21,7 @@ import pathlib
 import numpy as np
 from dotenv import load_dotenv
 
-from rag import EMBED_MODEL, embed_documents
+from rag import embed_documents, embedding_backend
 
 load_dotenv()
 
@@ -79,7 +79,8 @@ def main() -> None:
     if not texts:
         raise SystemExit("no chunks found; check the source markdown")
 
-    print(f"embedding {len(texts)} chunks via {EMBED_MODEL} ...")
+    backend = embedding_backend()
+    print(f"embedding {len(texts)} chunks via {backend.provider} ({backend.model}) ...")
     vectors = np.asarray(embed_documents(texts), dtype=np.float32)
 
     out = DATA / "index.npz"
@@ -88,8 +89,11 @@ def main() -> None:
         vectors=vectors,
         texts=np.array(texts),
         labels=np.array(labels),
+        model=np.array(backend.model),
     )
-    print(f"wrote {out} ({len(texts)} chunks, dim {vectors.shape[1]})")
+    print(
+        f"wrote {out} ({len(texts)} chunks, dim {vectors.shape[1]}, model {backend.model})"
+    )
 
 
 if __name__ == "__main__":

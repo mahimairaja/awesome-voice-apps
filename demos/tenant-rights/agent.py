@@ -2,10 +2,13 @@
 
 Answers renter questions from a prebaked index of public HUD material, names the
 source out loud, and redirects to legal help when a question goes past what the
-documents cover. Full NVIDIA stack: Riva STT, NIM LLM, Riva TTS, NIM embeddings.
+documents cover. Primary stack is full NVIDIA (Riva STT, NIM LLM, Riva TTS, NIM
+embeddings); with no NVIDIA_API_KEY but an OPENAI_API_KEY set it falls back to
+OpenAI for STT, LLM, TTS, and embeddings.
 
 Run it:
-1. Copy .env.example to .env and fill NVIDIA_API_KEY plus the three LiveKit keys.
+1. Copy .env.example to .env and fill NVIDIA_API_KEY (or OPENAI_API_KEY for the
+   fallback) plus the three LiveKit keys.
 2. uv sync
 3. uv run --no-project python build_index.py (builds the retrieval index once)
 4. uv run --no-project python agent.py download-files
@@ -36,7 +39,7 @@ from livekit.agents import (
 from livekit.plugins import nvidia, openai, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-from rag import DEFAULT_FLOOR, NIM_BASE_URL, embed_query, load_index, retrieve
+from rag import NIM_BASE_URL, embed_query, embedding_backend, load_index, retrieve
 
 load_dotenv()
 
@@ -144,11 +147,41 @@ def _publish_card(room: rtc.Room, title: str, body: str) -> None:
     )
 
 
+def select_voice_providers():
+    """Pick STT, LLM, TTS by env, on the same priority as the embedding backend.
+
+    NVIDIA_API_KEY -> full NVIDIA (Riva STT, NIM LLM, Riva TTS). Otherwise
+    OPENAI_API_KEY -> OpenAI (Whisper STT, gpt-4o-mini, OpenAI TTS).
+    """
+    if os.environ.get("NVIDIA_API_KEY"):
+        return (
+            "nvidia",
+            nvidia.STT(language_code="en-US"),
+            openai.LLM(
+                model=NIM_LLM_MODEL,
+                base_url=NIM_BASE_URL,
+                api_key=os.environ["NVIDIA_API_KEY"],
+            ),
+            nvidia.TTS(voice="Magpie-Multilingual.EN-US.Leo", language_code="en-US"),
+        )
+    if os.environ.get("OPENAI_API_KEY"):
+        return (
+            "openai",
+            openai.STT(),
+            openai.LLM(model="gpt-4o-mini"),
+            openai.TTS(),
+        )
+    raise RuntimeError(
+        "set NVIDIA_API_KEY (full NVIDIA stack) or OPENAI_API_KEY (OpenAI fallback)"
+    )
+
+
 class RentersGuide(Agent):
-    def __init__(self, room: rtc.Room, index: dict) -> None:
+    def __init__(self, room: rtc.Room, index: dict, floor: float) -> None:
         super().__init__(instructions=INSTRUCTIONS)
         self._room = room
         self._index = index
+        self._floor = floor
 
     async def on_user_turn_completed(
         self, turn_ctx: ChatContext, new_message: ChatMessage
@@ -173,7 +206,7 @@ class RentersGuide(Agent):
             )
             return
 
-        result = retrieve(self._index, query_vec, k=3, floor=DEFAULT_FLOOR)
+        result = retrieve(self._index, query_vec, k=3, floor=self._floor)
 
         if result.covered:
             passages = "\n\n".join(
@@ -220,7 +253,16 @@ def prewarm(proc: JobProcess) -> None:
             f"index not found at {INDEX_PATH}. "
             "Run: uv run --no-project python build_index.py"
         )
-    proc.userdata["index"] = load_index(INDEX_PATH)
+    index = load_index(INDEX_PATH)
+    backend = embedding_backend()
+    if index["model"] and index["model"] != backend.model:
+        raise RuntimeError(
+            f"index was built with embeddings '{index['model']}' but the current "
+            f"keys select '{backend.model}'. Rebuild it: "
+            "uv run --no-project python build_index.py"
+        )
+    proc.userdata["index"] = index
+    proc.userdata["floor"] = backend.floor
 
 
 server.setup_fnc = prewarm
@@ -230,20 +272,21 @@ server.setup_fnc = prewarm
 async def entrypoint(ctx: JobContext) -> None:
     ctx.log_context_fields = {"room": ctx.room.name}
 
+    stack, stt, llm, tts = select_voice_providers()
+    logger.info("tenant-rights using the %s stack", stack)
+
     session = AgentSession(
-        stt=nvidia.STT(language_code="en-US"),
-        llm=openai.LLM(
-            model=NIM_LLM_MODEL,
-            base_url=NIM_BASE_URL,
-            api_key=os.environ["NVIDIA_API_KEY"],
-        ),
-        tts=nvidia.TTS(voice="Magpie-Multilingual.EN-US.Leo", language_code="en-US"),
+        stt=stt,
+        llm=llm,
+        tts=tts,
         vad=ctx.proc.userdata["vad"],
         turn_detection=MultilingualModel(),
     )
 
     await session.start(
-        agent=RentersGuide(ctx.room, ctx.proc.userdata["index"]),
+        agent=RentersGuide(
+            ctx.room, ctx.proc.userdata["index"], ctx.proc.userdata["floor"]
+        ),
         room=ctx.room,
     )
     await ctx.connect()
