@@ -1,7 +1,7 @@
 ---
-name: Daily demo
-about: One day, one demo. Fill in. Tag @claude when ready.
-title: "what are we building today?"
+name: Build a demo
+about: Spec a voice demo for Claude Code to scaffold. Fill it in, then comment @claude.
+title: "Build a demo: <slug>"
 labels: ["daily-demo"]
 ---
 
@@ -24,4 +24,6 @@ TTS:
 
 ---
 
-When ready, comment: `@claude scaffold this when ready`
+When ready, comment `@claude scaffold this when ready`. The build runs only for
+repo owners, organization members, and collaborators; an `@claude` from anyone
+else is ignored.
