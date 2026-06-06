@@ -12,6 +12,7 @@ Run it:
 """
 
 import asyncio
+import datetime
 import json
 import logging
 from typing import Literal
@@ -35,14 +36,38 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-SLOTS = [
-    {"id": "s1", "date": "Monday June 9", "time": "9:00 AM", "doctor": "Dr. Chen"},
-    {"id": "s2", "date": "Monday June 9", "time": "2:30 PM", "doctor": "Dr. Patel"},
-    {"id": "s3", "date": "Tuesday June 10", "time": "10:00 AM", "doctor": "Dr. Chen"},
-    {"id": "s4", "date": "Tuesday June 10", "time": "3:00 PM", "doctor": "Dr. Patel"},
-    {"id": "s5", "date": "Wednesday June 11", "time": "11:30 AM", "doctor": "Dr. Lee"},
-    {"id": "s6", "date": "Thursday June 12", "time": "8:30 AM", "doctor": "Dr. Chen"},
+# Slots are generated on the next business days from today so the dates never
+# go stale. Each spec is (business-day offset, time, doctor); the date label is
+# computed from a real upcoming weekday, so the weekday always matches the date.
+_SLOT_TEMPLATE = [
+    (0, "9:00 AM", "Dr. Chen"),
+    (0, "2:30 PM", "Dr. Patel"),
+    (1, "10:00 AM", "Dr. Chen"),
+    (1, "3:00 PM", "Dr. Patel"),
+    (2, "11:30 AM", "Dr. Lee"),
+    (3, "8:30 AM", "Dr. Chen"),
 ]
+
+
+def _build_slots() -> list[dict]:
+    days: list[datetime.date] = []
+    day = datetime.date.today()
+    while len(days) < 4:
+        day += datetime.timedelta(days=1)
+        if day.weekday() < 5:  # Monday-Friday
+            days.append(day)
+    return [
+        {
+            "id": f"s{i + 1}",
+            "date": f"{days[offset].strftime('%A %B')} {days[offset].day}",
+            "time": time,
+            "doctor": doctor,
+        }
+        for i, (offset, time, doctor) in enumerate(_SLOT_TEMPLATE)
+    ]
+
+
+SLOTS = _build_slots()
 
 
 def publish_ui_event(
@@ -172,21 +197,26 @@ class ClinicScheduler(Agent):
         self,
         context: RunContext[dict],
         date_preference: str | None = None,
+        doctor: str | None = None,
     ) -> str:
-        """Return available appointment slots, optionally filtered by a date keyword.
+        """Return available appointment slots, optionally filtered.
 
         Call this when the caller asks what times are open. Pass date_preference
-        as a partial match like 'Monday' or 'June 10'. Omit to show all slots.
+        as a partial match like 'Monday' or 'June 10', and/or doctor as a partial
+        name like 'Chen'. Omit both to show all slots.
         """
-        available = context.userdata["available_slots"]
+        filtered = context.userdata["available_slots"]
         if date_preference:
             keyword = date_preference.lower()
-            filtered = [s for s in available if keyword in s["date"].lower()]
-        else:
-            filtered = available
+            filtered = [s for s in filtered if keyword in s["date"].lower()]
+        if doctor:
+            name = doctor.lower()
+            filtered = [s for s in filtered if name in s["doctor"].lower()]
 
         if not filtered:
-            return "No slots match that preference. Try a different day."
+            # Clear the list so the screen does not keep showing stale rows.
+            _publish_slots(self.room, [])
+            return "No slots match that preference. Try a different day or doctor."
 
         _publish_slots(self.room, filtered)
         return f"Available slots: {_slots_summary(filtered)}"
@@ -204,16 +234,17 @@ class ClinicScheduler(Agent):
         Pass the slot_id from find_slots, the patient full name, and a brief
         reason for the visit. Call after confirming name and reason with the caller.
         """
+        existing = context.userdata.get("booking")
+        if existing is not None:
+            return (
+                f"You already have an appointment on {existing['date']} at "
+                f"{existing['time']}. To change it, ask to reschedule."
+            )
+
         available = context.userdata["available_slots"]
         slot = next((s for s in available if s["id"] == slot_id), None)
         if slot is None:
             return f"Slot {slot_id} is not available. Ask the caller to pick another."
-
-        # If the caller already had a booking, return that slot to inventory
-        # before taking the new one, so a re-book never leaks the old slot.
-        prior = context.userdata.get("booking")
-        if prior is not None and prior["slot_id"] != slot_id:
-            available = available + [_freed_slot(prior)]
 
         booking = {
             "slot_id": slot_id,
