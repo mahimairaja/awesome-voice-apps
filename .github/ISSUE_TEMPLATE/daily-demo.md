@@ -25,4 +25,5 @@ TTS:
 ---
 
 When ready, comment `@claude scaffold this when ready`. The build runs only for
-repo owners and collaborators; an `@claude` from anyone else is ignored.
+repo owners, organization members, and collaborators; an `@claude` from anyone
+else is ignored.
