@@ -41,7 +41,8 @@ change the documents in `data/` or switch providers.
 
 ## Run it
 
-1. Fill `.env` with `NVIDIA_API_KEY` and your three LiveKit values.
+1. Fill `.env` with `NVIDIA_API_KEY` (or `OPENAI_API_KEY` for the fallback) and
+   your three LiveKit values.
 2. Sync and download the voice models.
 
    ```sh
