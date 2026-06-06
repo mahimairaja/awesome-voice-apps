@@ -47,6 +47,8 @@ For every demo: `demos/<slug>/agent.py`,
 When the Tools / UI components field is non-empty: also
 `demos/<slug>/playground.json`.
 
+Each demo also carries `.python-version`, copied verbatim from the template.
+
 That is the entire output. No `blog.md`, no `reel.md`, no catalog
 edit, no commit (the pre-commit hook owns catalog regeneration; the
 operator owns the commit).
@@ -99,6 +101,7 @@ Start from the template:
 mkdir -p demos/<slug>
 cp templates/livekit-base/agent.py demos/<slug>/agent.py
 cp templates/livekit-base/pyproject.toml demos/<slug>/pyproject.toml
+cp templates/livekit-base/.python-version demos/<slug>/.python-version
 ```
 
 Then edit:
@@ -171,11 +174,39 @@ list:
 - rough LOC count for `agent.py`
 - the one-line command to run the demo locally:
   `cd demos/<slug> && uv sync && uv run --no-project python agent.py dev`
+- confirmation that the quality bar below was checked (state invariants, UI
+  mirrors state, prompt matches tools, fresh data, edge cases, run docs)
 
 If running under the GitHub Action, also confirm: branch name
 (`claude/demo/<slug>`), PR title
 (`feat(demo): <slug> with <stt>/<llm>/<tts> stack`), and the PR body
 includes `Closes #<issue>`.
+
+## Quality bar for stateful and UI demos
+
+The API, UI prop shapes, and conventions usually come out right. The recurring
+gaps are in application logic and state. Before reporting back, verify:
+
+1. State invariants. If tools mutate shared state (inventory, a cart, a
+   booking), name the invariant in a comment and make every tool preserve it.
+   Pick one coherent model: for a single-resource booking, a second create
+   refuses and points to the change path, it does not overwrite. Any mutation
+   that removes an item has an inverse that restores it.
+2. UI mirrors state. Publish the relevant component after every state change,
+   not just on the read path. When the backing data is empty, publish an empty
+   component to clear it, so the screen never shows stale rows.
+3. Prompt matches tools. Every capability the instructions string promises
+   (filter by doctor, cancel, look up by name) has a tool or parameter that
+   implements it. Do not advertise what the tools cannot do.
+4. Fresh demo data. Generate time-relative values (dates, today, deadlines)
+   from datetime at startup, not hard-coded literals that rot. Keep any weekday
+   or label consistent with the computed date.
+5. Per-tool edge cases. Each tool handles empty results, duplicates, a missing
+   prerequisite, and a no-op with a clear, honest message. Never report a true
+   state as false.
+6. Run docs match the stack. The README and the agent.py run block name only
+   the keys the demo uses, and required_credentials lists exactly those. If the
+   demo uses a subset of the six-key template env, say which keys it needs.
 
 ## Hard constraints
 
