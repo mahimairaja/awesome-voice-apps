@@ -36,6 +36,23 @@
       "Checkout"
     ]
   },
+  "order-returns": {
+    "title": "Order returns",
+    "category": "retail",
+    "description": "Start a return by voice: pull up an order, choose which items to send back and why, then get a refund summary.",
+    "who_for": "Retailers that want to reduce return friction and handle refunds without live agents.",
+    "recording_url": null,
+    "required_credentials": [
+      "openai_api_key",
+      "livekit_url",
+      "livekit_api_key",
+      "livekit_api_secret"
+    ],
+    "ui_components": [
+      "List",
+      "Card"
+    ]
+  },
   "quick-trivia": {
     "title": "Quick trivia",
     "category": "education",
