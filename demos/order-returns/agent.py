@@ -4,7 +4,8 @@ Start a return by voice: pull up an order, choose which items to send back
 and why, then get a refund summary on screen.
 
 Run it:
-1. Copy templates/livekit-base/.env.example to .env and fill the six keys.
+1. Copy templates/livekit-base/.env.example to .env and fill OPENAI_API_KEY
+   plus your three LiveKit values.
 2. uv sync
 3. uv run --no-project python agent.py download-files
 4. uv run --no-project python agent.py dev, then open
@@ -195,6 +196,13 @@ class ReturnsAgent(Agent):
         items = order["items"]
         if item_index < 0 or item_index >= len(items):
             return "No item at that position."
+
+        if reason.strip().lower() not in RETURN_REASONS:
+            return (
+                "That is not a valid return reason. Valid reasons: "
+                + ", ".join(RETURN_REASONS)
+                + "."
+            )
 
         cart: list[dict] = context.userdata["cart"]
         item = items[item_index]
