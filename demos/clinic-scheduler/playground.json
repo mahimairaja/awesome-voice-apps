@@ -1,0 +1,14 @@
+{
+  "title": "Clinic scheduler",
+  "category": "healthcare",
+  "description": "Books a doctor appointment by voice, finds open slots, and handles reschedules.",
+  "who_for": "Clinics and GP offices that want to automate appointment booking without a phone tree.",
+  "recording_url": null,
+  "required_credentials": [
+    "openai_api_key",
+    "livekit_url",
+    "livekit_api_key",
+    "livekit_api_secret"
+  ],
+  "ui_components": ["List", "Card"]
+}

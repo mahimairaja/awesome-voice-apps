@@ -33,6 +33,7 @@ Open the demo at [playground.mahimai.ca/demos](https://playground.mahimai.ca/dem
 
 | Demo | Industry | What it does |
 | --- | --- | --- |
+| [clinic-scheduler](demos/clinic-scheduler/) | healthcare | Books a doctor appointment by voice, finds open slots, and handles reschedules. |
 | [drive-thru-coffee](demos/drive-thru-coffee/) | restaurant | Takes a coffee order, edits it mid-flow, totals the cart. |
 | [quick-trivia](demos/quick-trivia/) | education | Quizzes the caller and keeps score on screen. |
 | [water-tracker](demos/water-tracker/) | fitness | Logs glasses of water against a daily goal. |
