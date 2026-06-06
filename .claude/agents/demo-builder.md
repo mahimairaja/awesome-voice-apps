@@ -47,6 +47,8 @@ For every demo: `demos/<slug>/agent.py`,
 When the Tools / UI components field is non-empty: also
 `demos/<slug>/playground.json`.
 
+Each demo also carries `.python-version`, copied verbatim from the template.
+
 That is the entire output. No `blog.md`, no `reel.md`, no catalog
 edit, no commit (the pre-commit hook owns catalog regeneration; the
 operator owns the commit).
