@@ -36,6 +36,7 @@ Open the demo at [playground.mahimai.ca/demos](https://playground.mahimai.ca/dem
 | [clinic-scheduler](demos/clinic-scheduler/) | healthcare | Books a doctor appointment by voice, finds open slots, and handles reschedules. |
 | [drive-thru-coffee](demos/drive-thru-coffee/) | restaurant | Takes a coffee order, edits it mid-flow, totals the cart. |
 | [quick-trivia](demos/quick-trivia/) | education | Quizzes the caller and keeps score on screen. |
+| [order-returns](demos/order-returns/) | retail | Starts a return by voice: look up an order, pick items with reasons, get a refund summary. |
 | [water-tracker](demos/water-tracker/) | fitness | Logs glasses of water against a daily goal. |
 
 Every demo is tagged with the one industry it serves: healthcare, legal, finance, realestate, hospitality, restaurant, automotive, education, retail, recruiting, construction, travel, fitness, beauty, logistics, insurance, nonprofit, gov, media. Per-demo metadata lives in [`catalog.json`](catalog.json).

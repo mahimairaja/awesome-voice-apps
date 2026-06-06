@@ -1,0 +1,9 @@
+[project]
+name = "order-returns"
+version = "0.1.0"
+description = "Start a return by voice: pull up an order, choose items to send back and why, get a refund summary."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[openai,silero,turn-detector]>=1.5,<2.0",
+    "python-dotenv>=1.0",
+]
