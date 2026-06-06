@@ -101,9 +101,18 @@ def _ui_action(room: rtc.Room, component_id: str) -> Literal["mount", "update"]:
 
 def _slots_summary(slots: list[dict]) -> str:
     return "; ".join(
-        f"{s['id']}: {s['date']} at {s['time']} with {s['doctor']}"
-        for s in slots
+        f"{s['id']}: {s['date']} at {s['time']} with {s['doctor']}" for s in slots
     )
+
+
+def _freed_slot(booking: dict) -> dict:
+    """Rebuild an open-slot record from a booking, to return it to inventory."""
+    return {
+        "id": booking["slot_id"],
+        "date": booking["date"],
+        "time": booking["time"],
+        "doctor": booking["doctor"],
+    }
 
 
 def _publish_slots(room: rtc.Room, slots: list[dict]) -> None:
@@ -126,7 +135,9 @@ def _publish_slots(room: rtc.Room, slots: list[dict]) -> None:
     )
 
 
-def _publish_booking(room: rtc.Room, booking: dict, *, rescheduled: bool = False) -> None:
+def _publish_booking(
+    room: rtc.Room, booking: dict, *, rescheduled: bool = False
+) -> None:
     footer = "rescheduled" if rescheduled else "confirmed"
     publish_ui_event(
         room,
@@ -170,10 +181,7 @@ class ClinicScheduler(Agent):
         available = context.userdata["available_slots"]
         if date_preference:
             keyword = date_preference.lower()
-            filtered = [
-                s for s in available
-                if keyword in s["date"].lower() or keyword in s["time"].lower()
-            ]
+            filtered = [s for s in available if keyword in s["date"].lower()]
         else:
             filtered = available
 
@@ -201,6 +209,12 @@ class ClinicScheduler(Agent):
         if slot is None:
             return f"Slot {slot_id} is not available. Ask the caller to pick another."
 
+        # If the caller already had a booking, return that slot to inventory
+        # before taking the new one, so a re-book never leaks the old slot.
+        prior = context.userdata.get("booking")
+        if prior is not None and prior["slot_id"] != slot_id:
+            available = available + [_freed_slot(prior)]
+
         booking = {
             "slot_id": slot_id,
             "date": slot["date"],
@@ -210,8 +224,11 @@ class ClinicScheduler(Agent):
             "reason": reason.strip() or "general visit",
         }
         context.userdata["booking"] = booking
-        context.userdata["available_slots"] = [s for s in available if s["id"] != slot_id]
+        context.userdata["available_slots"] = [
+            s for s in available if s["id"] != slot_id
+        ]
 
+        _publish_slots(self.room, context.userdata["available_slots"])
         _publish_booking(self.room, booking)
         return (
             f"Booked. {booking['patient']} sees {booking['doctor']} on "
@@ -233,27 +250,30 @@ class ClinicScheduler(Agent):
         if booking is None:
             return "No booking to reschedule. Book an appointment first."
 
+        if new_slot_id == booking["slot_id"]:
+            return (
+                f"You are already booked into that slot on {booking['date']} "
+                f"at {booking['time']}. Pick a different one to move."
+            )
+
         available = context.userdata["available_slots"]
         new_slot = next((s for s in available if s["id"] == new_slot_id), None)
         if new_slot is None:
             return f"Slot {new_slot_id} is not available. Try another slot."
 
-        freed = {
-            "id": booking["slot_id"],
-            "date": booking["date"],
-            "time": booking["time"],
-            "doctor": booking["doctor"],
-        }
         context.userdata["available_slots"] = [
             s for s in available if s["id"] != new_slot_id
-        ] + [freed]
+        ] + [_freed_slot(booking)]
 
-        booking.update({
-            "slot_id": new_slot_id,
-            "date": new_slot["date"],
-            "time": new_slot["time"],
-            "doctor": new_slot["doctor"],
-        })
+        booking.update(
+            {
+                "slot_id": new_slot_id,
+                "date": new_slot["date"],
+                "time": new_slot["time"],
+                "doctor": new_slot["doctor"],
+            }
+        )
+        _publish_slots(self.room, context.userdata["available_slots"])
         _publish_booking(self.room, booking, rescheduled=True)
         return (
             f"Rescheduled. {booking['patient']} now sees {booking['doctor']} on "
