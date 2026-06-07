@@ -182,31 +182,12 @@ If running under the GitHub Action, also confirm: branch name
 (`feat(demo): <slug> with <stt>/<llm>/<tts> stack`), and the PR body
 includes `Closes #<issue>`.
 
-## Quality bar for stateful and UI demos
+## Quality bar
 
-The API, UI prop shapes, and conventions usually come out right. The recurring
-gaps are in application logic and state. Before reporting back, verify:
-
-1. State invariants. If tools mutate shared state (inventory, a cart, a
-   booking), name the invariant in a comment and make every tool preserve it.
-   Pick one coherent model: for a single-resource booking, a second create
-   refuses and points to the change path, it does not overwrite. Any mutation
-   that removes an item has an inverse that restores it.
-2. UI mirrors state. Publish the relevant component after every state change,
-   not just on the read path. When the backing data is empty, publish an empty
-   component to clear it, so the screen never shows stale rows.
-3. Prompt matches tools. Every capability the instructions string promises
-   (filter by doctor, cancel, look up by name) has a tool or parameter that
-   implements it. Do not advertise what the tools cannot do.
-4. Fresh demo data. Generate time-relative values (dates, today, deadlines)
-   from datetime at startup, not hard-coded literals that rot. Keep any weekday
-   or label consistent with the computed date.
-5. Per-tool edge cases. Each tool handles empty results, duplicates, a missing
-   prerequisite, and a no-op with a clear, honest message. Never report a true
-   state as false.
-6. Run docs match the stack. The README and the agent.py run block name only
-   the keys the demo uses, and required_credentials lists exactly those. If the
-   demo uses a subset of the six-key template env, say which keys it needs.
+Apply the demo quality bar in `AGENTS.md` before reporting back: state
+invariants, UI mirrors state, prompt matches tools, fresh data, edge cases, and
+run docs that match the stack. That section is the single source of truth; do
+not duplicate it here.
 
 ## Hard constraints
 
