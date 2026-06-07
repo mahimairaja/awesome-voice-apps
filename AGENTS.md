@@ -69,6 +69,7 @@ Every demo carries these files:
 | --- | --- |
 | `agent.py` | The voice agent. Copied from the template, then customized. |
 | `pyproject.toml` | uv-managed runtime deps. Template defaults plus demo-specific extras. |
+| `.python-version` | Python 3.11 pin, copied verbatim from the template. |
 | `README.md` | Short visitor entry: one-line hook, what it does, four uv commands, recording placeholder. |
 | `playground.json` | Only when the demo emits playground UI events. Title, category, description, who_for, required_credentials, ui_components. |
 
@@ -83,6 +84,30 @@ operator writes those elsewhere.
 When a demo ships, link the demo folder under the matching category in
 `README.md`. Drop a bold demo name and a one-line description so a
 visitor sees what the demo does without clicking in.
+
+## Demo quality bar
+
+The hard parts (the LiveKit API, the playground UI prop shapes, the
+conventions) usually come out right. The recurring gaps are in application
+logic and state. Whoever builds a demo (the `@claude` action, the
+`demo-builder` subagent, or a human) verifies these before it is done:
+
+- State invariants. If tools mutate shared state (a cart, inventory, a
+  booking), keep one coherent model and make every tool preserve the invariant:
+  a mutation that removes an item has an inverse that restores it, and a
+  single-resource booking refuses a second create instead of overwriting.
+- UI mirrors state. Re-publish the relevant component after every state change,
+  not just on the read path, and publish an empty component to clear it when its
+  data is empty. The playground UI is the showcase; a list that disagrees with
+  state is the most visible bug.
+- Prompt matches tools. Only promise in the instructions string what a tool or
+  parameter actually implements.
+- Fresh data. Generate time-relative values (dates, deadlines) from datetime at
+  startup, not hard-coded literals that go stale.
+- Edge cases. Each tool handles empty results, duplicates, a missing
+  prerequisite, and a no-op with a clear, honest message.
+- Run docs match the stack. The README and the `agent.py` run block name only
+  the keys the demo uses, and `required_credentials` lists exactly those.
 
 ## Where metadata goes
 
