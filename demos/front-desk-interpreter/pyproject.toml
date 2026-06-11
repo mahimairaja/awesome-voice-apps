@@ -1,0 +1,9 @@
+[project]
+name = "front-desk-interpreter"
+version = "0.1.0"
+description = "Live interpreter at a hotel front desk: guests speak any language, the desk hears English."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[google]>=1.5,<2.0",
+    "python-dotenv>=1.0",
+]
