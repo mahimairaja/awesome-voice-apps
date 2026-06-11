@@ -1,0 +1,14 @@
+{
+  "title": "Front desk interpreter",
+  "category": "hospitality",
+  "description": "Live interpreter at a hotel front desk: a guest speaks any language, the desk hears English, and replies come back in the guest's language, with live captions.",
+  "who_for": "Hotels and front desks that serve international guests without bilingual staff on every shift.",
+  "recording_url": null,
+  "required_credentials": [
+    "google_api_key",
+    "livekit_url",
+    "livekit_api_key",
+    "livekit_api_secret"
+  ],
+  "ui_components": ["Card", "Captions"]
+}

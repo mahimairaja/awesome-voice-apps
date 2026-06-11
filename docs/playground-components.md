@@ -81,6 +81,16 @@ Columns and rows of plain strings.
 props: { title?: string, columns: [string], rows: [[string]] }
 ```
 
+### Captions
+
+A live transcript feed. Each entry shows the rendered line with the original
+muted beneath it; the newest entry is emphasized and the feed auto-scrolls.
+Send a short rolling window (the panel defensively caps at 20 entries).
+
+```
+props: { title?: string, items: [{ text: string, original?: string }] }
+```
+
 ## Semantic aliases
 
 Domain names that render through a primitive. Each carries a default
