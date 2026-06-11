@@ -1,0 +1,15 @@
+[project]
+name = "tenant-rights"
+version = "0.1.0"
+description = "Voice agent answering US renter questions grounded in public HUD guidance."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[nvidia,openai,silero,turn-detector]>=1.5,<2.0",
+    "python-dotenv>=1.0",
+    "numpy>=1.26",
+]
+
+# Only needed to re-extract markdown from a source PDF. The shipped demo builds
+# its index from the markdown in data/, so the default path does not need this.
+[project.optional-dependencies]
+build = ["pymupdf4llm>=0.0.17"]

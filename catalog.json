@@ -54,6 +54,22 @@
       "Score"
     ]
   },
+  "tenant-rights": {
+    "title": "Tenant rights",
+    "category": "legal",
+    "description": "Answers US renter questions from public HUD guidance, names the source out loud, and redirects to legal help when a question goes past the documents. Runs on NVIDIA by default, or OpenAI when only OPENAI_API_KEY is set.",
+    "who_for": "Housing nonprofits and legal-aid teams that want a grounded, safe first-line voice helper for renters.",
+    "recording_url": null,
+    "required_credentials": [
+      "nvidia_api_key",
+      "livekit_url",
+      "livekit_api_key",
+      "livekit_api_secret"
+    ],
+    "ui_components": [
+      "Card"
+    ]
+  },
   "water-tracker": {
     "title": "Water tracker",
     "category": "fitness",
