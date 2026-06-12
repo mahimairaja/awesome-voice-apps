@@ -38,9 +38,11 @@ logger = logging.getLogger(__name__)
 # The agent shows the last N exchanges; the playground panel caps at 20.
 MAX_CAPTION_ROWS = 8
 
-# Pinned to the 2.5 Live model. The 3.1 live preview ignores generate_reply,
-# which this demo uses for its greeting (see the LiveKit Gemini plugin guide).
-GEMINI_LIVE_MODEL = "gemini-2.5-flash"
+# Pinned to the 2.5 native-audio Live model (the plugin's own default for a
+# Gemini API key). Plain "gemini-2.5-flash" is a text-API id that the Live
+# websocket rejects with a 1008, and the 3.1 live preview ignores
+# generate_reply, which this demo uses for its greeting.
+GEMINI_LIVE_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025"
 
 INSTRUCTIONS = (
     "You are a live interpreter at a hotel front desk. Two people share one "
