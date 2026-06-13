@@ -72,19 +72,19 @@ Every demo carries these files:
 | `.python-version` | Python 3.11 pin, copied verbatim from the template. |
 | `README.md` | Short visitor entry: one-line hook, what it does, four uv commands, recording placeholder. |
 | `playground.json` | Only when the demo emits playground UI events. Title, category, description, who_for, required_credentials, ui_components. |
-| `blog.md` | Optional build writeup: frontmatter (title, summary) plus a markdown body in the frozen subset. Renders on the demo's playground page. |
+| `blog.md` | Build writeup: frontmatter (title, summary) plus a markdown body in the frozen subset. Renders on the demo's playground page. Always written by the subagent; optional when scaffolding by hand. |
 
 The shared six-key environment example lives at
 `templates/livekit-base/.env.example`. Demo folders do not carry their
 own env examples unless a demo needs extra credentials and the operator
 clears the exception first.
 
-`blog.md` is the one writeup file a demo may carry, and it is optional. It
-is a build writeup for builders: the problem, the stack choice, the
-interesting code, the one gotcha, a run link. The `README.md` stays the
-run instructions; `blog.md` adds the story. `reel.md` and other marketing
-content still do not belong in this repo; the operator writes those
-elsewhere.
+`blog.md` is the one writeup file a demo may carry. The subagent always
+scaffolds it; a human scaffolding by hand may omit it. It is a build
+writeup for builders: the problem, the stack choice, the interesting code,
+the one gotcha, a run link. The `README.md` stays the run instructions;
+`blog.md` adds the story. `reel.md` and other marketing content still do
+not belong in this repo; the operator writes those elsewhere.
 
 A `blog.md` is YAML frontmatter plus a markdown body.
 
@@ -244,8 +244,8 @@ synthesis, so anything fancy bleeds through.
    `@claude scaffold this when ready`.
 3. The Claude Code GitHub Action fires, invokes the `demo-builder`
    subagent, scaffolds `demos/<slug>/{agent.py, pyproject.toml,
-   README.md}` (plus `playground.json` when UI is listed), and opens
-   a PR titled `feat(demo): <slug> with <stt>/<llm>/<tts> stack`.
+   README.md, blog.md}` (plus `playground.json` when UI is listed),
+   and opens a PR titled `feat(demo): <slug> with <stt>/<llm>/<tts> stack`.
 4. The operator reviews and merges.
 
 For offline work, the same subagent is reachable as `/build` in a

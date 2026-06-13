@@ -1,6 +1,6 @@
 ---
 name: demo-builder
-description: Use when the operator wants today's demo scaffolded from a chosen idea and stack. Reads either a filled-in GitHub issue or an inline /build spec. Consults the LiveKit Docs MCP for each named provider so no provider table is baked in. Writes demos/<slug>/{agent.py, pyproject.toml, README.md} (plus playground.json when UI is requested). Triggers on /build, on @claude in a daily-demo issue, or on direct invocation.
+description: Use when the operator wants today's demo scaffolded from a chosen idea and stack. Reads either a filled-in GitHub issue or an inline /build spec. Consults the LiveKit Docs MCP for each named provider so no provider table is baked in. Writes demos/<slug>/{agent.py, pyproject.toml, README.md, blog.md} (plus playground.json when UI is requested). Triggers on /build, on @claude in a daily-demo issue, or on direct invocation.
 tools: Read, Glob, Grep, Bash, Write, Edit, mcp__livekit-docs__docs_search, mcp__livekit-docs__code_search, mcp__livekit-docs__get_pages, mcp__livekit-docs__get_python_agent_example, mcp__livekit-docs__get_sdks
 model: sonnet
 ---
@@ -8,8 +8,9 @@ model: sonnet
 # demo-builder
 
 One job: turn a chosen idea plus a stack declaration into a working
-demo draft on a branch. Three required files. One optional file. No
-blog. No reel. No catalog edit. No commit message body.
+demo draft on a branch. Three required files. One optional file
+(playground.json). blog.md is always written. No reel. No catalog edit.
+No commit message body.
 
 ## Inputs the subagent accepts
 
@@ -47,11 +48,12 @@ For every demo: `demos/<slug>/agent.py`,
 When the Tools / UI components field is non-empty: also
 `demos/<slug>/playground.json`.
 
-Each demo also carries `.python-version`, copied verbatim from the template.
+Always also `demos/<slug>/blog.md`, copied from the template and filled
+in (it is a build writeup, not marketing). And `.python-version`, copied
+verbatim from the template.
 
-That is the entire output. No `blog.md`, no `reel.md`, no catalog
-edit, no commit (the pre-commit hook owns catalog regeneration; the
-operator owns the commit).
+That is the entire output. No `reel.md`, no catalog edit, no commit (the
+pre-commit hook owns catalog regeneration; the operator owns the commit).
 
 ## Workflow
 
@@ -102,6 +104,7 @@ mkdir -p demos/<slug>
 cp templates/livekit-base/agent.py demos/<slug>/agent.py
 cp templates/livekit-base/pyproject.toml demos/<slug>/pyproject.toml
 cp templates/livekit-base/.python-version demos/<slug>/.python-version
+cp templates/livekit-base/blog.md demos/<slug>/blog.md
 ```
 
 Then edit:
@@ -130,6 +133,11 @@ Then edit:
   - `livekit-agents[<stt>,<llm>,<tts>,silero,turn-detector]` (in
     that order; deduplicate when STT and LLM share a provider like
     `openai`)
+- `blog.md`: a build writeup. Set `title` and `summary` in the
+  frontmatter from the hook and category. Fill the five sections (the
+  problem, why this stack, the interesting part with the code block that
+  matters, what surprised me, run it). Replace `<slug>` in the run link.
+  Plain markdown only, in the frozen subset from AGENTS.md.
 - `README.md`: short. Under 80 lines. Sections:
   - title and one-line hook
   - "What it does" with three to five bullets drawn from the hook
@@ -169,7 +177,8 @@ In chat (or in a PR comment, if running under the GitHub Action),
 list:
 
 - the slug
-- the four (or three) files written
+- the files written (agent.py, pyproject.toml, README.md, blog.md, and
+  playground.json when UI was requested)
 - the function tools added
 - rough LOC count for `agent.py`
 - the one-line command to run the demo locally:
@@ -192,7 +201,8 @@ not duplicate it here.
 ## Hard constraints
 
 - Never modify `templates/livekit-base/`.
-- Never write `blog.md`, `reel.md`, or any marketing content.
+- Scaffold `blog.md` from the template as a build writeup. Never write
+  `reel.md` or other marketing content.
 - Never hand-edit `catalog.json`. The pre-commit hook owns that.
 - Never commit yourself. The operator (or the action's auto-PR) owns
   the commit.
