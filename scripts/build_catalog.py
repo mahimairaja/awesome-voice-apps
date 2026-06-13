@@ -33,6 +33,54 @@ CATALOG_FIELDS = (
     "ui_components",
 )
 
+BLOG_FILENAME = "blog.md"
+REQUIRED_BLOG_FIELDS = ("title", "summary")
+
+
+def parse_frontmatter(text: str) -> dict[str, str]:
+    """Parse the closed, flat key:value frontmatter between the leading --- fences.
+
+    Empty-valued keys are skipped. Values may carry one optional layer of
+    surrounding single or double quotes, which is stripped. Raises ValueError
+    if the opening or closing --- fence is missing.
+    """
+    if not text.startswith("---"):
+        raise ValueError("blog.md must start with a --- frontmatter fence")
+    lines = text.splitlines()
+    closing = None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            closing = i
+            break
+    if closing is None:
+        raise ValueError("blog.md frontmatter is not closed with a --- fence")
+    fields: dict[str, str] = {}
+    for line in lines[1:closing]:
+        if not line.strip():
+            continue
+        if ":" not in line:
+            raise ValueError(f"blog.md frontmatter line is not key: value -> {line!r}")
+        key, _, value = line.partition(":")
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if value:
+            fields[key] = value
+    return fields
+
+
+def validate_blog(blog_path: Path) -> None:
+    """Validate a demo's blog.md frontmatter. Raises ValueError if malformed."""
+    text = blog_path.read_text(encoding="utf-8")
+    fields = parse_frontmatter(text)
+    missing = [f for f in REQUIRED_BLOG_FIELDS if not fields.get(f)]
+    if missing:
+        raise ValueError(
+            f"{blog_path}: blog.md frontmatter missing required field(s): "
+            f"{', '.join(missing)}"
+        )
+
 
 def load_demo(playground_path: Path) -> dict:
     with playground_path.open("r", encoding="utf-8") as fh:
@@ -55,7 +103,12 @@ def build_catalog() -> dict:
         playground = demo_dir / "playground.json"
         if not playground.exists():
             continue
-        catalog[demo_dir.name] = load_demo(playground)
+        entry = load_demo(playground)
+        blog_path = demo_dir / BLOG_FILENAME
+        if blog_path.exists():
+            validate_blog(blog_path)
+            entry["blog"] = True
+        catalog[demo_dir.name] = entry
     return catalog
 
 
