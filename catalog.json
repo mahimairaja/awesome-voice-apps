@@ -51,7 +51,8 @@
     "ui_components": [
       "Card",
       "Captions"
-    ]
+    ],
+    "blog": true
   },
   "quick-trivia": {
     "title": "Quick trivia",
