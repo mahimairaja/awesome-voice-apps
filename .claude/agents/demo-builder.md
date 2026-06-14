@@ -177,8 +177,8 @@ In chat (or in a PR comment, if running under the GitHub Action),
 list:
 
 - the slug
-- the files written (agent.py, pyproject.toml, README.md, blog.md, and
-  playground.json when UI was requested)
+- the files written (agent.py, pyproject.toml, README.md, blog.md,
+  .python-version, and playground.json when UI was requested)
 - the function tools added
 - rough LOC count for `agent.py`
 - the one-line command to run the demo locally:
