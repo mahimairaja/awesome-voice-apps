@@ -67,9 +67,6 @@ def _build_slots() -> list[dict]:
     ]
 
 
-SLOTS = _build_slots()
-
-
 def publish_ui_event(
     room: rtc.Room,
     component: str,
@@ -113,11 +110,7 @@ def publish_ui_event(
     task.add_done_callback(log_publish_failure)
 
 
-def _ui_action(room: rtc.Room, component_id: str) -> Literal["mount", "update"]:
-    mounted = getattr(room, "_awesome_voice_ui_mounted", None)
-    if mounted is None:
-        mounted = set()
-        setattr(room, "_awesome_voice_ui_mounted", mounted)
+def _ui_action(mounted: set[str], component_id: str) -> Literal["mount", "update"]:
     if component_id in mounted:
         return "update"
     mounted.add(component_id)
@@ -140,11 +133,11 @@ def _freed_slot(booking: dict) -> dict:
     }
 
 
-def _publish_slots(room: rtc.Room, slots: list[dict]) -> None:
+def _publish_slots(room: rtc.Room, mounted: set[str], slots: list[dict]) -> None:
     publish_ui_event(
         room,
         "List",
-        _ui_action(room, "slots"),
+        _ui_action(mounted, "slots"),
         component_id="slots",
         props={
             "title": "open slots",
@@ -161,13 +154,13 @@ def _publish_slots(room: rtc.Room, slots: list[dict]) -> None:
 
 
 def _publish_booking(
-    room: rtc.Room, booking: dict, *, rescheduled: bool = False
+    room: rtc.Room, mounted: set[str], booking: dict, *, rescheduled: bool = False
 ) -> None:
     footer = "rescheduled" if rescheduled else "confirmed"
     publish_ui_event(
         room,
         "Card",
-        _ui_action(room, "booking"),
+        _ui_action(mounted, "booking"),
         component_id="booking",
         props={
             "title": f"{booking['date']} at {booking['time']}",
@@ -213,12 +206,13 @@ class ClinicScheduler(Agent):
             name = doctor.lower()
             filtered = [s for s in filtered if name in s["doctor"].lower()]
 
+        mounted = context.userdata["ui_mounted"]
         if not filtered:
             # Clear the list so the screen does not keep showing stale rows.
-            _publish_slots(self.room, [])
+            _publish_slots(self.room, mounted, [])
             return "No slots match that preference. Try a different day or doctor."
 
-        _publish_slots(self.room, filtered)
+        _publish_slots(self.room, mounted, filtered)
         return f"Available slots: {_slots_summary(filtered)}"
 
     @function_tool()
@@ -259,8 +253,9 @@ class ClinicScheduler(Agent):
             s for s in available if s["id"] != slot_id
         ]
 
-        _publish_slots(self.room, context.userdata["available_slots"])
-        _publish_booking(self.room, booking)
+        mounted = context.userdata["ui_mounted"]
+        _publish_slots(self.room, mounted, context.userdata["available_slots"])
+        _publish_booking(self.room, mounted, booking)
         return (
             f"Booked. {booking['patient']} sees {booking['doctor']} on "
             f"{booking['date']} at {booking['time']} for {booking['reason']}."
@@ -292,9 +287,13 @@ class ClinicScheduler(Agent):
         if new_slot is None:
             return f"Slot {new_slot_id} is not available. Try another slot."
 
-        context.userdata["available_slots"] = [
-            s for s in available if s["id"] != new_slot_id
-        ] + [_freed_slot(booking)]
+        # Return the freed slot to inventory, then re-sort by the original
+        # s1..s6 id so a freed early slot reappears in its natural position
+        # instead of drifting to the end after a reschedule.
+        remaining = [s for s in available if s["id"] != new_slot_id]
+        remaining.append(_freed_slot(booking))
+        remaining.sort(key=lambda s: int(s["id"][1:]))
+        context.userdata["available_slots"] = remaining
 
         booking.update(
             {
@@ -304,8 +303,9 @@ class ClinicScheduler(Agent):
                 "doctor": new_slot["doctor"],
             }
         )
-        _publish_slots(self.room, context.userdata["available_slots"])
-        _publish_booking(self.room, booking, rescheduled=True)
+        mounted = context.userdata["ui_mounted"]
+        _publish_slots(self.room, mounted, context.userdata["available_slots"])
+        _publish_booking(self.room, mounted, booking, rescheduled=True)
         return (
             f"Rescheduled. {booking['patient']} now sees {booking['doctor']} on "
             f"{booking['date']} at {booking['time']}."
@@ -326,9 +326,12 @@ server.setup_fnc = prewarm
 async def entrypoint(ctx: JobContext) -> None:
     ctx.log_context_fields = {"room": ctx.room.name}
 
+    # Build the slot inventory per session so every new call recomputes the
+    # upcoming weekdays from today's date, not from when the worker started.
     userdata: dict = {
-        "available_slots": list(SLOTS),
+        "available_slots": _build_slots(),
         "booking": None,
+        "ui_mounted": set(),
     }
     session = AgentSession(
         userdata=userdata,
