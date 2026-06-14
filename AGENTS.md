@@ -72,14 +72,37 @@ Every demo carries these files:
 | `.python-version` | Python 3.11 pin, copied verbatim from the template. |
 | `README.md` | Short visitor entry: one-line hook, what it does, four uv commands, recording placeholder. |
 | `playground.json` | Only when the demo emits playground UI events. Title, category, description, who_for, required_credentials, ui_components. |
+| `blog.md` | Build writeup: frontmatter (title, summary) plus a markdown body in the frozen subset. Renders on the demo's playground page. Always written by the subagent; optional when scaffolding by hand. |
 
 The shared six-key environment example lives at
 `templates/livekit-base/.env.example`. Demo folders do not carry their
 own env examples unless a demo needs extra credentials and the operator
 clears the exception first.
 
-No `blog.md`, no `reel.md`, no marketing content in this repo. The
-operator writes those elsewhere.
+`blog.md` is the one writeup file a demo may carry. The subagent always
+scaffolds it; a human scaffolding by hand may omit it. It is a build
+writeup for builders: the problem, the stack choice, the interesting code,
+the one gotcha, a run link. The `README.md` stays the run instructions;
+`blog.md` adds the story. `reel.md` and other marketing content still do
+not belong in this repo; the operator writes those elsewhere.
+
+A `blog.md` is YAML frontmatter plus a markdown body.
+
+Frontmatter keys (flat, simple scalars, one per line):
+
+- `title` (required)
+- `summary` (required, one or two sentences, used as the page meta description)
+- `cover` (optional external image URL; no repo binaries)
+- `canonical` (optional URL for syndication; defaults to the demo page)
+- `author` (optional, defaults to Mahimai)
+
+No published date: posts carry no visible date.
+
+Allowed markdown: headings, paragraphs, bold and italic, links, inline
+code, fenced code blocks with a language, bullet and numbered lists,
+blockquotes, and external images. No raw HTML. This subset is frozen the
+same way `ui_components` is: a writeup that needs more is a deliberate
+playground change, not a demo declaration.
 
 When a demo ships, link the demo folder under the matching category in
 `README.md`. Drop a bold demo name and a one-line description so a
@@ -221,8 +244,8 @@ synthesis, so anything fancy bleeds through.
    `@claude scaffold this when ready`.
 3. The Claude Code GitHub Action fires, invokes the `demo-builder`
    subagent, scaffolds `demos/<slug>/{agent.py, pyproject.toml,
-   README.md}` (plus `playground.json` when UI is listed), and opens
-   a PR titled `feat(demo): <slug> with <stt>/<llm>/<tts> stack`.
+   README.md, blog.md}` (plus `playground.json` when UI is listed),
+   and opens a PR titled `feat(demo): <slug> with <stt>/<llm>/<tts> stack`.
 4. The operator reviews and merges.
 
 For offline work, the same subagent is reachable as `/build` in a
