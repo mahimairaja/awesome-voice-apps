@@ -86,7 +86,8 @@
     ],
     "ui_components": [
       "Card"
-    ]
+    ],
+    "blog": true
   },
   "water-tracker": {
     "title": "Water tracker",
