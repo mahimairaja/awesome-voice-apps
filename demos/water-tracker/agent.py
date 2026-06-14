@@ -80,18 +80,15 @@ def publish_ui_event(
     task.add_done_callback(log_publish_failure)
 
 
-def _ui_action(room: rtc.Room, component_id: str) -> Literal["mount", "update"]:
-    mounted = getattr(room, "_ui_mounted", None)
-    if mounted is None:
-        mounted = set()
-        setattr(room, "_ui_mounted", mounted)
+def _ui_action(data: dict, component_id: str) -> Literal["mount", "update"]:
+    mounted = data.setdefault("_ui_mounted", set())
     if component_id in mounted:
         return "update"
     mounted.add(component_id)
     return "mount"
 
 
-def _publish_stat(room: rtc.Room, glasses: int, goal: int) -> None:
+def _publish_stat(room: rtc.Room, data: dict, glasses: int, goal: int) -> None:
     remaining = max(0, goal - glasses)
     caption = (
         "Goal reached! Great job."
@@ -101,7 +98,7 @@ def _publish_stat(room: rtc.Room, glasses: int, goal: int) -> None:
     publish_ui_event(
         room,
         "Stat",
-        _ui_action(room, "water"),
+        _ui_action(data, "water"),
         component_id="water",
         props={
             "label": "glasses today",
@@ -118,6 +115,7 @@ class WaterCoach(Agent):
             instructions=(
                 "You are a friendly hydration coach. Help the user track their daily water intake. "
                 "When they say they drank water, call log_water with the number of glasses. "
+                "When they want to undo or correct a miscount, call remove_water with the number of glasses. "
                 "When they want to change their daily goal, call set_goal with the new target. "
                 "Encourage them warmly to stay hydrated. "
                 "Keep replies short, plain text, no markdown or emojis."
@@ -136,14 +134,46 @@ class WaterCoach(Agent):
         Call this whenever the user says they drank water.
         glasses: number of glasses to add (default 1).
         """
+        if glasses < 1:
+            return "I can only log one or more glasses; say 'undo' if you miscounted."
         data = context.userdata
         data["glasses"] += glasses
-        _publish_stat(self.room, data["glasses"], data["goal"])
+        _publish_stat(self.room, data, data["glasses"], data["goal"])
         remaining = max(0, data["goal"] - data["glasses"])
-        if data["glasses"] >= data["goal"]:
+        if data["glasses"] > data["goal"]:
+            return (
+                f"Logged {glasses} glass(es). You're already past your goal at "
+                f"{data['glasses']}/{data['goal']}."
+            )
+        if data["glasses"] == data["goal"]:
             return f"Logged {glasses} glass(es). Total: {data['glasses']}/{data['goal']}. Goal reached!"
         return (
             f"Logged {glasses} glass(es). Total: {data['glasses']}/{data['goal']}. "
+            f"{remaining} more to go."
+        )
+
+    @function_tool()
+    async def remove_water(
+        self,
+        context: RunContext[dict],
+        glasses: int = 1,
+    ) -> str:
+        """Remove glasses of water logged in error and update the progress tracker.
+
+        Call this when the user wants to undo or correct a miscount.
+        glasses: number of glasses to remove (default 1).
+        """
+        if glasses < 1:
+            return "I can only remove one or more glasses; tell me how many to undo."
+        data = context.userdata
+        if data["glasses"] == 0:
+            return "Nothing to remove yet; you haven't logged any glasses today."
+        removed = min(glasses, data["glasses"])
+        data["glasses"] = max(0, data["glasses"] - glasses)
+        _publish_stat(self.room, data, data["glasses"], data["goal"])
+        remaining = max(0, data["goal"] - data["glasses"])
+        return (
+            f"Removed {removed} glass(es). Total: {data['glasses']}/{data['goal']}. "
             f"{remaining} more to go."
         )
 
@@ -158,9 +188,11 @@ class WaterCoach(Agent):
         Call this when the user wants to set or change their daily target.
         goal: new target in glasses.
         """
+        if goal < 1:
+            return "A daily goal needs to be at least one glass."
         data = context.userdata
         data["goal"] = goal
-        _publish_stat(self.room, data["glasses"], data["goal"])
+        _publish_stat(self.room, data, data["glasses"], data["goal"])
         return f"Goal updated to {goal} glasses per day."
 
 
@@ -190,10 +222,11 @@ async def entrypoint(ctx: JobContext) -> None:
 
     await session.start(agent=WaterCoach(ctx.room), room=ctx.room)
     await ctx.connect()
-    _publish_stat(ctx.room, 0, DEFAULT_GOAL)
+    _publish_stat(ctx.room, userdata, 0, DEFAULT_GOAL)
     await session.generate_reply(
         instructions=(
-            "Greet the user. Tell them their goal is 8 glasses today and ask how many they have had so far."
+            f"Greet the user. Tell them their goal is {DEFAULT_GOAL} glasses today "
+            "and ask how many they have had so far."
         )
     )
 
