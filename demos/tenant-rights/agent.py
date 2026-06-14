@@ -147,6 +147,19 @@ def _publish_card(room: rtc.Room, title: str, body: str) -> None:
     )
 
 
+def _unmount_card(room: rtc.Room) -> None:
+    """Clear the source card so the screen never shows a stale answer.
+
+    Only unmounts when a card is currently up, and forgets the id so the next
+    _publish_card mounts fresh rather than updating a card that is gone.
+    """
+    mounted = getattr(room, "_ui_mounted", None)
+    if not mounted or CARD_ID not in mounted:
+        return
+    mounted.discard(CARD_ID)
+    publish_ui_event(room, "Card", "unmount", component_id=CARD_ID)
+
+
 def select_voice_providers():
     """Pick STT, LLM, TTS by env, on the same priority as the embedding backend.
 
@@ -188,8 +201,9 @@ class RentersGuide(Agent):
     ) -> None:
         question = (new_message.text_content or "").strip()
         if not question:
-            # Empty or garbled transcript: suppress the reply entirely rather
-            # than let the framework generate one with no grounding note.
+            # Empty or garbled transcript: clear any stale card and suppress the
+            # reply rather than let the framework generate one with no grounding.
+            _unmount_card(self._room)
             raise StopResponse()
 
         try:
@@ -204,6 +218,11 @@ class RentersGuide(Agent):
                     "question from general knowledge. Tell the user you cannot "
                     "look that up right now and ask them to try again in a moment."
                 ),
+            )
+            _publish_card(
+                self._room,
+                title="Retrieval unavailable",
+                body="Cannot look that up right now. Please try again in a moment.",
             )
             return
 

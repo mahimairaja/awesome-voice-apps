@@ -29,6 +29,10 @@ uv run --no-project python agent.py download-files
 uv run --no-project python agent.py dev
 ```
 
+This demo runs on OpenAI for STT, LLM, and TTS, so only OPENAI_API_KEY and the
+three LIVEKIT_* keys are required. The DEEPGRAM_API_KEY and CARTESIA_API_KEY
+lines in the shared template can stay blank.
+
 Then open
 [playground.mahimai.ca/demos/clinic-scheduler](https://playground.mahimai.ca/demos/clinic-scheduler)
 and connect. Ask for Monday slots, pick one, give your name and reason, then

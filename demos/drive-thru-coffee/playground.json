@@ -12,6 +12,5 @@
     "livekit_api_key",
     "livekit_api_secret"
   ],
-  "ui_components": ["Order", "Total", "Checkout"],
-  "card_stat": "menu: 10 items / 5 mods"
+  "ui_components": ["Order", "Total", "Checkout"]
 }

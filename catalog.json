@@ -14,7 +14,8 @@
     "ui_components": [
       "List",
       "Card"
-    ]
+    ],
+    "blog": true
   },
   "drive-thru-coffee": {
     "title": "Drive-thru coffee",
@@ -34,7 +35,8 @@
       "Order",
       "Total",
       "Checkout"
-    ]
+    ],
+    "blog": true
   },
   "front-desk-interpreter": {
     "title": "Front desk interpreter",
@@ -70,7 +72,8 @@
     ],
     "ui_components": [
       "Score"
-    ]
+    ],
+    "blog": true
   },
   "tenant-rights": {
     "title": "Tenant rights",
@@ -80,13 +83,15 @@
     "recording_url": null,
     "required_credentials": [
       "nvidia_api_key",
+      "openai_api_key",
       "livekit_url",
       "livekit_api_key",
       "livekit_api_secret"
     ],
     "ui_components": [
       "Card"
-    ]
+    ],
+    "blog": true
   },
   "water-tracker": {
     "title": "Water tracker",
@@ -104,6 +109,7 @@
     ],
     "ui_components": [
       "Stat"
-    ]
+    ],
+    "blog": true
   }
 }

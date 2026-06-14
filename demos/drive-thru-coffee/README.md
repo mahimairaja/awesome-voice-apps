@@ -8,8 +8,8 @@ Category: restaurant.
 ## What it does
 
 - Reads a ten-item menu (espressos, lattes, cold brew, pastries).
-- Adds items, removes items, accepts modifications (oat milk, light
-  ice, decaf, an extra shot).
+- Adds items, removes items, accepts modifications such as oat milk,
+  light ice, decaf, or an extra shot.
 - Mounts an Order, a Total, and a Checkout card on the playground
   screen and updates them as the call goes.
 - Confirms with a name and reads back the total.

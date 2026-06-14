@@ -73,6 +73,9 @@
           "type": "string"
         },
         "uniqueItems": true
+      },
+      "blog": {
+        "type": "boolean"
       }
     }
   }
