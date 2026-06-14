@@ -80,6 +80,7 @@
     "recording_url": null,
     "required_credentials": [
       "nvidia_api_key",
+      "openai_api_key",
       "livekit_url",
       "livekit_api_key",
       "livekit_api_secret"
