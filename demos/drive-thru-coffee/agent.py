@@ -6,7 +6,7 @@ pickup name.
 
 Run it:
 1. Copy templates/livekit-base/.env.example to .env and fill the six keys.
-2. Run uv venv, then uv pip install -r requirements.txt.
+2. Run uv sync.
 3. Run uv run --no-project python agent.py download-files.
 4. Run uv run --no-project python agent.py dev, then open
    https://playground.mahimai.ca/demos/drive-thru-coffee.
@@ -217,6 +217,9 @@ class DriveThruAttendant(Agent):
     async def submit_order(self, context: RunContext[dict], customer_name: str) -> str:
         """Submit the current order after the customer provides a cup name."""
         cart = context.userdata["cart"]
+        if not cart:
+            return "There is nothing in the order yet. What can I get you?"
+
         total = _subtotal(cart)
         name = customer_name.strip() or "friend"
         publish_ui_event(
