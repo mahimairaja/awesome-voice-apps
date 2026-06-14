@@ -91,24 +91,26 @@ def publish_ui_event(
     task.add_done_callback(log_publish_failure)
 
 
-def _ui_action(room: rtc.Room, component_id: str) -> Literal["mount", "update"]:
-    mounted = getattr(room, "_ui_mounted", None)
-    if mounted is None:
-        mounted = set()
-        setattr(room, "_ui_mounted", mounted)
+def _ui_action(
+    mounted: set[str], component_id: str
+) -> Literal["mount", "update"]:
     if component_id in mounted:
         return "update"
     mounted.add(component_id)
     return "mount"
 
 
-def _publish_score(room: rtc.Room, correct: int, total: int) -> None:
+def _publish_score(room: rtc.Room, data: dict) -> None:
     publish_ui_event(
         room,
         "Score",
-        _ui_action(room, "score"),
+        _ui_action(data["mounted"], "score"),
         component_id="score",
-        props={"correct": correct, "total": total, "outOf": len(QUESTIONS)},
+        props={
+            "correct": data["correct"],
+            "total": data["total"],
+            "outOf": len(QUESTIONS),
+        },
     )
 
 
@@ -147,10 +149,16 @@ class TriviaHost(Agent):
         Call this once per question, after you have judged the caller's answer.
         """
         data = context.userdata
+        if data["index"] >= len(QUESTIONS):
+            return (
+                "All ten questions already scored: "
+                f"final {data['correct']}/{data['total']}."
+            )
+        data["index"] += 1
         data["total"] += 1
         if was_correct:
             data["correct"] += 1
-        _publish_score(self.room, data["correct"], data["total"])
+        _publish_score(self.room, data)
         return f"Score updated: {data['correct']}/{data['total']}"
 
 
@@ -168,7 +176,7 @@ server.setup_fnc = prewarm
 async def entrypoint(ctx: JobContext) -> None:
     ctx.log_context_fields = {"room": ctx.room.name}
 
-    userdata: dict = {"correct": 0, "total": 0}
+    userdata: dict = {"correct": 0, "total": 0, "index": 0, "mounted": set()}
     session = AgentSession(
         userdata=userdata,
         stt=deepgram.STT(model="nova-3"),
@@ -180,7 +188,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     await session.start(agent=TriviaHost(ctx.room), room=ctx.room)
     await ctx.connect()
-    _publish_score(ctx.room, 0, 0)
+    _publish_score(ctx.room, userdata)
     await session.generate_reply(
         instructions="Welcome the caller and ask question one."
     )
