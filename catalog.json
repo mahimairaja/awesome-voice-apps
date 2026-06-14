@@ -14,7 +14,8 @@
     "ui_components": [
       "List",
       "Card"
-    ]
+    ],
+    "blog": true
   },
   "drive-thru-coffee": {
     "title": "Drive-thru coffee",
@@ -34,7 +35,8 @@
       "Order",
       "Total",
       "Checkout"
-    ]
+    ],
+    "blog": true
   },
   "front-desk-interpreter": {
     "title": "Front desk interpreter",
@@ -70,7 +72,8 @@
     ],
     "ui_components": [
       "Score"
-    ]
+    ],
+    "blog": true
   },
   "tenant-rights": {
     "title": "Tenant rights",
@@ -106,6 +109,7 @@
     ],
     "ui_components": [
       "Stat"
-    ]
+    ],
+    "blog": true
   }
 }
