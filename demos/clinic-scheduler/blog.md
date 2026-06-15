@@ -68,10 +68,12 @@ re-book. The second pass changed the model: book_appointment now refuses a
 second booking and tells the caller to reschedule, which made the
 prior-slot-freeing branch dead code and removed it. The tradeoff that
 emerged: rather than support overwrite-and-free semantics in two tools,
-the demo enforces exactly one active booking and routes every change
-through reschedule, the single place that runs the free-old-take-new swap.
-Open slots plus booking stay one coherent set where reschedule is net-zero
-on inventory. The same passes caught two over-matching bugs: find_slots
+the demo enforces exactly one active booking. A move routes through
+reschedule, the single place that runs the free-old-take-new swap, and
+cancel_appointment frees the slot back without taking a new one and clears
+the Card. Open slots plus booking stay one coherent set: reschedule is
+net-zero on inventory, and a cancel returns exactly what the booking took.
+The same passes caught two over-matching bugs: find_slots
 matched the keyword against date and time (so a bare number over-matched)
 before it narrowed to date only, and it advertised a doctor filter the
 prompt promised but the code ignored until the filter was wired in.

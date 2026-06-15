@@ -68,12 +68,15 @@ def _publish_cart(room: rtc.Room, cart: list[dict]) -> None:
             ]
         },
     )
+    _unmount_checkout(room)
 ```
 
 The playground protocol wants exactly one mount per component id, then
 update for every later change. `_ui_action` stashes a set of
 already-mounted ids on the room object and returns mount the first time
-it sees an id, update thereafter.
+it sees an id, update thereafter. The last line clears any submitted
+Checkout card: an open order and a checked-out order are mutually
+exclusive, so re-rendering the cart takes a stale Checkout down.
 
 ## What surprised me
 
