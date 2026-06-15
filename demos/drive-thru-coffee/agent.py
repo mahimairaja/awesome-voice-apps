@@ -134,6 +134,20 @@ def _ui_action(room: rtc.Room, component_id: str) -> Literal["mount", "update"]:
     return "mount"
 
 
+def _unmount_checkout(room: rtc.Room) -> None:
+    """Clear a submitted Checkout card when the order changes again.
+
+    Order and Checkout are mutually exclusive states: re-rendering the cart
+    means the order is open again, so a stale Checkout card from a prior submit
+    has to come down. A no-op until something has been submitted.
+    """
+    mounted = getattr(room, "_awesome_voice_ui_mounted", None)
+    if not mounted or "checkout" not in mounted:
+        return
+    mounted.discard("checkout")
+    publish_ui_event(room, "Checkout", "unmount", component_id="checkout")
+
+
 def _publish_cart(room: rtc.Room, cart: list[dict]) -> None:
     subtotal = _subtotal(cart)
     publish_ui_event(
@@ -155,6 +169,7 @@ def _publish_cart(room: rtc.Room, cart: list[dict]) -> None:
             ]
         },
     )
+    _unmount_checkout(room)
 
 
 class DriveThruAttendant(Agent):
