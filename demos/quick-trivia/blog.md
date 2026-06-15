@@ -63,14 +63,14 @@ dict, so the UI never disagrees with state.
 ## What surprised me
 
 When you hand the LLM both grading and flow control, the only thing
-keeping the scorecard honest is the tool. score_answer increments total on
-every call and the prompt drives the whole quiz, so a single misfire
-(calling the tool twice for one answer, or running past question ten)
-would publish 11/10 against outOf 10: a progress bar past full, no error.
-The fix is an advancing question index in userdata. score_answer refuses
-once index reaches len(QUESTIONS) and returns the final tally instead of
-counting again, which holds the invariant 0 <= correct <= total <= outOf
-no matter how the model behaves.
+keeping the scorecard honest is the tool. A single misfire (calling the
+tool twice for one answer, or running past question ten) would publish
+11/10 against outOf 10: a progress bar past full, no error. So score_answer
+takes the question_number it is scoring and keeps a set of already-scored
+numbers in userdata. A repeat number is a no-op that returns the unchanged
+score, and a number outside 1 to 10 is refused. Because the scored set is a
+subset of the ten questions, total can never exceed outOf, so the invariant
+0 <= correct <= total <= outOf holds no matter how the model behaves.
 
 ## Run it
 
