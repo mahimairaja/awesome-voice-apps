@@ -19,8 +19,8 @@ the confirmed appointment.
 ## Why this stack
 
 The whole stack runs on one OpenAI key. Whisper handles STT, gpt-4o-mini
-drives the three function tools (find_slots, book_appointment,
-reschedule), and OpenAI TTS speaks back in the shimmer voice for the
+drives the four function tools (find_slots, book_appointment, reschedule,
+cancel_appointment), and OpenAI TTS speaks back in the shimmer voice for the
 receptionist persona. That replaces the template's Deepgram Nova-3 and
 Cartesia Sonic-2 so the credential list stays at one provider. Silero VAD
 loads once in prewarm and is reused per session, and the LiveKit

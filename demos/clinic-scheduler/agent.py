@@ -172,6 +172,18 @@ def _publish_booking(
     )
 
 
+def _unmount_booking(room: rtc.Room, mounted: set[str]) -> None:
+    """Clear the booking Card after a cancel so the screen matches state.
+
+    Only unmounts when the card is up, and forgets the id so a later booking
+    mounts fresh instead of updating a card that is gone.
+    """
+    if "booking" not in mounted:
+        return
+    mounted.discard("booking")
+    publish_ui_event(room, "Card", "unmount", component_id="booking")
+
+
 class ClinicScheduler(Agent):
     def __init__(self, room: rtc.Room) -> None:
         super().__init__(
@@ -180,6 +192,7 @@ class ClinicScheduler(Agent):
                 "Ask what day or doctor the caller prefers, then call find_slots to show options. "
                 "Read the options naturally, confirm the patient name and reason, then call book_appointment. "
                 "If they want to change their booking, call find_slots again, then call reschedule. "
+                "If they want to cancel and not rebook, call cancel_appointment. "
                 "Keep replies short, plain text, no markdown or emojis."
             ),
         )
@@ -309,6 +322,31 @@ class ClinicScheduler(Agent):
         return (
             f"Rescheduled. {booking['patient']} now sees {booking['doctor']} on "
             f"{booking['date']} at {booking['time']}."
+        )
+
+    @function_tool()
+    async def cancel_appointment(self, context: RunContext[dict]) -> str:
+        """Cancel the caller's appointment and return its slot to the open list.
+
+        Call this when the caller wants to cancel and does not want to rebook.
+        """
+        booking = context.userdata.get("booking")
+        if booking is None:
+            return "There is no appointment booked to cancel."
+
+        # Return the freed slot to inventory in its natural s1..s6 position.
+        available = context.userdata["available_slots"]
+        available.append(_freed_slot(booking))
+        available.sort(key=lambda s: int(s["id"][1:]))
+        context.userdata["available_slots"] = available
+        context.userdata["booking"] = None
+
+        mounted = context.userdata["ui_mounted"]
+        _publish_slots(self.room, mounted, available)
+        _unmount_booking(self.room, mounted)
+        return (
+            f"Cancelled {booking['patient']}'s appointment on {booking['date']} "
+            f"at {booking['time']}. That slot is open again."
         )
 
 

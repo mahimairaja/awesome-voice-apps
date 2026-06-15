@@ -128,7 +128,8 @@ class TriviaHost(Agent):
                 "You are an upbeat voice trivia host. Ask the caller the ten "
                 "questions below, one at a time, in order. After the caller "
                 "answers, decide if it is correct (accept reasonable "
-                "paraphrases), then call score_answer with was_correct. "
+                "paraphrases), then call score_answer with the question_number "
+                "(1 to 10) and was_correct. "
                 "Tell the caller whether they got it right and reveal the "
                 "correct answer if they missed it. Then ask the next question. "
                 "After all ten, announce their final score and wrap up. "
@@ -142,24 +143,33 @@ class TriviaHost(Agent):
     async def score_answer(
         self,
         context: RunContext[dict],
+        question_number: int,
         was_correct: bool,
     ) -> str:
-        """Record whether the caller answered correctly and update the score card.
+        """Record whether the caller answered a question correctly and update the card.
 
-        Call this once per question, after you have judged the caller's answer.
+        Call this once per question, after you have judged the answer. Pass
+        question_number (1 to 10) for the question you just asked.
         """
         data = context.userdata
-        if data["index"] >= len(QUESTIONS):
+        if not 1 <= question_number <= len(QUESTIONS):
+            return f"There is no question {question_number}; this quiz has {len(QUESTIONS)}."
+        if question_number in data["scored"]:
             return (
-                "All ten questions already scored: "
-                f"final {data['correct']}/{data['total']}."
+                f"Question {question_number} is already scored. "
+                f"The score stays {data['correct']}/{data['total']}."
             )
-        data["index"] += 1
+        data["scored"].add(question_number)
         data["total"] += 1
         if was_correct:
             data["correct"] += 1
         _publish_score(self.room, data)
-        return f"Score updated: {data['correct']}/{data['total']}"
+        if data["total"] == len(QUESTIONS):
+            return (
+                f"Question {question_number} scored. "
+                f"Final score: {data['correct']}/{len(QUESTIONS)}."
+            )
+        return f"Question {question_number} scored: {data['correct']}/{data['total']}."
 
 
 server = AgentServer()
@@ -176,7 +186,7 @@ server.setup_fnc = prewarm
 async def entrypoint(ctx: JobContext) -> None:
     ctx.log_context_fields = {"room": ctx.room.name}
 
-    userdata: dict = {"correct": 0, "total": 0, "index": 0, "mounted": set()}
+    userdata: dict = {"correct": 0, "total": 0, "scored": set(), "mounted": set()}
     session = AgentSession(
         userdata=userdata,
         stt=deepgram.STT(model="nova-3"),
