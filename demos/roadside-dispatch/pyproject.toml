@@ -1,0 +1,11 @@
+[project]
+name = "roadside-dispatch"
+version = "0.1.0"
+description = "Roadside assistance dispatcher that scores caller audio with Tyto and gates field accuracy."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero,turn-detector]>=1.5,<2.0",
+    "python-dotenv>=1.0",
+    "aic-sdk>=2.4,<3.0",
+    "numpy>=2.0",
+]
