@@ -282,47 +282,62 @@ async def _score_loop(
     yields AudioFrameEvent objects; frame fields accessed are .data, .sample_rate,
     .num_channels (all confirmed present on livekit.rtc.AudioFrame in 1.x).
     """
-    track = await _wait_for_caller_track(room)
-    # AudioStream auto-downmixes to mono (num_channels=1 default).
-    stream = rtc.AudioStream(track, num_channels=1)
-    buffer: list[float] = []
-    since_hop = 0
-    sample_rate: int | None = None
+    # Re-acquire the caller's track whenever it changes. Replacing the mic (for
+    # example the playground's road-noise mixer republishes it) ends the current
+    # AudioStream; without re-acquiring, the loop would keep reading the dead
+    # track and report no speaker (loudness, noise, reverb all near zero).
+    prev_track: rtc.Track | None = None
+    while True:
+        track = await _wait_for_caller_track(room)
+        if track is prev_track:
+            break  # same track returned, nothing new to read
+        prev_track = track
+        logger.info("score loop reading caller audio track")
 
-    async for event in stream:
-        frame = event.frame
-        sample_rate = frame.sample_rate
-        samples = np.frombuffer(frame.data, dtype=np.int16).astype(np.float32) / 32768.0
-        if frame.num_channels > 1:
-            samples = samples.reshape(-1, frame.num_channels).mean(axis=1)
+        # AudioStream auto-downmixes to mono (num_channels=1 default).
+        stream = rtc.AudioStream(track, num_channels=1)
+        buffer: list[float] = []
+        since_hop = 0
+        sample_rate: int | None = None
 
-        buffer.extend(samples.tolist())
-        since_hop += len(samples)
-
-        window = int(WINDOW_SECONDS * sample_rate)
-        hop = int(HOP_SECONDS * sample_rate)
-        if len(buffer) > window:
-            del buffer[: len(buffer) - window]
-
-        if len(buffer) >= window and since_hop >= hop:
-            since_hop = 0
-            chunk = np.asarray(buffer, dtype=np.float32)
-            results = await asyncio.to_thread(
-                analyzer.analyze, chunk, sample_rate, len(chunk)
+        async for event in stream:
+            frame = event.frame
+            sample_rate = frame.sample_rate
+            samples = (
+                np.frombuffer(frame.data, dtype=np.int16).astype(np.float32) / 32768.0
             )
-            if not results:
-                continue
-            result = results[-1]
-            raw = {
-                name: float(getattr(result, name))
-                for name in ("risk_score", *DIMENSIONS)
-            }
-            health.update(raw)
-            _publish_health(room, health)
-            _publish_risk(room, health)
-            _publish_meters(room, health)
-            _publish_verdict(room, health)
-            await on_window()
+            if frame.num_channels > 1:
+                samples = samples.reshape(-1, frame.num_channels).mean(axis=1)
+
+            buffer.extend(samples.tolist())
+            since_hop += len(samples)
+
+            window = int(WINDOW_SECONDS * sample_rate)
+            hop = int(HOP_SECONDS * sample_rate)
+            if len(buffer) > window:
+                del buffer[: len(buffer) - window]
+
+            if len(buffer) >= window and since_hop >= hop:
+                since_hop = 0
+                chunk = np.asarray(buffer, dtype=np.float32)
+                results = await asyncio.to_thread(
+                    analyzer.analyze, chunk, sample_rate, len(chunk)
+                )
+                if not results:
+                    continue
+                result = results[-1]
+                raw = {
+                    name: float(getattr(result, name))
+                    for name in ("risk_score", *DIMENSIONS)
+                }
+                health.update(raw)
+                _publish_health(room, health)
+                _publish_risk(room, health)
+                _publish_meters(room, health)
+                _publish_verdict(room, health)
+                await on_window()
+
+        logger.info("caller audio track ended; re-acquiring")
 
 
 class RoadsideAgent(Agent):
