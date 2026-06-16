@@ -230,3 +230,6 @@ templates/**/uv.lock
 
 # Per-demo prebaked retrieval index (operator builds it locally with their key)
 demos/*/data/index.npz
+
+# Tyto model binary (roadside-dispatch); downloaded at runtime via agent.py download-files
+demos/roadside-dispatch/models/
