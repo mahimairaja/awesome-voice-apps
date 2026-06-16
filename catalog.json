@@ -75,6 +75,29 @@
     ],
     "blog": true
   },
+  "roadside-dispatch": {
+    "title": "Roadside dispatch",
+    "category": "automotive",
+    "description": "A breakdown-call dispatcher that scores caller audio with Tyto, adapts when the line degrades, and re-confirms fields captured over bad audio before dispatching.",
+    "who_for": "Roadside and contact-center teams whose agents take calls from hostile audio environments.",
+    "recording_url": null,
+    "required_credentials": [
+      "openai_api_key",
+      "deepgram_api_key",
+      "cartesia_api_key",
+      "livekit_url",
+      "livekit_api_key",
+      "livekit_api_secret",
+      "aic_sdk_license"
+    ],
+    "ui_components": [
+      "Stat",
+      "Meters",
+      "Card",
+      "List"
+    ],
+    "blog": true
+  },
   "tenant-rights": {
     "title": "Tenant rights",
     "category": "legal",
