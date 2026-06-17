@@ -41,9 +41,13 @@ Every demo lives at `demos/<slug>/` and carries these files:
 | `pyproject.toml` | uv-managed runtime dependencies. Template defaults plus any demo extras. |
 | `README.md` | Short visitor entry: one-line hook, what it does, four uv commands, recording placeholder. |
 | `playground.json` | Only when the demo emits playground UI events. Title, category, description, who_for, required_credentials, ui_components. |
+| `blog.md` | Required build writeup: frontmatter plus a markdown body in the frozen subset. Set `"blog": true` in `playground.json`. Renders on the demo's playground page. |
 
-No `blog.md`, no `reel.md`, no marketing content here. Those live
-elsewhere.
+The writeup is plain markdown only (no raw HTML, no em dashes). To add an image
+or diagram, host it at a public internet URL and link it inline like
+`![alt](https://your-host/diagram.svg)`; image files are not committed to the
+repo and inline `<svg>` or HTML is stripped. No `reel.md` or other marketing
+content here; that lives elsewhere.
 
 The slug is short, kebab-case, descriptive of the agent's job, never
 ending in `agent` or `demo`. Examples: `url-summarizer`,
