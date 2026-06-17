@@ -29,7 +29,6 @@ git clone https://github.com/mahimairaja/awesome-voice-apps.git
 cd awesome-voice-apps/demos/drive-thru-coffee
 cp ../../templates/livekit-base/.env.example .env
 uv sync
-uv run --no-project python agent.py download-files
 uv run --no-project python agent.py dev
 ```
 

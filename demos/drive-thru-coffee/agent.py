@@ -7,8 +7,7 @@ pickup name.
 Run it:
 1. Copy templates/livekit-base/.env.example to .env and fill the six keys.
 2. Run uv sync.
-3. Run uv run --no-project python agent.py download-files.
-4. Run uv run --no-project python agent.py dev, then open
+3. Run uv run --no-project python agent.py dev, then open
    https://playground.mahimai.ca/demos/drive-thru-coffee.
 
 Recording: coming after the demo is recorded.
@@ -30,9 +29,9 @@ from livekit.agents import (
     RunContext,
     cli,
     function_tool,
+    inference,
 )
-from livekit.plugins import cartesia, deepgram, openai, silero
-from livekit.plugins.turn_detector.multilingual import MultilingualModel
+from livekit.plugins import cartesia, deepgram, openai
 
 load_dotenv()
 
@@ -256,7 +255,7 @@ server = AgentServer()
 
 
 def prewarm(proc: JobProcess) -> None:
-    proc.userdata["vad"] = silero.VAD.load()
+    proc.userdata["vad"] = inference.VAD()
 
 
 server.setup_fnc = prewarm
@@ -273,7 +272,7 @@ async def entrypoint(ctx: JobContext) -> None:
         llm=openai.LLM(model="gpt-4o-mini"),
         tts=cartesia.TTS(model="sonic-2"),
         vad=ctx.proc.userdata["vad"],
-        turn_detection=MultilingualModel(),
+        turn_detection=inference.TurnDetector(),
     )
 
     await session.start(agent=DriveThruAttendant(ctx.room), room=ctx.room)
