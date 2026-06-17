@@ -55,6 +55,16 @@ A big number with an optional `/ of` denominator, a progress bar (when
 props: { label?: string, value: string | number, of?: number, caption?: string }
 ```
 
+### Meters
+
+Labeled 0-to-1 bars for live gauges (audio health, confidence, sentiment). Each
+item colors its bar by `band`; a `neutral` item renders as an uncolored level
+meter; a `driver` item is marked as the largest contributor.
+
+```
+props: { title?: string, items: [{ label: string, value: number /*0..1*/, band?: "good"|"warn"|"bad", neutral?: boolean, driver?: boolean }] }
+```
+
 ### Card
 
 A title and body card, with optional subtitle, image, footer, and accent

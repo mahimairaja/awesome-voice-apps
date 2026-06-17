@@ -100,7 +100,10 @@ No published date: posts carry no visible date.
 
 Allowed markdown: headings, paragraphs, bold and italic, links, inline
 code, fenced code blocks with a language, bullet and numbered lists,
-blockquotes, and external images. No raw HTML. This subset is frozen the
+blockquotes, and external images. No raw HTML. Images must be hosted at a
+public internet URL and linked inline like `![alt](https://host/file.svg)`;
+image files are not committed to the repo and inline `<svg>` or HTML is
+stripped, so the URL must be publicly fetchable. This subset is frozen the
 same way `ui_components` is: a writeup that needs more is a deliberate
 playground change, not a demo declaration.
 

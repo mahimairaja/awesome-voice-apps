@@ -37,6 +37,7 @@ Open the demo at [playground.mahimai.ca/demos](https://playground.mahimai.ca/dem
 | [drive-thru-coffee](demos/drive-thru-coffee/) | restaurant | Takes a coffee order, edits it mid-flow, totals the cart. |
 | [front-desk-interpreter](demos/front-desk-interpreter/) | hospitality | Interprets between a guest in any language and an English-speaking desk, with live captions. |
 | [quick-trivia](demos/quick-trivia/) | education | Quizzes the caller and keeps score on screen. |
+| [roadside-dispatch](demos/roadside-dispatch/) | automotive | Dispatches roadside help, scores caller audio with Tyto, and gates field accuracy when the line degrades. |
 | [tenant-rights](demos/tenant-rights/) | legal | Answers US renter questions from HUD guidance and names its source. |
 | [water-tracker](demos/water-tracker/) | fitness | Logs glasses of water against a daily goal. |
 
