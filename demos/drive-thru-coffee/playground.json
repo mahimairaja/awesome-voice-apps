@@ -12,5 +12,5 @@
     "livekit_api_key",
     "livekit_api_secret"
   ],
-  "ui_components": ["Order", "Total", "Checkout"]
+  "ui_components": ["Order", "Total", "Checkout", "List"]
 }

@@ -34,7 +34,8 @@
     "ui_components": [
       "Order",
       "Total",
-      "Checkout"
+      "Checkout",
+      "List"
     ],
     "blog": true
   },
