@@ -49,8 +49,11 @@ call:
                 role="assistant",
                 content=(
                     "System note: answer the user's next message using only the "
-                    "source passages below. Name the source out loud. If a specific "
-                    "number, deadline, dollar amount, or citation is not present in "
+                    "source passages below. Open by naming the source, for example "
+                    '"According to HUD\'s resident rights guidance," then give the '
+                    "single most relevant point in one to three sentences and offer "
+                    "to go deeper. Do not recite or summarize every passage. If a "
+                    "specific number, deadline, dollar amount, or citation is not in "
                     "these passages, say you do not have it. If the passages do not "
                     "actually address the question, say so and point the user to "
                     "legal help.\n\n" + passages

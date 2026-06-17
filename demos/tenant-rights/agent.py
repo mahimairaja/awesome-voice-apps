@@ -56,8 +56,8 @@ NIM_LLM_MODEL = "meta/llama-3.3-70b-instruct"
 INSTRUCTIONS = (
     "You are a calm, plain-spoken voice assistant that helps people understand "
     "their rights as renters in the United States. You answer using only the "
-    "housing documents provided to you, and you always say where an answer came "
-    'from, for example "according to HUD\'s resident rights guidance." '
+    "housing documents provided to you, and you open every answer by naming the "
+    'source out loud, for example "According to HUD\'s resident rights guidance." '
     "You explain what the documents say. You never give legal advice, never tell "
     "the user what they should do, and never predict how a legal situation will "
     "turn out. You do not interpret the user's specific lease or local laws. "
@@ -67,10 +67,12 @@ INSTRUCTIONS = (
     "HUD office. Then you offer to answer a question the documents can cover. "
     "You never invent statute numbers, dollar amounts, deadlines, or citations. "
     "If a detail is not in your sources, you say you do not have it. "
-    "You are speaking out loud, so keep answers short, usually two to four "
-    "sentences, and offer to go deeper rather than saying everything at once. "
-    "Speak naturally, with no formatting, symbols, or read-out links. If a "
-    "question is ambiguous, ask one quick clarifying question before answering."
+    "You are speaking out loud, so keep replies brief: one to three sentences. "
+    "Lead with the single most relevant point, then offer to go deeper rather "
+    "than reciting a whole passage. Speak naturally in plain words, with no "
+    "lists, formatting, symbols, or read-out links, and ask only one question "
+    "at a time. If a question is ambiguous, ask one quick clarifying question "
+    "before answering."
 )
 
 
@@ -132,7 +134,10 @@ def _snippet(text: str, limit: int = 200) -> str:
     return body[: limit - 3].rstrip() + "..."
 
 
-def _publish_card(room: rtc.Room, title: str, body: str) -> None:
+def _publish_card(room: rtc.Room, title: str, body: str, subtitle: str = "") -> None:
+    # subtitle is always sent (default empty) because the playground merges
+    # update props onto the mounted card; omitting it would leave a stale source
+    # line on the next refuse-or-redirect card.
     publish_ui_event(
         room,
         "Card",
@@ -140,6 +145,7 @@ def _publish_card(room: rtc.Room, title: str, body: str) -> None:
         component_id=CARD_ID,
         props={
             "title": title,
+            "subtitle": subtitle,
             "body": body,
             "footer": "Information, not legal advice.",
             "accent": True,
@@ -226,15 +232,27 @@ class RentersGuide(Agent):
                 role="assistant",
                 content=(
                     "System note: answer the user's next message using only the "
-                    "source passages below. Name the source out loud. If a specific "
-                    "number, deadline, dollar amount, or citation is not present in "
+                    "source passages below. Open by naming the source, for example "
+                    '"According to HUD\'s resident rights guidance," then give the '
+                    "single most relevant point in one to three sentences and offer "
+                    "to go deeper. Do not recite or summarize every passage. If a "
+                    "specific number, deadline, dollar amount, or citation is not in "
                     "these passages, say you do not have it. If the passages do not "
                     "actually address the question, say so and point the user to "
                     "legal help.\n\n" + passages
                 ),
             )
             top = result.hits[0]
-            _publish_card(self._room, title=top.source_label, body=_snippet(top.text))
+            # Chunks are stored as "{heading}\n{body}", so the first line is the
+            # section. Show the section as the title and the document as the
+            # subtitle, so the card names exactly what is being read from.
+            heading, _, _ = top.text.partition("\n")
+            _publish_card(
+                self._room,
+                title=heading.strip() or top.source_label,
+                subtitle=top.source_label,
+                body=_snippet(top.text),
+            )
         else:
             turn_ctx.add_message(
                 role="assistant",

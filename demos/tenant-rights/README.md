@@ -10,7 +10,8 @@ question goes past what a document can answer.
   eviction basics, general rights) grounded in public-domain HUD material.
 - Retrieves the relevant section on every turn and injects it before the model
   answers, so answers come from the documents, not from guessing.
-- Names the source out loud and shows it on screen in a Card.
+- Opens each answer by naming the source out loud, and shows the exact
+  section and document on screen in a Card.
 - Refuses and redirects to local legal aid, a tenant lawyer, or a HUD office
   when a question is not covered or needs facts about a specific lease or state.
 - Never invents statute numbers, dollar amounts, deadlines, or citations.
