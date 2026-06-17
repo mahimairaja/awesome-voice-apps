@@ -19,6 +19,8 @@ about what varies state by state.
   information not legal advice" notice, so the agent never repeats the
   disclaimer.
 - Never invents statute numbers, dollar amounts, deadlines, or citations.
+- Caps each call at five minutes and hangs up after thirty seconds of silence,
+  to free the worker.
 
 The whole stack runs on NVIDIA under one `NVIDIA_API_KEY`: Riva STT, NIM LLM,
 Riva TTS, and NIM embeddings. The LLM and embeddings reach NIM over its

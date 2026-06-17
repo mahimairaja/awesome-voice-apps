@@ -55,6 +55,10 @@ TOPICS_ID = "topics"  # standing list of answerable topics, mounted once
 # the conversation feels laggy.
 NIM_LLM_MODEL = "meta/llama-3.3-70b-instruct"
 
+# Free the worker if a call runs long or the caller goes quiet.
+MAX_CALL_SECONDS = 300
+IDLE_HANGUP_SECONDS = 30
+
 INSTRUCTIONS = (
     "You are a warm, knowledgeable voice assistant who helps people understand "
     "their rights as renters in the United States. Talk like a helpful person, "
@@ -312,6 +316,14 @@ class RentersGuide(Agent):
             _unmount_card(self._room)
 
 
+def _watchdog_done_callback(task: asyncio.Task) -> None:
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc:
+        logger.exception("watchdog task failed", exc_info=exc)
+
+
 server = AgentServer()
 
 
@@ -361,6 +373,81 @@ async def entrypoint(ctx: JobContext) -> None:
     )
     await ctx.connect()
     _publish_static_ui(ctx.room, ctx.proc.userdata["index"])
+
+    # --- Call-lifecycle management ---
+    # Cap the call and hang up on a quiet caller so the worker is freed. Same
+    # pattern proven in roadside-dispatch: a graceful end that speaks one line,
+    # deletes the room (disconnecting the caller too), then closes the session;
+    # an idle watchdog reset on every user speech event; a hard max-call timer.
+    closed = asyncio.Event()
+    idle_holder: list[asyncio.Task] = []
+
+    async def _graceful_end(line: str) -> None:
+        """Speak the line once, end the room for everyone, then close, once."""
+        if closed.is_set():
+            return
+        closed.set()
+        if line:
+            try:
+                await session.say(line, allow_interruptions=False)
+            except Exception:
+                logger.exception("lifecycle say() failed")
+        try:
+            await ctx.delete_room()
+        except Exception:
+            logger.exception("delete_room failed")
+        await session.aclose()
+
+    async def _idle_watchdog() -> None:
+        try:
+            await asyncio.sleep(IDLE_HANGUP_SECONDS)
+        except asyncio.CancelledError:
+            return
+        if closed.is_set():
+            return
+        logger.info("idle timeout reached, ending session")
+        await _graceful_end("Are you still there? I will close the call now to free the line. Take care.")
+
+    async def _max_call_watchdog() -> None:
+        try:
+            await asyncio.sleep(MAX_CALL_SECONDS)
+        except asyncio.CancelledError:
+            return
+        if closed.is_set():
+            return
+        logger.info("max call limit reached, ending session")
+        await _graceful_end("We have reached the time limit for this call. Take care.")
+
+    def _on_user_input(_ev) -> None:
+        # Any user speech (interim or final) resets the idle timer.
+        if closed.is_set():
+            return
+        if idle_holder and not idle_holder[0].done():
+            idle_holder[0].cancel()
+        t = asyncio.create_task(_idle_watchdog(), name="idle_watchdog")
+        t.add_done_callback(_watchdog_done_callback)
+        if idle_holder:
+            idle_holder[0] = t
+        else:
+            idle_holder.append(t)
+
+    session.on("user_input_transcribed", _on_user_input)
+
+    def _cancel_watchdogs(_ev=None) -> None:
+        if idle_holder and not idle_holder[0].done():
+            idle_holder[0].cancel()
+        if not max_task.done():
+            max_task.cancel()
+
+    session.on("close", _cancel_watchdogs)
+
+    idle_t = asyncio.create_task(_idle_watchdog(), name="idle_watchdog")
+    idle_t.add_done_callback(_watchdog_done_callback)
+    idle_holder.append(idle_t)
+
+    max_task = asyncio.create_task(_max_call_watchdog(), name="max_call_watchdog")
+    max_task.add_done_callback(_watchdog_done_callback)
+
     await session.generate_reply(
         instructions=(
             "Greet the user in one short, friendly sentence. Tell them the topics "
