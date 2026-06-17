@@ -1,7 +1,6 @@
 """Offline index builder for the tenant-rights demo.
 
-Run once, with NVIDIA_API_KEY (or OPENAI_API_KEY for the fallback) set,
-before the demo can answer:
+Run once, with NVIDIA_API_KEY set, before the demo can answer:
 
     uv run --no-project python build_index.py
 

@@ -1,6 +1,6 @@
 ---
 title: A renter-rights agent that refuses to answer off-source
-summary: A voice agent that answers US renter-rights questions strictly from a prebaked HUD index, names the source out loud, and refuses anything the documents do not cover, plus the fallback gotcha that silently breaks a vector index.
+summary: A voice agent that answers US renter-rights questions strictly from a prebaked HUD index, names the source out loud, and refuses anything the documents do not cover, plus the gotcha that silently binds a vector index to the model that built it.
 author: Mahimai
 ---
 
@@ -21,15 +21,15 @@ grounded, safe first-line helper for renters.
 
 The whole stack runs on one key. NVIDIA Riva handles STT and TTS (voice
 Magpie-Multilingual.EN-US.Leo), NVIDIA NIM runs the LLM
-(meta/llama-3.3-70b-instruct) through its OpenAI-compatible base_url, and
-NIM embeddings (nvidia/nv-embedqa-e5-v5) drive retrieval. One
-NVIDIA_API_KEY covers STT, LLM, TTS, and embeddings together. A mid
-instruct model is enough because answers are short and grounded; the code
-notes you can drop to meta/llama-3.1-8b-instruct if it feels laggy. When
-no NVIDIA key is present, the stack falls back to OpenAI (Whisper,
-gpt-4o-mini, OpenAI TTS, text-embedding-3-small). Each embedding model
-carries its own cosine floor (0.40 for NVIDIA, 0.30 for OpenAI) because
-the coverage floor is model dependent.
+(meta/llama-3.3-70b-instruct) over its OpenAI-compatible endpoint, and NIM
+embeddings (nvidia/nv-embedqa-e5-v5) drive retrieval. One NVIDIA_API_KEY
+covers STT, LLM, TTS, and embeddings together; the openai client is just
+NVIDIA's transport, since NIM speaks the OpenAI protocol and LiveKit has no
+native NVIDIA LLM plugin. A mid instruct model is enough because answers
+are short and grounded; the code notes you can drop to
+meta/llama-3.1-8b-instruct if it feels laggy. The coverage floor (cosine
+0.40) is tuned to nv-embedqa-e5-v5, because how high a real match scores is
+embedding-model dependent.
 
 ## The interesting part
 
@@ -64,15 +64,15 @@ still leak an ungrounded answer.
 
 ## What surprised me
 
-An NVIDIA-to-OpenAI fallback silently breaks the vector index unless the
-two are coupled. The index is built offline by one embedding model, so if
-the runtime keys later select a different provider, the query vectors live
-in a different space and cosine retrieval is garbage. The fix records the
-embedding model id inside index.npz, drives both the voice stack and the
-embedding backend off the identical NVIDIA-first env priority so they can
-never diverge, gives each model its own cosine floor, and makes prewarm
-refuse to start on a mismatch. A missing recorded model counts as a
-mismatch too, so a stale index forces a rebuild instead of returning junk.
+A prebaked vector index is silently bound to the embedding model that built
+it. The index is embedded offline, so if the runtime ever embeds queries
+with a different model, the query vectors land in a different space and
+cosine retrieval returns confident garbage, never an error. The fix stamps
+the embedding model id inside index.npz and makes prewarm refuse to start
+when the recorded model does not match the one the current keys select. A
+missing id counts as a mismatch too, so a stale index forces a rebuild
+instead of serving junk. This first bit me swapping the embedding model out
+from under an index that was already built, which is exactly the trap.
 
 ## Run it
 

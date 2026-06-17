@@ -15,34 +15,32 @@ question goes past what a document can answer.
   when a question is not covered or needs facts about a specific lease or state.
 - Never invents statute numbers, dollar amounts, deadlines, or citations.
 
-Primary stack is full NVIDIA: Riva STT, NIM LLM, Riva TTS, and NIM embeddings,
-all under one `NVIDIA_API_KEY`. If you do not set `NVIDIA_API_KEY` but do set
-`OPENAI_API_KEY`, the demo falls back to OpenAI for STT, LLM, TTS, and
-embeddings, so you can run it with whichever key you have.
+The whole stack runs on NVIDIA under one `NVIDIA_API_KEY`: Riva STT, NIM LLM,
+Riva TTS, and NIM embeddings. The LLM and embeddings reach NIM over its
+OpenAI-compatible endpoint, so the `openai` client rides along as NVIDIA's
+transport, not as a second provider.
 
-This demo carries its own `.env.example` (`NVIDIA_API_KEY` or `OPENAI_API_KEY`,
-plus the three LiveKit values) instead of the shared template env. That is a
-deliberate, operator-cleared exception to the one-env-example rule.
+This demo carries its own `.env.example` (`NVIDIA_API_KEY` plus the three
+LiveKit values) instead of the shared template env. That is a deliberate,
+operator-cleared exception to the one-env-example rule.
 
 ## Build the index (once)
 
-The agent retrieves from a prebaked index. Build it once before the first run,
-with the same provider you will run with:
+The agent retrieves from a prebaked index. Build it once before the first run:
 
 ```sh
-cp .env.example .env   # fill NVIDIA_API_KEY, or OPENAI_API_KEY for the fallback
+cp .env.example .env   # fill NVIDIA_API_KEY
 uv sync
 uv run --no-project python build_index.py
 ```
 
 The index records which embedding model produced it, and the agent refuses to
-start if your keys select a different one. Rerun `build_index.py` whenever you
-change the documents in `data/` or switch providers.
+start if a different one is selected. Rerun `build_index.py` whenever you change
+the documents in `data/`.
 
 ## Run it
 
-1. Fill `.env` with `NVIDIA_API_KEY` (or `OPENAI_API_KEY` for the fallback) and
-   your three LiveKit values.
+1. Fill `.env` with `NVIDIA_API_KEY` and your three LiveKit values.
 2. Sync and download the voice models.
 
    ```sh

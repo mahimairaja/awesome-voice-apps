@@ -2,13 +2,13 @@
 
 Answers renter questions from a prebaked index of public HUD material, names the
 source out loud, and redirects to legal help when a question goes past what the
-documents cover. Primary stack is full NVIDIA (Riva STT, NIM LLM, Riva TTS, NIM
-embeddings); with no NVIDIA_API_KEY but an OPENAI_API_KEY set it falls back to
-OpenAI for STT, LLM, TTS, and embeddings.
+documents cover. The whole stack runs on NVIDIA under one NVIDIA_API_KEY: Riva
+STT, NIM LLM, Riva TTS, and NIM embeddings. The LLM and embeddings reach NIM over
+its OpenAI-compatible endpoint, so the openai client is NVIDIA's transport here,
+not a second provider.
 
 Run it:
-1. Copy .env.example to .env and fill NVIDIA_API_KEY (or OPENAI_API_KEY for the
-   fallback) plus the three LiveKit keys.
+1. Copy .env.example to .env and fill NVIDIA_API_KEY plus the three LiveKit keys.
 2. uv sync
 3. uv run --no-project python build_index.py (builds the retrieval index once)
 4. uv run --no-project python agent.py download-files
@@ -160,32 +160,22 @@ def _unmount_card(room: rtc.Room) -> None:
     publish_ui_event(room, "Card", "unmount", component_id=CARD_ID)
 
 
-def select_voice_providers():
-    """Pick STT, LLM, TTS by env, on the same priority as the embedding backend.
+def build_voice_stack():
+    """Build the NVIDIA voice stack: Riva STT, NIM LLM, Riva TTS.
 
-    NVIDIA_API_KEY -> full NVIDIA (Riva STT, NIM LLM, Riva TTS). Otherwise
-    OPENAI_API_KEY -> OpenAI (Whisper STT, gpt-4o-mini, OpenAI TTS).
+    The LLM talks to NIM over its OpenAI-compatible endpoint, so it is built with
+    the openai plugin pointed at NIM_BASE_URL and keyed by NVIDIA_API_KEY. NVIDIA
+    has no native LiveKit LLM plugin; this is the documented path.
     """
-    if os.environ.get("NVIDIA_API_KEY"):
-        return (
-            "nvidia",
-            nvidia.STT(language_code="en-US"),
-            openai.LLM(
-                model=NIM_LLM_MODEL,
-                base_url=NIM_BASE_URL,
-                api_key=os.environ["NVIDIA_API_KEY"],
-            ),
-            nvidia.TTS(voice="Magpie-Multilingual.EN-US.Leo", language_code="en-US"),
+    api_key = os.environ.get("NVIDIA_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "NVIDIA_API_KEY is not set; the tenant-rights stack needs it."
         )
-    if os.environ.get("OPENAI_API_KEY"):
-        return (
-            "openai",
-            openai.STT(),
-            openai.LLM(model="gpt-4o-mini"),
-            openai.TTS(),
-        )
-    raise RuntimeError(
-        "set NVIDIA_API_KEY (full NVIDIA stack) or OPENAI_API_KEY (OpenAI fallback)"
+    return (
+        nvidia.STT(language_code="en-US"),
+        openai.LLM(model=NIM_LLM_MODEL, base_url=NIM_BASE_URL, api_key=api_key),
+        nvidia.TTS(voice="Magpie-Multilingual.EN-US.Leo", language_code="en-US"),
     )
 
 
@@ -293,8 +283,8 @@ server.setup_fnc = prewarm
 async def entrypoint(ctx: JobContext) -> None:
     ctx.log_context_fields = {"room": ctx.room.name}
 
-    stack, stt, llm, tts = select_voice_providers()
-    logger.info("tenant-rights using the %s stack", stack)
+    stt, llm, tts = build_voice_stack()
+    logger.info("tenant-rights using the NVIDIA stack")
 
     session = AgentSession(
         stt=stt,
