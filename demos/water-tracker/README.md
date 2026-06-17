@@ -10,7 +10,6 @@ Tell the agent how many glasses you have drunk and it updates the live stat card
 cp ../../templates/livekit-base/.env.example .env
 # fill the six keys: LiveKit, OpenAI, Deepgram, Cartesia
 uv sync
-uv run --no-project python agent.py download-files
 uv run --no-project python agent.py dev
 ```
 

@@ -5,8 +5,7 @@ Logs glasses of water by voice and tracks progress toward a daily goal.
 Run it:
 1. Copy templates/livekit-base/.env.example to .env and fill the six keys.
 2. uv sync
-3. uv run --no-project python agent.py download-files
-4. uv run --no-project python agent.py dev, then open
+3. uv run --no-project python agent.py dev, then open
    https://playground.mahimai.ca/demos/water-tracker.
 """
 
@@ -26,9 +25,9 @@ from livekit.agents import (
     RunContext,
     cli,
     function_tool,
+    inference,
 )
-from livekit.plugins import cartesia, deepgram, openai, silero
-from livekit.plugins.turn_detector.multilingual import MultilingualModel
+from livekit.plugins import cartesia, deepgram, openai
 
 load_dotenv()
 
@@ -200,7 +199,7 @@ server = AgentServer()
 
 
 def prewarm(proc: JobProcess) -> None:
-    proc.userdata["vad"] = silero.VAD.load()
+    proc.userdata["vad"] = inference.VAD()
 
 
 server.setup_fnc = prewarm
@@ -217,7 +216,7 @@ async def entrypoint(ctx: JobContext) -> None:
         llm=openai.LLM(model="gpt-4o-mini"),
         tts=cartesia.TTS(model="sonic-2"),
         vad=ctx.proc.userdata["vad"],
-        turn_detection=MultilingualModel(),
+        turn_detection=inference.TurnDetector(),
     )
 
     await session.start(agent=WaterCoach(ctx.room), room=ctx.room)
