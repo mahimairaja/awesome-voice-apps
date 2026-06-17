@@ -1,10 +1,9 @@
 """Portable retrieval core for the tenant-rights demo.
 
 No LiveKit imports. `retrieve` is pure numpy and is the unit-tested core. The
-embedding helpers call whichever provider the environment selects (NVIDIA NIM
-when NVIDIA_API_KEY is set, otherwise OpenAI) and lazily import the openai
-client, so this module imports cleanly without the openai package installed
-(which is what lets test_rag.py run without the voice stack).
+embedding helpers call NVIDIA NIM over its OpenAI-compatible endpoint and lazily
+import the openai client, so this module imports cleanly without the openai
+package installed (which is what lets test_rag.py run without the voice stack).
 
 The same `retrieve`, `embed_query`, and `embedding_backend` lift into any other
 runtime unchanged.
@@ -17,16 +16,14 @@ from dataclasses import dataclass
 
 import numpy as np
 
-# NVIDIA NIM (primary): one NVIDIA_API_KEY covers STT, LLM, TTS, and embeddings.
+# NVIDIA NIM: one NVIDIA_API_KEY covers STT, LLM, TTS, and embeddings. Embeddings
+# go over NIM's OpenAI-compatible endpoint, so the openai client is the transport.
 NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
 NIM_EMBED_MODEL = "nvidia/nv-embedqa-e5-v5"
 
-# OpenAI fallback: used when NVIDIA_API_KEY is absent but OPENAI_API_KEY is set.
-OPENAI_EMBED_MODEL = "text-embedding-3-small"
-
 # Default cosine floor used by retrieve() when a caller passes none. The real
-# per-run floor comes from the selected EmbedBackend, since the floor is
-# embedding-model dependent.
+# per-run floor comes from the EmbedBackend, since the floor is embedding-model
+# dependent.
 DEFAULT_FLOOR = 0.4
 
 
@@ -46,32 +43,31 @@ class RetrieveResult:
 
 @dataclass
 class EmbedBackend:
-    """Which embedding provider the current environment selects.
+    """The NVIDIA NIM embedding backend the runtime uses.
 
-    The voice stack in agent.py keys off the same NVIDIA_API_KEY / OPENAI_API_KEY
-    priority, so embeddings and the STT/LLM/TTS providers always match.
+    agent.py builds its voice stack from the same NVIDIA_API_KEY, so embeddings
+    and the STT/LLM/TTS providers always match.
     """
 
-    provider: str  # "nvidia" or "openai"
+    provider: str  # always "nvidia"
     model: str
-    base_url: str | None  # None means the default OpenAI endpoint
+    base_url: str  # the NIM endpoint
     api_key_env: str
-    query_passage: bool  # NVIDIA nv-embedqa needs an input_type hint
-    floor: float  # starting cosine floor tuned to this model
+    query_passage: bool  # nv-embedqa needs an input_type hint
+    floor: float  # cosine floor tuned to this model
 
 
 def embedding_backend() -> EmbedBackend:
-    """Pick the embedding provider from the environment (NVIDIA first)."""
-    if os.environ.get("NVIDIA_API_KEY"):
-        return EmbedBackend(
-            "nvidia", NIM_EMBED_MODEL, NIM_BASE_URL, "NVIDIA_API_KEY", True, 0.40
+    """The NVIDIA NIM embedding backend. Requires NVIDIA_API_KEY."""
+    if not os.environ.get("NVIDIA_API_KEY"):
+        raise RuntimeError(
+            "NVIDIA_API_KEY is not set; the tenant-rights stack needs it."
         )
-    if os.environ.get("OPENAI_API_KEY"):
-        return EmbedBackend(
-            "openai", OPENAI_EMBED_MODEL, None, "OPENAI_API_KEY", False, 0.30
-        )
-    raise RuntimeError(
-        "set NVIDIA_API_KEY (full NVIDIA stack) or OPENAI_API_KEY (OpenAI fallback)"
+    # Floor 0.33 is tuned to nv-embedqa-e5-v5: on this model real renter-rights
+    # questions score ~0.38 and up, while greetings and off-topic chatter top out
+    # near 0.25, so 0.33 admits the former and rejects the latter with margin.
+    return EmbedBackend(
+        "nvidia", NIM_EMBED_MODEL, NIM_BASE_URL, "NVIDIA_API_KEY", True, 0.33
     )
 
 
@@ -157,7 +153,7 @@ def _async_embed_client(backend: EmbedBackend):
 
 
 async def embed_query(text: str) -> list[float]:
-    """Embed one user question for retrieval, on the selected provider."""
+    """Embed one user question for retrieval via NVIDIA NIM."""
     backend = embedding_backend()
     kwargs: dict = {"model": backend.model, "input": [text]}
     if backend.query_passage:
@@ -167,7 +163,7 @@ async def embed_query(text: str) -> list[float]:
 
 
 def embed_documents(texts: list[str]) -> list[list[float]]:
-    """Embed document passages for the offline index build (selected provider)."""
+    """Embed document passages for the offline index build via NVIDIA NIM."""
     backend = embedding_backend()
     from openai import OpenAI
 

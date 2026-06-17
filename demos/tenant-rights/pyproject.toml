@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Voice agent answering US renter questions grounded in public HUD guidance."
 requires-python = ">=3.11"
 dependencies = [
+    # The openai extra is NVIDIA NIM's transport: the NIM LLM and embeddings
+    # speak the OpenAI-compatible protocol, and NVIDIA has no native LiveKit LLM.
     "livekit-agents[nvidia,openai,silero,turn-detector]>=1.5,<2.0",
     "python-dotenv>=1.0",
     "numpy>=1.26",
