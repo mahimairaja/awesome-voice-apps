@@ -133,7 +133,20 @@ def _freed_slot(booking: dict) -> dict:
     }
 
 
+def _doctor_initials(name: str) -> str:
+    """Two-letter initials for the doctor avatar: 'Dr. Chen' -> 'CH'."""
+    words = name.replace("Dr.", "").replace("Dr", "").split()
+    if not words:
+        return "DR"
+    if len(words) == 1:
+        return words[0][:2].upper()
+    return (words[0][0] + words[-1][0]).upper()
+
+
 def _publish_slots(room: rtc.Room, mounted: set[str], slots: list[dict]) -> None:
+    # Anchor each row on the doctor: an initials avatar plus the name, with the
+    # day as the subtitle and the time on the right, so the open slots read as a
+    # who-is-free schedule rather than a flat list of dates.
     publish_ui_event(
         room,
         "List",
@@ -143,9 +156,10 @@ def _publish_slots(room: rtc.Room, mounted: set[str], slots: list[dict]) -> None
             "title": "open slots",
             "items": [
                 {
-                    "title": s["date"],
-                    "subtitle": s["doctor"],
+                    "title": s["doctor"],
+                    "subtitle": s["date"],
                     "right": s["time"],
+                    "avatar": _doctor_initials(s["doctor"]),
                 }
                 for s in slots
             ],
