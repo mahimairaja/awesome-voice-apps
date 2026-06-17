@@ -198,25 +198,16 @@ class DriveThruAttendant(Agent):
                 "You are a friendly drive-thru coffee attendant. Take orders, "
                 "confirm modifications, and suggest one add-on sparingly. Keep "
                 "replies short, plain text, no markdown or emojis. "
-                "When the customer asks to see or hear the menu, call show_menu so "
-                "it appears on screen, then describe it in a sentence or two the "
-                "way a person would (the kinds of drinks, a couple of pastries); "
-                "never read it out item by item like a list. "
+                "The full menu is on the screen the whole time. When the customer "
+                "asks about it, point them to the screen and describe it in a "
+                "sentence or two the way a person would (the kinds of drinks, a "
+                "couple of pastries); never read it out item by item like a list. "
                 f"Use add_item with these keys: {_menu_prompt()}. After "
                 "submit_order, read back the order and total, ask for a name, "
                 "and end."
             ),
         )
         self.room = room
-
-    @function_tool()
-    async def show_menu(self, context: RunContext[dict]) -> str:
-        """Show the full menu on screen.
-
-        Call this when the customer asks to see or hear the menu.
-        """
-        _publish_menu(self.room)
-        return "The menu is on the screen now."
 
     @function_tool()
     async def add_item(
@@ -311,6 +302,7 @@ async def entrypoint(ctx: JobContext) -> None:
     await session.start(agent=DriveThruAttendant(ctx.room), room=ctx.room)
     await ctx.connect()
     _publish_cart(ctx.room, userdata["cart"])
+    _publish_menu(ctx.room)
     await session.generate_reply(
         instructions="Greet the customer and ask what they would like."
     )
