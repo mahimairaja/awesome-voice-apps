@@ -10,6 +10,8 @@ Renters call legal-aid lines with the same questions over and over: deposits, re
 
 The catch is that a wrong answer on housing law is worse than no answer. Telling someone they have 30 days when they have 3 is not a small mistake. So this agent answers only from a prebaked index of public-domain HUD guidance, names its source out loud, and refuses, or hands off to legal aid, the moment a question goes past the documents or turns on a specific lease or state.
 
+The index is built from HUD's public renter-rights material: its [Tenant Rights](https://www.hud.gov/topics/rental_assistance/tenantrights) page and the [Fair Housing Act rights](https://www.hud.gov/program_offices/fair_housing_equal_opp/fair_housing_rights_and_obligations) it enforces. That is the entire knowledge base, which is exactly why the agent can name where every answer comes from.
+
 ## Why this stack
 
 The whole stack runs on one key. That is the unusual part: STT, LLM, TTS, and embeddings all come from NVIDIA, so one `NVIDIA_API_KEY` covers the entire pipeline. Riva handles speech in and out (voice Magpie-Multilingual.EN-US.Leo), NIM runs the LLM (`meta/llama-3.3-70b-instruct`) over its OpenAI-compatible endpoint, and NIM embeddings (`nvidia/nv-embedqa-e5-v5`) drive retrieval. The `openai` client here is just NVIDIA's transport. NIM speaks the OpenAI protocol, and LiveKit has no native NVIDIA LLM plugin, so you point the OpenAI client at NIM's endpoint and it works.
@@ -20,7 +22,7 @@ A mid-size instruct model is plenty, because grounded answers are short; if it f
 
 Grounding is the whole game here, so it cannot be optional. The agent does not _offer_ the model a search tool and hope it calls it. On every user turn, retrieval runs first, and the matched passages, or an explicit refusal note, are injected into the turn context before the model is allowed to reply:
 
-![Grounding by injection in the tenant-rights agent](tenant-rights-grounding-blog.svg)
+![Grounding by injection in the tenant-rights agent](https://assets.mahimai.ca/tenant-rights-grounding-blog.svg)
 
 ```python
 result = retrieve(self._index, query_vec, k=3, floor=self._floor)
