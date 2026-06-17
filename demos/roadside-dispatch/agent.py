@@ -52,6 +52,10 @@ from health import (
 load_dotenv()
 logger = logging.getLogger(__name__)
 
+# --- Call-lifecycle limits (every tunable in one place) ---
+MAX_CALL_SECONDS = 300
+IDLE_HANGUP_SECONDS = 30
+
 # --- Tyto / scoring config (every tunable in one place) ---
 TYTO_MODEL = "tyto-l-16khz"
 MODEL_DIR = Path(__file__).parent / "models"
@@ -351,12 +355,14 @@ class RoadsideAgent(Agent):
                 "tool as soon as you hear it. If a tool says the line is rough, "
                 "read the value back and confirm it before moving on, then call "
                 "confirm_field. Do not dispatch until every detail is confirmed. "
+                "After dispatch the call ends automatically. "
                 "Keep replies short, plain text, no markdown or emojis."
             ),
         )
         self.room = room
         self.health = health
         self.fields: dict[str, dict] = {}
+        self.dispatched: bool = False
 
     def _capture(self, name: str, value: str) -> str:
         state = self.health.field_state()  # clean | needs_confirmation
@@ -420,6 +426,7 @@ class RoadsideAgent(Agent):
         if unconfirmed:
             return f"The line was rough. Let me confirm your {', '.join(unconfirmed)} first."
         _publish_details(self.room, self.fields)
+        self.dispatched = True
         return "Help is on the way. Stay safe and stand clear of traffic."
 
 
@@ -458,6 +465,14 @@ def _make_on_window(session: AgentSession, agent: "RoadsideAgent", health: Audio
                 _set_barge_in(session, enabled=True)
 
     return on_window
+
+
+def _watchdog_done_callback(task: asyncio.Task) -> None:
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc:
+        logger.exception("watchdog task failed", exc_info=exc)
 
 
 server = AgentServer()
@@ -507,6 +522,113 @@ async def entrypoint(ctx: JobContext) -> None:
             )
         )
     )
+
+    # --- Call-lifecycle management ---
+    #
+    # confirmed against livekit-agents 1.6 source:
+    # - session.say(text) returns SpeechHandle which is directly awaitable
+    #   (SpeechHandle.__await__ -> wait_for_playout); awaiting it blocks
+    #   until the TTS audio has fully played out.
+    # - session.aclose() is the public graceful-shutdown API
+    #   (internally CloseReason.USER_INITIATED).
+    # - "agent_state_changed" fires on every agent-state transition
+    #   (initializing/idle/listening/thinking/speaking); new_state=="idle"
+    #   after dispatch means the closing line has finished playing.
+    # - "user_input_transcribed" fires for every STT chunk
+    #   (UserInputTranscribedEvent with is_final flag); used to reset the
+    #   idle timer on any user speech activity.
+
+    closed_event = asyncio.Event()
+    idle_task_holder: list[asyncio.Task] = []
+
+    async def _graceful_end(line: str) -> None:
+        """Speak line (if any), end the call for everyone, then close, once."""
+        if closed_event.is_set():
+            return
+        closed_event.set()
+        if line:
+            try:
+                await session.say(line, allow_interruptions=False)
+            except Exception:
+                logger.exception("lifecycle say() failed")
+        # Delete the room so the caller is disconnected too (the playground then
+        # shows the session as ended), then close the agent session.
+        try:
+            await ctx.delete_room()
+        except Exception:
+            logger.exception("delete_room failed")
+        await session.aclose()
+
+    def _on_agent_state_changed(ev) -> None:
+        # Close the session once the post-dispatch speech finishes.
+        # Guard on old_state=="speaking" so a thinking->idle micro-transition
+        # between the tool call and the LLM turn does not fire early.
+        if (
+            agent.dispatched
+            and ev.old_state == "speaking"
+            and ev.new_state == "idle"
+            and not closed_event.is_set()
+        ):
+            asyncio.create_task(
+                _graceful_end(""),
+                name="dispatch_close",
+            )
+
+    session.on("agent_state_changed", _on_agent_state_changed)
+
+    async def _idle_watchdog() -> None:
+        try:
+            await asyncio.sleep(IDLE_HANGUP_SECONDS)
+        except asyncio.CancelledError:
+            return
+        if closed_event.is_set():
+            return
+        logger.info("idle timeout reached, ending session")
+        await _graceful_end("Are you still there? I will close the call now.")
+
+    async def _max_call_watchdog() -> None:
+        try:
+            await asyncio.sleep(MAX_CALL_SECONDS)
+        except asyncio.CancelledError:
+            return
+        if closed_event.is_set():
+            return
+        logger.info("max call limit reached, ending session")
+        await _graceful_end("We have reached the time limit for this call. Take care.")
+
+    def _on_user_input(ev) -> None:
+        # Reset the idle watchdog on every user speech event (final or interim).
+        # confirmed: "user_input_transcribed" is emitted by
+        # AgentSession._user_input_transcribed for every STT chunk.
+        if closed_event.is_set():
+            return
+        if idle_task_holder and not idle_task_holder[0].done():
+            idle_task_holder[0].cancel()
+        t = asyncio.create_task(_idle_watchdog(), name="idle_watchdog")
+        t.add_done_callback(_watchdog_done_callback)
+        if idle_task_holder:
+            idle_task_holder[0] = t
+        else:
+            idle_task_holder.append(t)
+
+    session.on("user_input_transcribed", _on_user_input)
+
+    def _cancel_watchdogs(_ev=None) -> None:
+        if idle_task_holder and not idle_task_holder[0].done():
+            idle_task_holder[0].cancel()
+        if not max_task.done():
+            max_task.cancel()
+        if not score_task.done():
+            score_task.cancel()
+
+    session.on("close", _cancel_watchdogs)
+
+    idle_t = asyncio.create_task(_idle_watchdog(), name="idle_watchdog")
+    idle_t.add_done_callback(_watchdog_done_callback)
+    idle_task_holder.append(idle_t)
+
+    max_task = asyncio.create_task(_max_call_watchdog(), name="max_call_watchdog")
+    max_task.add_done_callback(_watchdog_done_callback)
 
     await session.generate_reply(
         instructions="Greet the caller as roadside assistance and ask where they are and what happened."
