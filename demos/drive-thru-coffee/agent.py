@@ -112,12 +112,15 @@ def _subtotal(cart: list[dict]) -> int:
 
 
 def _render(item: dict) -> dict:
+    # Order renders through ListPanel, which reads title/subtitle/right. Send the
+    # product as the title, the price on the right, and any modifications as the
+    # subtitle, so each line shows the item and what it costs.
     rendered = {
-        "label": item["label"],
-        "value": _fmt(item["price"]),
+        "title": item["label"],
+        "right": _fmt(item["price"]),
     }
     if item["modifications"]:
-        rendered["modifications"] = item["modifications"]
+        rendered["subtitle"] = ", ".join(item["modifications"])
     return rendered
 
 
@@ -172,19 +175,48 @@ def _publish_cart(room: rtc.Room, cart: list[dict]) -> None:
     _unmount_checkout(room)
 
 
+def _publish_menu(room: rtc.Room) -> None:
+    publish_ui_event(
+        room,
+        "List",
+        _ui_action(room, "menu"),
+        component_id="menu",
+        props={
+            "title": "menu",
+            "items": [
+                {"title": item["label"], "right": _fmt(item["price"])}
+                for item in MENU.values()
+            ],
+        },
+    )
+
+
 class DriveThruAttendant(Agent):
     def __init__(self, room: rtc.Room) -> None:
         super().__init__(
             instructions=(
                 "You are a friendly drive-thru coffee attendant. Take orders, "
-                "confirm modifications, suggest one add-on sparingly. Keep "
-                "replies short, plain text, no markdown or emojis. Use "
-                f"add_item with these keys: {_menu_prompt()}. After "
+                "confirm modifications, and suggest one add-on sparingly. Keep "
+                "replies short, plain text, no markdown or emojis. "
+                "When the customer asks to see or hear the menu, call show_menu so "
+                "it appears on screen, then describe it in a sentence or two the "
+                "way a person would (the kinds of drinks, a couple of pastries); "
+                "never read it out item by item like a list. "
+                f"Use add_item with these keys: {_menu_prompt()}. After "
                 "submit_order, read back the order and total, ask for a name, "
                 "and end."
             ),
         )
         self.room = room
+
+    @function_tool()
+    async def show_menu(self, context: RunContext[dict]) -> str:
+        """Show the full menu on screen.
+
+        Call this when the customer asks to see or hear the menu.
+        """
+        _publish_menu(self.room)
+        return "The menu is on the screen now."
 
     @function_tool()
     async def add_item(
