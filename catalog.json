@@ -111,7 +111,8 @@
       "livekit_api_secret"
     ],
     "ui_components": [
-      "Card"
+      "Card",
+      "List"
     ],
     "blog": true
   },

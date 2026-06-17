@@ -33,10 +33,11 @@ embedding-model dependent.
 
 ## The interesting part
 
-Retrieval runs on every user turn and injects the matched passages, or an
-explicit refusal note, into the turn context *before* the model replies.
-Grounding is enforced by injection, not by a tool the model may or may not
-call:
+Retrieval runs on every user turn. When a passage matches, it is injected
+into the turn context *before* the model replies; when nothing matches, a
+note tells the model to stay conversational and never answer a renter-rights
+question from general knowledge. Grounding is enforced by injection, not by a
+tool the model may or may not call:
 
 ```python
         result = retrieve(self._index, query_vec, k=3, floor=self._floor)
@@ -51,12 +52,12 @@ call:
                     "System note: answer the user's next message using only the "
                     "source passages below. Open by naming the source, for example "
                     '"According to HUD\'s resident rights guidance," then give the '
-                    "single most relevant point in one to three sentences and offer "
-                    "to go deeper. Do not recite or summarize every passage. If a "
-                    "specific number, deadline, dollar amount, or citation is not in "
-                    "these passages, say you do not have it. If the passages do not "
-                    "actually address the question, say so and point the user to "
-                    "legal help.\n\n" + passages
+                    "single most useful point in one or two sentences and offer to "
+                    "go deeper. Do not recite every passage. If a specific number, "
+                    "deadline, dollar amount, or citation is not in these passages, "
+                    "say you do not have it. If the passages do not actually answer "
+                    "the question, say in one sentence that you do not have that "
+                    "detail.\n\n" + passages
                 ),
             )
 ```

@@ -10,5 +10,5 @@
     "livekit_api_key",
     "livekit_api_secret"
   ],
-  "ui_components": ["Card"]
+  "ui_components": ["Card", "List"]
 }

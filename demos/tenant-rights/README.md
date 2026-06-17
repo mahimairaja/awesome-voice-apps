@@ -12,8 +12,11 @@ question goes past what a document can answer.
   answers, so answers come from the documents, not from guessing.
 - Opens each answer by naming the source out loud, and shows the exact
   section and document on screen in a Card.
-- Refuses and redirects to local legal aid, a tenant lawyer, or a HUD office
-  when a question is not covered or needs facts about a specific lease or state.
+- Handles greetings and small talk naturally, and when a question is outside
+  the documents, says so briefly instead of guessing or reciting a disclaimer.
+- Shows a standing list of topics it can answer and a fixed "information, not
+  legal advice" notice, so the screen guides the user and the agent never has
+  to repeat the disclaimer.
 - Never invents statute numbers, dollar amounts, deadlines, or citations.
 
 The whole stack runs on NVIDIA under one `NVIDIA_API_KEY`: Riva STT, NIM LLM,
