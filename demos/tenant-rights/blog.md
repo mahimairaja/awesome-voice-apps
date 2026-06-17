@@ -1,21 +1,22 @@
 ---
-title: A renter-rights agent that refuses to answer off-source
-summary: A voice agent that answers US renter-rights questions strictly from a prebaked HUD index, names the source out loud, and refuses anything the documents do not cover, plus the gotcha that silently binds a vector index to the model that built it.
+title: A renter-rights voice agent grounded in HUD guidance
+summary: A voice agent that answers US renter-rights questions, grounds them in public HUD guidance it shows on screen, and stays honest about what varies state by state, plus the gotcha that silently binds a vector index to the model that built it.
 author: Mahimai
 ---
 
 ## The problem
 
-Renters call legal-aid lines with the same questions over and over:
-deposits, repairs, landlord entry, fair housing, the basics of eviction.
-A first-line helper could answer the grounded ones and free a caseworker
-for the rest. The catch is that a wrong answer on housing law is worse
-than no answer. So the agent answers United States renter-rights questions
-strictly from a prebaked index of public-domain HUD guidance, names the
-source out loud, and refuses or redirects to legal aid when a question
-goes past the documents or needs facts about a specific lease or state.
-It is aimed at housing nonprofits and legal-aid teams that want a
-grounded, safe first-line helper for renters.
+Renters ask the same handful of questions over and over: deposits,
+repairs, landlord entry, fair housing, the basics of eviction. A
+first-line voice helper can answer them and free a caseworker for the
+rest. The hard part is staying useful without overstepping. HUD's public
+guidance covers the general rights well, but the specifics (exact notice
+periods, deposit caps, deadlines) vary by state and by lease. So the agent
+grounds its answers in a prebaked index of public-domain HUD guidance,
+shows the exact section it is drawing from on screen, and when a detail
+comes down to state law it gives the common rule and says so, instead of
+deflecting. It is aimed at housing nonprofits and legal-aid teams that want
+a grounded, honest first-line helper for renters.
 
 ## Why this stack
 
@@ -26,18 +27,20 @@ embeddings (nvidia/nv-embedqa-e5-v5) drive retrieval. One NVIDIA_API_KEY
 covers STT, LLM, TTS, and embeddings together; the openai client is just
 NVIDIA's transport, since NIM speaks the OpenAI protocol and LiveKit has no
 native NVIDIA LLM plugin. A mid instruct model is enough because answers
-are short and grounded; the code notes you can drop to
-meta/llama-3.1-8b-instruct if it feels laggy. The coverage floor (cosine
-0.40) is tuned to nv-embedqa-e5-v5, because how high a real match scores is
-embedding-model dependent.
+are short; the code notes you can drop to meta/llama-3.1-8b-instruct if it
+feels laggy. The coverage floor (cosine 0.33) is tuned to nv-embedqa-e5-v5:
+real renter-rights questions score around 0.38 and up on this model, while
+greetings and off-topic chatter sit lower, so the floor decides what earns
+a cited passage.
 
 ## The interesting part
 
 Retrieval runs on every user turn. When a passage matches, it is injected
-into the turn context *before* the model replies; when nothing matches, a
-note tells the model to stay conversational and never answer a renter-rights
-question from general knowledge. Grounding is enforced by injection, not by a
-tool the model may or may not call:
+into the turn context *before* the model replies and drives the on-screen
+citation. The model leans on that passage and may add well-established
+general knowledge, but it is told to flag anything that varies by state and
+never to assert an exact statute or figure that is not in the source.
+Grounding is injected, not left to a tool the model may or may not call:
 
 ```python
         result = retrieve(self._index, query_vec, k=3, floor=self._floor)
@@ -49,22 +52,25 @@ tool the model may or may not call:
             turn_ctx.add_message(
                 role="assistant",
                 content=(
-                    "System note: answer the user's next message using only the "
-                    "source passages below. Open by naming the source, for example "
-                    '"According to HUD\'s resident rights guidance," then give the '
-                    "single most useful point in one or two sentences and offer to "
-                    "go deeper. Do not recite every passage. If a specific number, "
-                    "deadline, dollar amount, or citation is not in these passages, "
-                    "say you do not have it. If the passages do not actually answer "
-                    "the question, say in one sentence that you do not have that "
-                    "detail.\n\n" + passages
+                    "System note: answer the user's next message helpfully in one "
+                    "or two sentences. Use the source passages below as your main "
+                    "grounding; you may add well-established general US "
+                    "renter-rights knowledge. When a specific number or rule varies "
+                    "by state, give the common rule and note it can vary, rather "
+                    "than deflecting. Do not state an exact number, deadline, or "
+                    "citation as certain unless it is in these passages. The screen "
+                    "shows the source, so you need not name it.\n\n" + passages
                 ),
             )
 ```
 
-The embedding-failure branch had to forbid answering from general
-knowledge outright. A soft "try again" note was the one path that could
-still leak an ungrounded answer.
+An earlier version refused everything off-source, and it felt useless: it
+deflected real questions to "that depends on state law." The fix was to
+keep retrieval as grounding and citation while letting the agent answer
+like a knowledgeable person, honest about what it cannot pin down. One
+branch stays strict, though: when the embedding call itself fails, the
+agent says it could not look that up and asks the user to retry, rather
+than guessing while the grounding path is down.
 
 ## What surprised me
 

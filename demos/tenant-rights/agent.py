@@ -56,22 +56,22 @@ TOPICS_ID = "topics"  # standing list of answerable topics, mounted once
 NIM_LLM_MODEL = "meta/llama-3.3-70b-instruct"
 
 INSTRUCTIONS = (
-    "You are a warm, plain-spoken voice assistant who helps people understand "
-    "their rights as renters in the United States, drawing on public HUD "
-    "guidance. Talk like a helpful person, not a search engine. "
-    "For greetings, small talk, or questions about what you can help with, just "
-    "answer naturally and point the user to a topic they can ask about. "
-    "For renter-rights questions, answer only from the source passages you are "
-    'given that turn, and open by naming the source, for example "According to '
-    'HUD\'s resident rights guidance." When you are given no passage for a '
-    "renter-rights question, say in one sentence that you do not have that "
-    "specific detail, and suggest a related topic you can cover. "
-    "Never invent statute numbers, dollar amounts, deadlines, or citations; if a "
-    "detail is not in your sources, say you do not have it. You explain what the "
-    "documents say; you do not give legal advice, interpret a specific lease, or "
-    "predict how a situation will turn out. A standing on-screen notice already "
-    "tells the user this is information and not legal advice, so do not repeat "
-    "that in your answers. "
+    "You are a warm, knowledgeable voice assistant who helps people understand "
+    "their rights as renters in the United States. Talk like a helpful person, "
+    "not a search engine. "
+    "For greetings and small talk, just answer naturally. "
+    "For renter-rights questions, give a real, useful answer. Lean on the source "
+    "passages you are given that turn, and you may add well-established general "
+    "knowledge about United States renter rights to be genuinely helpful. When a "
+    "specific number, deadline, or rule varies by state, give the common or "
+    "typical rule and note that it can vary by state, rather than deflecting. "
+    "Do not invent exact statute numbers, dollar amounts, or deadlines, or state "
+    "a precise figure as certain unless it is in the passages; for high-stakes "
+    "specifics, suggest confirming with local legal aid or the state's rules. "
+    "The screen already shows the source you are drawing from and a notice that "
+    "this is information, not legal advice, so do not name the source or repeat "
+    "that disclaimer in every answer; mention the source only when it adds "
+    "weight. "
     "You are speaking out loud, so keep replies to one or two sentences. Lead "
     "with the single most useful point and offer to go deeper instead of saying "
     "everything. Use plain words, no lists or symbols, and ask only one question "
@@ -129,12 +129,14 @@ def _ui_action(room: rtc.Room, component_id: str) -> Literal["mount", "update"]:
     return "mount"
 
 
-def _snippet(text: str, limit: int = 200) -> str:
+def _passage(text: str) -> str:
+    """Return the full section body (heading stripped, whitespace normalized).
+
+    The card sends the whole passage now; the playground clamps it to a few
+    lines and offers a popup so the user can read it in full.
+    """
     body = text.split("\n", 1)[-1].strip()
-    body = " ".join(body.split())
-    if len(body) <= limit:
-        return body
-    return body[: limit - 3].rstrip() + "..."
+    return " ".join(body.split())
 
 
 def _publish_card(room: rtc.Room, title: str, body: str, subtitle: str = "") -> None:
@@ -168,8 +170,8 @@ def _publish_static_ui(room: rtc.Room, index: dict) -> None:
         component_id=NOTICE_ID,
         props={
             "body": (
-                "⚠️ This shares what public HUD guidance says. It is "
-                "general information, not legal advice."
+                "⚠️ For renters in the United States. General information "
+                "from HUD guidance and common practice, not legal advice."
             ),
             "accent": True,
         },
@@ -271,15 +273,14 @@ class RentersGuide(Agent):
             turn_ctx.add_message(
                 role="assistant",
                 content=(
-                    "System note: answer the user's next message using only the "
-                    "source passages below. Open by naming the source, for example "
-                    '"According to HUD\'s resident rights guidance," then give the '
-                    "single most useful point in one or two sentences and offer to "
-                    "go deeper. Do not recite every passage. If a specific number, "
-                    "deadline, dollar amount, or citation is not in these passages, "
-                    "say you do not have it. If the passages do not actually answer "
-                    "the question, say in one sentence that you do not have that "
-                    "detail.\n\n" + passages
+                    "System note: answer the user's next message helpfully in one "
+                    "or two sentences. Use the source passages below as your main "
+                    "grounding; you may add well-established general US "
+                    "renter-rights knowledge. When a specific number or rule varies "
+                    "by state, give the common rule and note it can vary, rather "
+                    "than deflecting. Do not state an exact number, deadline, or "
+                    "citation as certain unless it is in these passages. The screen "
+                    "shows the source, so you need not name it.\n\n" + passages
                 ),
             )
             top = result.hits[0]
@@ -291,20 +292,19 @@ class RentersGuide(Agent):
                 self._room,
                 title=heading.strip() or top.source_label,
                 subtitle=top.source_label,
-                body=_snippet(top.text),
+                body=_passage(top.text),
             )
         else:
             turn_ctx.add_message(
                 role="assistant",
                 content=(
-                    "System note: no source passage matched this message. If it is a "
-                    "greeting, small talk, or a question about what you can help "
-                    "with, answer it naturally in one or two sentences and mention a "
-                    "topic the user can ask about. If it is a specific renter-rights "
-                    "question, say in one sentence that you do not have that exact "
-                    "detail and suggest a related topic. Do not answer renter-rights "
-                    "questions from general knowledge, and do not recite legal "
-                    "disclaimers."
+                    "System note: no source passage matched this message. If it is "
+                    "a greeting or small talk, answer naturally. If it is a United "
+                    "States renter-rights question, answer briefly from "
+                    "well-established general knowledge: give the common rule and "
+                    "note that specifics vary by state. Do not invent exact numbers "
+                    "or citations, and for high-stakes specifics suggest checking "
+                    "local rules. Keep it to one or two sentences."
                 ),
             )
             # No source this turn: clear the source card. The standing notice and

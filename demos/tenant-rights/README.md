@@ -1,22 +1,23 @@
 # tenant-rights
 
-Talk to a voice agent about your rights as a US renter. It answers from real
-HUD guidance, names the source out loud, and points you to legal help when a
-question goes past what a document can answer.
+Talk to a voice agent about your rights as a US renter. It grounds answers in
+real HUD guidance, shows the section it is citing on screen, and stays honest
+about what varies state by state.
 
 ## What it does
 
 - Answers renter questions (deposits, repairs, landlord entry, fair housing,
-  eviction basics, general rights) grounded in public-domain HUD material.
-- Retrieves the relevant section on every turn and injects it before the model
-  answers, so answers come from the documents, not from guessing.
-- Opens each answer by naming the source out loud, and shows the exact
-  section and document on screen in a Card.
-- Handles greetings and small talk naturally, and when a question is outside
-  the documents, says so briefly instead of guessing or reciting a disclaimer.
-- Shows a standing list of topics it can answer and a fixed "information, not
-  legal advice" notice, so the screen guides the user and the agent never has
-  to repeat the disclaimer.
+  eviction basics, general rights), grounded in public-domain HUD material.
+- Retrieves the relevant HUD section on every turn, injects it as grounding
+  before the model answers, and cites it on screen.
+- Shows the exact section and document it is drawing from in a Card you can
+  open to read the full passage.
+- Handles greetings and small talk naturally, and answers general US
+  renter-rights questions even when the documents hold only the principle,
+  giving the common rule and noting what varies by state.
+- Shows a standing list of topics it can answer and a fixed "US renters,
+  information not legal advice" notice, so the agent never repeats the
+  disclaimer.
 - Never invents statute numbers, dollar amounts, deadlines, or citations.
 
 The whole stack runs on NVIDIA under one `NVIDIA_API_KEY`: Riva STT, NIM LLM,

@@ -68,7 +68,9 @@ props: { title?: string, items: [{ label: string, value: number /*0..1*/, band?:
 ### Card
 
 A title and body card, with optional subtitle, image, footer, and accent
-border.
+border. A long `body` clamps to a few lines on the card and gains a "Read full
+passage" popup, so you can send a whole source passage without flooding the
+canvas.
 
 ```
 props: { title?: string, subtitle?: string, body?: string, image_url?: string, footer?: string, accent?: boolean }
