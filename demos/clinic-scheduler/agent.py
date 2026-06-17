@@ -203,8 +203,11 @@ class ClinicScheduler(Agent):
         super().__init__(
             instructions=(
                 "You are a friendly clinic receptionist scheduling appointments by phone. "
-                "Ask what day or doctor the caller prefers, then call find_slots to show options. "
-                "Read the options naturally, confirm the patient name and reason, then call book_appointment. "
+                "When the caller asks what is open, call find_slots right away so the "
+                "slots appear on screen; pass a day or doctor as a filter only if they "
+                "name one, otherwise show them all. "
+                "Read a couple of options naturally, confirm the patient name and reason, "
+                "then call book_appointment. "
                 "If they want to change their booking, call find_slots again, then call reschedule. "
                 "If they want to cancel and not rebook, call cancel_appointment. "
                 "Keep replies short, plain text, no markdown or emojis."
