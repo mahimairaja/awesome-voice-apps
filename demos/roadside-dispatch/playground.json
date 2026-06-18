@@ -13,5 +13,6 @@
     "livekit_api_secret",
     "aic_sdk_license"
   ],
-  "ui_components": ["Stat", "Meters", "Card", "List"]
+  "ui_components": ["Stat", "Meters", "Card", "List"],
+  "released": "2026-06-15"
 }

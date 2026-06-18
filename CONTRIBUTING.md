@@ -41,7 +41,7 @@ Every demo lives at `demos/<slug>/` and carries these files:
 | `pyproject.toml` | uv-managed runtime dependencies. Template defaults plus any demo extras. |
 | `.env.example` | The credentials the demo uses, ready to copy to `.env`. |
 | `README.md` | Short visitor entry: one-line hook, what it does, four uv commands, recording placeholder. |
-| `playground.json` | Only when the demo emits playground UI events. Title, category, description, who_for, required_credentials, ui_components. |
+| `playground.json` | Only when the demo emits playground UI events. Title, category, description, who_for, required_credentials, ui_components, released. |
 | `blog.md` | Required build writeup: frontmatter plus a markdown body in the frozen subset. Set `"blog": true` in `playground.json`. Renders on the demo's playground page. |
 
 The writeup is plain markdown only (no raw HTML, no em dashes). To add an image
@@ -82,9 +82,14 @@ A `playground.json` looks like:
     "livekit_api_key",
     "livekit_api_secret"
   ],
-  "ui_components": ["Order", "Total", "Checkout"]
+  "ui_components": ["Order", "Total", "Checkout"],
+  "released": "2026-05-12"
 }
 ```
+
+`released` is the demo's ship date (`YYYY-MM-DD`). The playground sorts
+newest-first from it and badges demos shipped in the last 14 days as new. Stamp
+it once with the ship date when the demo lands.
 
 ## Build budget
 

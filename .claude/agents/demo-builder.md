@@ -159,9 +159,12 @@ Then edit:
     "who_for": "<one sentence>",
     "recording_url": null,
     "required_credentials": [<env vars from each provider's docs page>],
-    "ui_components": [<names from docs/playground-components.md only>]
+    "ui_components": [<names from docs/playground-components.md only>],
+    "released": "<today, YYYY-MM-DD>"
   }
   ```
+  `released` is the ship date the playground sorts by; stamp it with today's
+  date.
 
 ### 4. Syntax check
 
