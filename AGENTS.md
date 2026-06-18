@@ -247,8 +247,26 @@ synthesis, so anything fancy bleeds through.
 - Anything ShipVoice-shaped. Separate repo, separate product.
 - The branded playground. Separate repo, lands in M1.
 - Per-demo custom frontends. Default is the run instructions.
-- An automated test suite for demos. Demos that need tests can add them
-  per-demo, but no top-level pytest harness.
+
+## Evals
+
+Each demo has a behavioral eval at `tests/<slug>/test_<slug>.py`. It runs the
+agent in text mode (no audio) against the demo's real LLM with LiveKit's
+`livekit.agents.evals` judges, then asserts the conversation passes; the judge is
+openai `gpt-4o-mini`. front-desk-interpreter (a realtime model) is the one demo
+without an eval.
+
+Run one locally (the demo's `.env` supplies the keys):
+
+```sh
+set -a; . demos/<slug>/.env; set +a
+uv --project demos/<slug> run --with pytest --with pytest-asyncio python -m pytest tests/<slug>
+```
+
+CI (`.github/workflows/test.yml`) runs the same per demo on a matrix and uploads
+coverage to Codecov. When you add a demo, add `tests/<slug>/test_<slug>.py` plus
+a one-line `tests/<slug>/conftest.py` (copy an existing one, it derives the slug
+from its folder).
 
 ## The daily loop
 

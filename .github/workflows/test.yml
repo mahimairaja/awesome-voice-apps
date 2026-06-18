@@ -1,0 +1,49 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  eval:
+    name: eval / ${{ matrix.demo }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        demo:
+          - clinic-scheduler
+          - drive-thru-coffee
+          - quick-trivia
+          - water-tracker
+          - roadside-dispatch
+          - tenant-rights
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: demos/${{ matrix.demo }}/uv.lock
+
+      - name: Sync demo
+        run: uv --project demos/${{ matrix.demo }} sync
+
+      - name: Run evals with coverage
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+        run: >
+          uv --project demos/${{ matrix.demo }} run
+          --with pytest --with pytest-asyncio --with pytest-cov
+          python -m pytest tests/${{ matrix.demo }}
+          --cov=demos/${{ matrix.demo }} --cov-report=xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.xml
+          flags: ${{ matrix.demo }}
+          fail_ci_if_error: false
