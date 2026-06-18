@@ -91,9 +91,7 @@ def main() -> None:
         labels=np.array(labels),
         model=np.array(backend.model),
     )
-    print(
-        f"wrote {out} ({len(texts)} chunks, dim {vectors.shape[1]}, model {backend.model})"
-    )
+    print(f"wrote {out} ({len(texts)} chunks, dim {vectors.shape[1]}, model {backend.model})")
 
 
 if __name__ == "__main__":

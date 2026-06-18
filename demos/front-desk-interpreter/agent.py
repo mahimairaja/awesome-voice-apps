@@ -80,7 +80,9 @@ def publish_ui_event(
         return
 
     try:
-        task = asyncio.create_task(room.local_participant.publish_data(payload, topic="ui", reliable=True))
+        task = asyncio.create_task(
+            room.local_participant.publish_data(payload, topic="ui", reliable=True)
+        )
     except RuntimeError:
         logger.exception("failed to schedule playground ui event")
         return
@@ -113,7 +115,9 @@ def _publish_scene(room: rtc.Room) -> None:
         component_id="scene",
         props={
             "title": "Front desk interpreter",
-            "body": ("Hand the phone across the counter. Speak any language; the desk hears English."),
+            "body": (
+                "Hand the phone across the counter. Speak any language; the desk hears English."
+            ),
             "accent": True,
         },
     )

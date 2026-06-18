@@ -100,10 +100,7 @@ def _fmt(cents: int) -> str:
 
 
 def _menu_prompt() -> str:
-    return ", ".join(
-        f"{key}: {item['label']} {_fmt(item['price'])}"
-        for key, item in MENU.items()
-    )
+    return ", ".join(f"{key}: {item['label']} {_fmt(item['price'])}" for key, item in MENU.items())
 
 
 def _subtotal(cart: list[dict]) -> int:
@@ -183,8 +180,7 @@ def _publish_menu(room: rtc.Room) -> None:
         props={
             "title": "menu",
             "items": [
-                {"title": item["label"], "right": _fmt(item["price"])}
-                for item in MENU.values()
+                {"title": item["label"], "right": _fmt(item["price"])} for item in MENU.values()
             ],
         },
     )
@@ -302,9 +298,7 @@ async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect()
     _publish_cart(ctx.room, userdata["cart"])
     _publish_menu(ctx.room)
-    await session.generate_reply(
-        instructions="Greet the customer and ask what they would like."
-    )
+    await session.generate_reply(instructions="Greet the customer and ask what they would like.")
 
 
 if __name__ == "__main__":

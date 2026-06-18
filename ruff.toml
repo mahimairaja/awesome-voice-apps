@@ -1,0 +1,4 @@
+# Repo-wide ruff config. Demos carry no ruff settings of their own, so they
+# inherit these. Pinned so local runs and CI (.github/workflows/lint.yml) agree.
+line-length = 100
+target-version = "py311"

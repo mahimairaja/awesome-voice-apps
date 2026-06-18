@@ -108,9 +108,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     await session.start(agent=Assistant(), room=ctx.room)
     await ctx.connect()
-    await session.generate_reply(
-        instructions="Greet the user and offer your help."
-    )
+    await session.generate_reply(instructions="Greet the user and offer your help.")
 
 
 if __name__ == "__main__":

@@ -221,9 +221,7 @@ def build_voice_stack():
     """
     api_key = os.environ.get("NVIDIA_API_KEY")
     if not api_key:
-        raise RuntimeError(
-            "NVIDIA_API_KEY is not set; the tenant-rights stack needs it."
-        )
+        raise RuntimeError("NVIDIA_API_KEY is not set; the tenant-rights stack needs it.")
     return (
         nvidia.STT(language_code="en-US"),
         openai.LLM(model=NIM_LLM_MODEL, base_url=NIM_BASE_URL, api_key=api_key),
@@ -238,9 +236,7 @@ class RentersGuide(Agent):
         self._index = index
         self._floor = floor
 
-    async def on_user_turn_completed(
-        self, turn_ctx: ChatContext, new_message: ChatMessage
-    ) -> None:
+    async def on_user_turn_completed(self, turn_ctx: ChatContext, new_message: ChatMessage) -> None:
         question = (new_message.text_content or "").strip()
         if not question:
             # Empty or garbled transcript: clear any stale card and suppress the
@@ -331,8 +327,7 @@ def prewarm(proc: JobProcess) -> None:
     proc.userdata["vad"] = silero.VAD.load()
     if not INDEX_PATH.exists():
         raise RuntimeError(
-            f"index not found at {INDEX_PATH}. "
-            "Run: uv run --no-project python build_index.py"
+            f"index not found at {INDEX_PATH}. Run: uv run --no-project python build_index.py"
         )
     index = load_index(INDEX_PATH)
     backend = embedding_backend()
@@ -366,9 +361,7 @@ async def entrypoint(ctx: JobContext) -> None:
     )
 
     await session.start(
-        agent=RentersGuide(
-            ctx.room, ctx.proc.userdata["index"], ctx.proc.userdata["floor"]
-        ),
+        agent=RentersGuide(ctx.room, ctx.proc.userdata["index"], ctx.proc.userdata["floor"]),
         room=ctx.room,
     )
     await ctx.connect()
@@ -406,7 +399,9 @@ async def entrypoint(ctx: JobContext) -> None:
         if closed.is_set():
             return
         logger.info("idle timeout reached, ending session")
-        await _graceful_end("Are you still there? I will close the call now to free the line. Take care.")
+        await _graceful_end(
+            "Are you still there? I will close the call now to free the line. Take care."
+        )
 
     async def _max_call_watchdog() -> None:
         try:
