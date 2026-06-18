@@ -102,5 +102,54 @@ class BuildCatalogFlagTests(unittest.TestCase):
             self.assertNotIn("blog", catalog["no-blog"])
 
 
+class ValidateReleasedTests(unittest.TestCase):
+    def test_none_rejected(self):
+        # None is an explicit JSON null, not absence; it is malformed for a date.
+        with self.assertRaises(ValueError):
+            bc.validate_released(Path("x"), None)
+
+    def test_valid_date_passes(self):
+        bc.validate_released(Path("x"), "2026-05-12")  # no raise
+
+    def test_non_string_raises(self):
+        with self.assertRaises(ValueError):
+            bc.validate_released(Path("x"), 20260512)
+
+    def test_non_canonical_raises(self):
+        with self.assertRaises(ValueError):
+            bc.validate_released(Path("x"), "2026-5-1")
+
+    def test_garbage_raises(self):
+        with self.assertRaises(ValueError):
+            bc.validate_released(Path("x"), "not-a-date")
+
+    def test_impossible_date_raises(self):
+        with self.assertRaises(ValueError):
+            bc.validate_released(Path("x"), "2026-13-40")
+
+
+class ReleasedPassthroughTests(unittest.TestCase):
+    def _load(self, extra: dict) -> dict:
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "playground.json"
+            p.write_text(json.dumps({**PLAYGROUND, **extra}), encoding="utf-8")
+            return bc.load_demo(p)
+
+    def test_released_copied_when_present(self):
+        self.assertEqual(self._load({"released": "2026-05-12"})["released"], "2026-05-12")
+
+    def test_released_absent_when_missing(self):
+        # Absence is allowed: the field is optional and simply omitted.
+        self.assertNotIn("released", self._load({}))
+
+    def test_malformed_released_in_file_raises(self):
+        with self.assertRaises(ValueError):
+            self._load({"released": "nope"})
+
+    def test_explicit_null_released_in_file_raises(self):
+        with self.assertRaises(ValueError):
+            self._load({"released": None})
+
+
 if __name__ == "__main__":
     unittest.main()

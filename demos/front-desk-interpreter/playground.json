@@ -13,5 +13,6 @@
   "ui_components": [
     "Card",
     "Captions"
-  ]
+  ],
+  "released": "2026-06-11"
 }

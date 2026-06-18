@@ -10,5 +10,6 @@
     "livekit_api_key",
     "livekit_api_secret"
   ],
-  "ui_components": ["List", "Card"]
+  "ui_components": ["List", "Card"],
+  "released": "2026-06-06"
 }

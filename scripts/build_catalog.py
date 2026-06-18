@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import date
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -31,6 +32,7 @@ CATALOG_FIELDS = (
     "recording_url",
     "required_credentials",
     "ui_components",
+    "released",
 )
 
 BLOG_FILENAME = "blog.md"
@@ -82,6 +84,25 @@ def validate_blog(blog_path: Path) -> None:
         )
 
 
+def validate_released(playground_path: Path, released: object) -> None:
+    """Validate a present `released` value: a canonical YYYY-MM-DD date string.
+
+    Raises ValueError on anything else, including None (an explicit JSON null).
+    Absence is allowed and handled by the caller, which only calls this when the
+    key is present, so 'no ship date yet' means omitting the field, not nulling
+    it."""
+    if not isinstance(released, str):
+        raise ValueError(f"{playground_path}: released must be a YYYY-MM-DD string")
+    try:
+        parsed = date.fromisoformat(released)
+    except ValueError as exc:
+        raise ValueError(f"{playground_path}: released must be YYYY-MM-DD ({exc})") from exc
+    if parsed.isoformat() != released:
+        raise ValueError(
+            f"{playground_path}: released must be canonical YYYY-MM-DD, got {released!r}"
+        )
+
+
 def load_demo(playground_path: Path) -> dict:
     with playground_path.open("r", encoding="utf-8") as fh:
         try:
@@ -94,7 +115,10 @@ def load_demo(playground_path: Path) -> dict:
         raise ValueError(
             f"{playground_path}: expected a JSON object, got {type(raw).__name__}"
         )
-    return {field: raw[field] for field in CATALOG_FIELDS if field in raw}
+    entry = {field: raw[field] for field in CATALOG_FIELDS if field in raw}
+    if "released" in entry:
+        validate_released(playground_path, entry["released"])
+    return entry
 
 
 def build_catalog() -> dict:

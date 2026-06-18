@@ -12,5 +12,6 @@
     "livekit_api_key",
     "livekit_api_secret"
   ],
-  "ui_components": ["Score", "Card", "EditableTable"]
+  "ui_components": ["Score", "Card", "EditableTable"],
+  "released": "2026-05-29"
 }

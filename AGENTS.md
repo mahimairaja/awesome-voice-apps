@@ -72,7 +72,7 @@ Every demo carries these files:
 | `.python-version` | Python 3.11 pin, copied verbatim from the template. |
 | `.env.example` | The credentials the demo uses, ready to copy to `.env`. A subset of the shared six-key reference. |
 | `README.md` | Short visitor entry: one-line hook, what it does, four uv commands, recording placeholder. |
-| `playground.json` | Only when the demo emits playground UI events. Title, category, description, who_for, required_credentials, ui_components. |
+| `playground.json` | Only when the demo emits playground UI events. Title, category, description, who_for, required_credentials, ui_components, released. |
 | `blog.md` | Build writeup: frontmatter (title, summary) plus a markdown body in the frozen subset. Renders on the demo's playground page. Always written by the subagent; optional when scaffolding by hand. |
 
 Each demo carries its own `.env.example` listing exactly the credentials it
@@ -159,9 +159,15 @@ A `playground.json` looks like:
     "livekit_api_key",
     "livekit_api_secret"
   ],
-  "ui_components": ["Order", "Total", "Checkout"]
+  "ui_components": ["Order", "Total", "Checkout"],
+  "released": "2026-05-12"
 }
 ```
+
+`released` is the demo's ship date (`YYYY-MM-DD`). The playground sorts demos
+newest-first from it and badges anything shipped in the last 14 days as new. It
+is a fixed fact, so it is a literal, not generated. Stamp it once with the ship
+date when the demo lands.
 
 `ui_components` and any `publish_ui_event` calls must use only the
 components the playground renders. The supported set and their prop

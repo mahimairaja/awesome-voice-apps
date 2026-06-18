@@ -15,6 +15,7 @@
       "List",
       "Card"
     ],
+    "released": "2026-06-06",
     "blog": true
   },
   "drive-thru-coffee": {
@@ -37,6 +38,7 @@
       "Checkout",
       "List"
     ],
+    "released": "2026-05-12",
     "blog": true
   },
   "front-desk-interpreter": {
@@ -55,6 +57,7 @@
       "Card",
       "Captions"
     ],
+    "released": "2026-06-11",
     "blog": true
   },
   "quick-trivia": {
@@ -76,6 +79,7 @@
       "Card",
       "EditableTable"
     ],
+    "released": "2026-05-29",
     "blog": true
   },
   "roadside-dispatch": {
@@ -99,6 +103,7 @@
       "Card",
       "List"
     ],
+    "released": "2026-06-15",
     "blog": true
   },
   "tenant-rights": {
@@ -117,6 +122,7 @@
       "Card",
       "List"
     ],
+    "released": "2026-06-04",
     "blog": true
   },
   "water-tracker": {
@@ -136,6 +142,7 @@
     "ui_components": [
       "Stat"
     ],
+    "released": "2026-05-29",
     "blog": true
   }
 }
