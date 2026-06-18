@@ -150,9 +150,7 @@ def _verdict(h: AudioHealth) -> str:
     if h.band == "good":
         return "audio is clean"
     drv = h.driver()
-    return (
-        VERDICTS.get(drv, "audio quality degraded") if drv else "audio quality degraded"
-    )
+    return VERDICTS.get(drv, "audio quality degraded") if drv else "audio quality degraded"
 
 
 def _publish_health(room: rtc.Room, h: AudioHealth) -> None:
@@ -218,8 +216,7 @@ def _publish_details(room: rtc.Room, fields: dict[str, dict]) -> None:
         "confirmed": "confirmed",
     }
     items = [
-        {"title": name, "subtitle": str(f["value"]), "right": state_label[f["state"]]}
-        for name, f in fields.items()
+        {"title": name, "subtitle": str(f["value"]), "right": state_label[f["state"]]} for name, f in fields.items()
     ]
     publish_ui_event(
         room,
@@ -247,8 +244,6 @@ def _publish_warming(room: rtc.Room) -> None:
     )
 
 
-# confirmed against LiveKit docs: track_subscribed emits (track, publication, participant)
-# in livekit-python 1.x; the *_args absorbs publication and participant.
 async def _wait_for_caller_track(room: rtc.Room) -> rtc.Track:
     """Return the caller's audio track, waiting for it if not yet subscribed."""
     for participant in room.remote_participants.values():
@@ -286,10 +281,6 @@ async def _score_loop(
     yields AudioFrameEvent objects; frame fields accessed are .data, .sample_rate,
     .num_channels (all confirmed present on livekit.rtc.AudioFrame in 1.x).
     """
-    # Re-acquire the caller's track whenever it changes. Replacing the mic (for
-    # example the playground's road-noise mixer republishes it) ends the current
-    # AudioStream; without re-acquiring, the loop would keep reading the dead
-    # track and report no speaker (loudness, noise, reverb all near zero).
     prev_track: rtc.Track | None = None
     while True:
         track = await _wait_for_caller_track(room)
@@ -307,9 +298,7 @@ async def _score_loop(
         async for event in stream:
             frame = event.frame
             sample_rate = frame.sample_rate
-            samples = (
-                np.frombuffer(frame.data, dtype=np.int16).astype(np.float32) / 32768.0
-            )
+            samples = np.frombuffer(frame.data, dtype=np.int16).astype(np.float32) / 32768.0
             if frame.num_channels > 1:
                 samples = samples.reshape(-1, frame.num_channels).mean(axis=1)
 
@@ -324,16 +313,11 @@ async def _score_loop(
             if len(buffer) >= window and since_hop >= hop:
                 since_hop = 0
                 chunk = np.asarray(buffer, dtype=np.float32)
-                results = await asyncio.to_thread(
-                    analyzer.analyze, chunk, sample_rate, len(chunk)
-                )
+                results = await asyncio.to_thread(analyzer.analyze, chunk, sample_rate, len(chunk))
                 if not results:
                     continue
                 result = results[-1]
-                raw = {
-                    name: float(getattr(result, name))
-                    for name in ("risk_score", *DIMENSIONS)
-                }
+                raw = {name: float(getattr(result, name)) for name in ("risk_score", *DIMENSIONS)}
                 health.update(raw)
                 _publish_health(room, health)
                 _publish_risk(room, health)
@@ -378,9 +362,7 @@ class RoadsideAgent(Agent):
     async def set_location(self, context: RunContext, location: str) -> str:
         """Record where the caller is (road, mile marker, exit, landmark)."""
         if self._capture("location", location) == "needs_confirmation":
-            return (
-                f"The line is rough. I have your location as {location}. Is that right?"
-            )
+            return f"The line is rough. I have your location as {location}. Is that right?"
         return f"Got it, location {location}."
 
     @function_tool()
@@ -401,9 +383,7 @@ class RoadsideAgent(Agent):
     async def set_callback(self, context: RunContext, number: str) -> str:
         """Record a callback phone number."""
         if self._capture("callback", number) == "needs_confirmation":
-            return (
-                f"The line is rough. I have your number as {number}. Is that correct?"
-            )
+            return f"The line is rough. I have your number as {number}. Is that correct?"
         return f"Got it, I will call back on {number}."
 
     @function_tool()
@@ -422,25 +402,14 @@ class RoadsideAgent(Agent):
         missing = [n for n in CRITICAL_FIELDS if n not in self.fields]
         if missing:
             return f"I still need your {', '.join(missing)} before I can send help."
-        unconfirmed = [
-            n
-            for n in CRITICAL_FIELDS
-            if self.fields[n]["state"] == "needs_confirmation"
-        ]
+        unconfirmed = [n for n in CRITICAL_FIELDS if self.fields[n]["state"] == "needs_confirmation"]
         if unconfirmed:
             return f"The line was rough. Let me confirm your {', '.join(unconfirmed)} first."
         _publish_details(self.room, self.fields)
         self.dispatched = True
-        # The caller-facing goodbye is spoken by the lifecycle close
-        # (uninterruptibly), so this brief status is all the agent needs to say.
         return "All details are confirmed. Dispatching help now."
 
 
-# confirmed against LiveKit docs: in livekit-agents 1.6, session.options.allow_interruptions
-# is not a settable attribute (it is deprecated in the constructor and not stored directly).
-# The live path is session.options.turn_handling["interruption"]["enabled"], which is a
-# TypedDict and is mutable at runtime. The helper is defensive against missing keys or a
-# version that does not expose the nested structure.
 def _set_barge_in(session: AgentSession, *, enabled: bool) -> None:
     """Toggle barge-in (interruption handling) on a running AgentSession."""
     try:
@@ -508,41 +477,16 @@ async def entrypoint(ctx: JobContext) -> None:
         turn_detection=MultilingualModel(),
     )
 
-    analyzer = aic.FileAnalyzer(
-        ctx.proc.userdata["tyto_model"], os.environ["AIC_SDK_LICENSE"]
-    )
+    analyzer = aic.FileAnalyzer(ctx.proc.userdata["tyto_model"], os.environ["AIC_SDK_LICENSE"])
 
     await session.start(agent=agent, room=ctx.room)
     await ctx.connect()
     _publish_warming(ctx.room)
 
-    score_task = asyncio.create_task(
-        _score_loop(ctx.room, analyzer, health, _make_on_window(session, agent, health))
-    )
+    score_task = asyncio.create_task(_score_loop(ctx.room, analyzer, health, _make_on_window(session, agent, health)))
     score_task.add_done_callback(
-        lambda t: (
-            t.cancelled()
-            or (
-                t.exception()
-                and logger.exception("score loop failed", exc_info=t.exception())
-            )
-        )
+        lambda t: t.cancelled() or (t.exception() and logger.exception("score loop failed", exc_info=t.exception()))
     )
-
-    # --- Call-lifecycle management ---
-    #
-    # confirmed against livekit-agents 1.6 source:
-    # - session.say(text) returns SpeechHandle which is directly awaitable
-    #   (SpeechHandle.__await__ -> wait_for_playout); awaiting it blocks
-    #   until the TTS audio has fully played out.
-    # - session.aclose() is the public graceful-shutdown API
-    #   (internally CloseReason.USER_INITIATED).
-    # - "agent_state_changed" fires on every agent-state transition
-    #   (initializing/idle/listening/thinking/speaking); new_state=="idle"
-    #   after dispatch means the closing line has finished playing.
-    # - "user_input_transcribed" fires for every STT chunk
-    #   (UserInputTranscribedEvent with is_final flag); used to reset the
-    #   idle timer on any user speech activity.
 
     closed_event = asyncio.Event()
     idle_task_holder: list[asyncio.Task] = []
@@ -557,8 +501,6 @@ async def entrypoint(ctx: JobContext) -> None:
                 await session.say(line, allow_interruptions=False)
             except Exception:
                 logger.exception("lifecycle say() failed")
-        # Delete the room so the caller is disconnected too (the playground then
-        # shows the session as ended), then close the agent session.
         try:
             await ctx.delete_room()
         except Exception:
@@ -566,21 +508,9 @@ async def entrypoint(ctx: JobContext) -> None:
         await session.aclose()
 
     def _on_agent_state_changed(ev) -> None:
-        # Once the agent's brief dispatch reply finishes, the lifecycle speaks the
-        # caller-facing goodbye (uninterruptibly) and then hangs up, so the call
-        # never ends on a silent or cut-off line. Guard on old_state=="speaking"
-        # so a thinking->idle micro-transition between the tool call and the LLM
-        # turn does not fire early.
-        if (
-            agent.dispatched
-            and ev.old_state == "speaking"
-            and ev.new_state == "idle"
-            and not closed_event.is_set()
-        ):
+        if agent.dispatched and ev.old_state == "speaking" and ev.new_state == "idle" and not closed_event.is_set():
             asyncio.create_task(
-                _graceful_end(
-                    "Thank you. Help is on the way. Stay safe and stand clear of traffic."
-                ),
+                _graceful_end("Thank you. Help is on the way. Stay safe and stand clear of traffic."),
                 name="dispatch_close",
             )
 
@@ -607,9 +537,6 @@ async def entrypoint(ctx: JobContext) -> None:
         await _graceful_end("We have reached the time limit for this call. Take care.")
 
     def _on_user_input(ev) -> None:
-        # Reset the idle watchdog on every user speech event (final or interim).
-        # confirmed: "user_input_transcribed" is emitted by
-        # AgentSession._user_input_transcribed for every STT chunk.
         if closed_event.is_set():
             return
         if idle_task_holder and not idle_task_holder[0].done():
