@@ -11,5 +11,6 @@
     "livekit_api_secret"
   ],
   "ui_components": ["List", "Card"],
-  "released": "2026-06-06"
+  "released": "2026-06-06",
+  "stack": {"stt": "openai", "llm": "openai", "tts": "openai"}
 }

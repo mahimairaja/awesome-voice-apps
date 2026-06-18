@@ -160,13 +160,18 @@ Then edit:
     "recording_url": null,
     "required_credentials": [<env vars from each provider's docs page>],
     "ui_components": [<names from docs/playground-components.md only>],
-    "released": "<ship date, e.g. 2026-01-15>"
+    "released": "<ship date, e.g. 2026-01-15>",
+    "stack": { "stt": "<provider>", "llm": "<provider>", "tts": "<provider>" }
   }
   ```
   `released` is the demo's ship date (`YYYY-MM-DD`), a real literal the catalog
   build validates. Use the date the demo lands (today for a same-day daily-loop
   demo). If the ship date is not settled, omit the field rather than writing a
   placeholder or null; the build rejects any non-date value.
+
+  `stack` names the chosen STT/LLM/TTS providers, lowercase, the same ids you
+  import. A realtime model that covers all three roles repeats itself (all three
+  the same provider).
 
 ### 4. Syntax check
 

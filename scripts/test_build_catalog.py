@@ -151,5 +151,56 @@ class ReleasedPassthroughTests(unittest.TestCase):
             self._load({"released": None})
 
 
+class ValidateStackTests(unittest.TestCase):
+    GOOD = {"stt": "deepgram", "llm": "openai", "tts": "cartesia"}
+
+    def test_valid_passes(self):
+        bc.validate_stack(Path("x"), dict(self.GOOD))  # no raise
+
+    def test_non_dict_raises(self):
+        with self.assertRaises(ValueError):
+            bc.validate_stack(Path("x"), "openai")
+
+    def test_none_raises(self):
+        with self.assertRaises(ValueError):
+            bc.validate_stack(Path("x"), None)
+
+    def test_missing_role_raises(self):
+        with self.assertRaises(ValueError):
+            bc.validate_stack(Path("x"), {"stt": "deepgram", "llm": "openai"})
+
+    def test_non_string_role_raises(self):
+        with self.assertRaises(ValueError):
+            bc.validate_stack(Path("x"), {**self.GOOD, "tts": 1})
+
+    def test_empty_role_raises(self):
+        with self.assertRaises(ValueError):
+            bc.validate_stack(Path("x"), {**self.GOOD, "stt": "  "})
+
+    def test_extra_key_raises(self):
+        with self.assertRaises(ValueError):
+            bc.validate_stack(Path("x"), {**self.GOOD, "vad": "silero"})
+
+
+class StackPassthroughTests(unittest.TestCase):
+    GOOD = {"stt": "deepgram", "llm": "openai", "tts": "cartesia"}
+
+    def _load(self, extra: dict) -> dict:
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "playground.json"
+            p.write_text(json.dumps({**PLAYGROUND, **extra}), encoding="utf-8")
+            return bc.load_demo(p)
+
+    def test_stack_copied_when_present(self):
+        self.assertEqual(self._load({"stack": self.GOOD})["stack"], self.GOOD)
+
+    def test_stack_absent_when_missing(self):
+        self.assertNotIn("stack", self._load({}))
+
+    def test_malformed_stack_in_file_raises(self):
+        with self.assertRaises(ValueError):
+            self._load({"stack": {"stt": "deepgram"}})
+
+
 if __name__ == "__main__":
     unittest.main()

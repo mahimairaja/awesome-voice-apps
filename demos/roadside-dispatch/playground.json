@@ -14,5 +14,6 @@
     "aic_sdk_license"
   ],
   "ui_components": ["Stat", "Meters", "Card", "List"],
-  "released": "2026-06-15"
+  "released": "2026-06-15",
+  "stack": {"stt": "deepgram", "llm": "openai", "tts": "cartesia"}
 }

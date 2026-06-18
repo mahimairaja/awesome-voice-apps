@@ -13,5 +13,6 @@
     "livekit_api_secret"
   ],
   "ui_components": ["Order", "Total", "Checkout", "List"],
-  "released": "2026-05-12"
+  "released": "2026-05-12",
+  "stack": {"stt": "deepgram", "llm": "openai", "tts": "cartesia"}
 }

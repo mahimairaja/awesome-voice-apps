@@ -13,5 +13,6 @@
     "livekit_api_secret"
   ],
   "ui_components": ["Score", "Card", "EditableTable"],
-  "released": "2026-05-29"
+  "released": "2026-05-29",
+  "stack": {"stt": "deepgram", "llm": "openai", "tts": "cartesia"}
 }
