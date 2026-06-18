@@ -70,14 +70,14 @@ Every demo carries these files:
 | `agent.py` | The voice agent. Copied from the template, then customized. |
 | `pyproject.toml` | uv-managed runtime deps. Template defaults plus demo-specific extras. |
 | `.python-version` | Python 3.11 pin, copied verbatim from the template. |
+| `.env.example` | The credentials the demo uses, ready to copy to `.env`. A subset of the shared six-key reference. |
 | `README.md` | Short visitor entry: one-line hook, what it does, four uv commands, recording placeholder. |
 | `playground.json` | Only when the demo emits playground UI events. Title, category, description, who_for, required_credentials, ui_components. |
 | `blog.md` | Build writeup: frontmatter (title, summary) plus a markdown body in the frozen subset. Renders on the demo's playground page. Always written by the subagent; optional when scaffolding by hand. |
 
-The shared six-key environment example lives at
-`templates/livekit-base/.env.example`. Demo folders do not carry their
-own env examples unless a demo needs extra credentials and the operator
-clears the exception first.
+Each demo carries its own `.env.example` listing exactly the credentials it
+uses, so `cp .env.example .env` works from the demo folder. The full six-key
+reference set still lives at `templates/livekit-base/.env.example`.
 
 `blog.md` is the one writeup file a demo may carry. The subagent always
 scaffolds it; a human scaffolding by hand may omit it. It is a build
