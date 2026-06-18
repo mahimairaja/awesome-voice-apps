@@ -1,0 +1,37 @@
+default_language_version:
+  python: python3
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        exclude: (^|/)uv\.lock$
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+  # Python lint and format. ruff resolves config per file; demos carry none, so
+  # the ruff defaults apply across the repo.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.16
+    hooks:
+      - id: ruff
+        args:
+          - --fix
+      - id: ruff-format
+  # Keep catalog.json in sync with demos/*/playground.json (replaces the old
+  # .githooks/pre-commit). If the catalog changes, the hook reports the file
+  # modified; re-stage it and commit. CI's catalog.yml also guards drift.
+  - repo: local
+    hooks:
+      - id: build-catalog
+        name: regenerate catalog.json
+        entry: python3 scripts/build_catalog.py
+        language: system
+        files: ^(demos/|catalog\.json$|scripts/build_catalog\.py$)
+        pass_filenames: false
+
+ci:
+  autofix_commit_msg: "style: pre-commit auto-fixes"
+  autoupdate_commit_msg: "chore: pre-commit autoupdate"

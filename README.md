@@ -5,6 +5,15 @@
 Voice agents that answer the phone, take the order, book the slot.
 A cookbook of small, self-contained voice AI you can clone and talk to.
 
+<p>
+  <a href="https://github.com/mahimairaja/awesome-voice-apps/actions/workflows/lint.yml"><img src="https://github.com/mahimairaja/awesome-voice-apps/actions/workflows/lint.yml/badge.svg" alt="lint" height="20"></a>
+  <a href="https://www.python.org"><img src="assets/badges/python.svg" alt="python 3.11" height="20"></a>
+  <a href="https://docs.livekit.io/agents"><img src="assets/badges/livekit.svg" alt="built on LiveKit" height="20"></a>
+  <a href="https://docs.astral.sh/ruff"><img src="assets/badges/ruff.svg" alt="style ruff" height="20"></a>
+  <a href="https://pre-commit.com"><img src="assets/badges/precommit.svg" alt="pre-commit enabled" height="20"></a>
+  <a href="LICENSE"><img src="assets/badges/license.svg" alt="license Apache 2.0" height="20"></a>
+</p>
+
 [playground](https://playground.mahimai.ca) · [contribute](CONTRIBUTING.md) · [license](LICENSE)
 
 </div>

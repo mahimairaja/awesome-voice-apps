@@ -15,10 +15,11 @@ the same file so Claude Code auto-loads it.
 make hooks
 ```
 
-Points git at `.githooks/`. The pre-commit hook regenerates
-`catalog.json` from each demo's `playground.json` when a `demos/`
-file is staged. The hook is the only thing keeping the root catalog
-in sync; without it, `catalog.json` drifts.
+Installs [pre-commit](https://pre-commit.com). On each commit it runs ruff
+(lint plus format) and regenerates `catalog.json` from each demo's
+`playground.json`. If the catalog changes, the hook reports the file modified;
+re-stage it and commit. Without the hook, `catalog.json` drifts (CI's
+`catalog.yml` is the backstop).
 
 If you also want the daily-issue and `@claude` GitHub flows wired up
 (see "The daily loop" below), the operator one-time setup is:
