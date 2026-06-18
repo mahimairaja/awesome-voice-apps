@@ -6,29 +6,21 @@ summary: A three-question voice trivia game whose quiz the visitor edits by typi
 
 ## The problem
 
-The host shows three trivia questions and their answers on screen at the
-start of the call. The caller keeps them, types over any in the panel, or
-tells the host to change one, then plays. One question at a time, a spoken
-answer, paraphrases count, the answer revealed on a miss, a running score,
-a final tally. The showpiece is no longer just the score card: it is the
-playground editing data and sending it back to the agent.
+Every demo so far pushes UI one direction: the agent draws, the screen shows. The visitor can talk, but they cannot touch what is on the screen. This one closes that gap.
+
+A trivia host puts three questions and their answers on screen at the start of the call. The caller keeps them, types over any of them in the panel, or tells the host to swap one out, and then plays. One question at a time, spoken answers, paraphrases count, the answer revealed on a miss, a running score, a final tally. The point of the demo is not the game. It is that the screen can now edit data and send it back to the agent.
 
 ## Why this stack
 
-The voice path is the template default: Deepgram Nova-3 for STT, Cartesia
-Sonic-2 voicing the upbeat host, and LiveKit inference for the rest:
-`inference.VAD` prewarmed once and reused across sessions, and
-`inference.TurnDetector` so the host judges only after the caller has
-finished answering. The grading is OpenAI gpt-4o-mini. The prompt tells it
-to decide if an answer is correct, accepting paraphrases, then call
-score_answer. The model, not code, is the grader.
+The voice path is the template default: Deepgram Nova-3 for STT and Cartesia Sonic-2 voicing the upbeat host. Turn-taking runs on LiveKit inference: `inference.VAD` prewarmed once and reused across sessions, and `inference.TurnDetector` so the host judges only after the caller has actually finished answering.
+
+Grading is OpenAI gpt-4o-mini. The prompt tells it to decide whether an answer is correct, accept paraphrases, and then call `score_answer`. The model, not code, is the grader.
 
 ## The interesting part
 
-The playground has only ever pushed UI one way, agent to screen. Letting
-the visitor edit the quiz means a return path. A new `ui_action` topic, the
-mirror of the forward `ui` channel, carries the edited grid back. The agent
-subscribes and updates its quiz:
+The playground has only ever pushed UI one way, agent to screen. Letting the visitor edit the quiz means a path back. The new `ui_action` topic is the mirror of the forward `ui` channel: it carries the edited grid from the screen to the agent, which subscribes and updates its own copy of the quiz.
+
+![One source of truth, two ways in](https://assets.mahimai.ca/quick-trivia-reverse-channel-blog.svg)
 
 ```python
 @ctx.room.on("data_received")
@@ -43,24 +35,18 @@ def on_ui_action(packet: rtc.DataPacket) -> None:
         _publish_quiz_editor(ctx.room, userdata)
 ```
 
-The same questions are editable by voice (a set_question tool) mutating the
-same userdata. One source of truth, two ways in. When the quiz starts, the
-editor unmounts so the answers leave the screen.
+The same questions are editable by voice through a `set_question` tool that mutates the same `userdata`. That is the part worth stealing: one source of truth, two ways in. Typing in the grid and telling the host hit the same state, so they can never disagree. When the quiz starts, the editor unmounts and the answers leave the screen.
 
 ## What surprised me
 
-Two things. First, the edit has to be defensive. A half-finished grid (a
-blanked answer cell) must not wipe a question, so `_apply_quiz_edit` fills a
-blank cell from the current value and keeps the row count fixed at three, so
-the score math stays clean.
+Two things, and both come down to a tool keeping the system honest.
 
-Second, the old invariant still holds. Hand the LLM both grading and flow
-and the only honest scorekeeper is the tool. score_answer keeps a set of
-already-scored question numbers, so a repeat call is a no-op and total can
-never run past the three questions. The bound 0 <= correct <= total <= 3
-holds no matter how the model behaves.
+First, the edit has to be defensive. A half-finished grid (say the caller blanks an answer cell mid-edit) must not wipe a question. So `_apply_quiz_edit` fills a blank cell from the current value and pins the row count at three, which keeps the score math clean no matter what the screen sends.
+
+Second, the old invariant from the other demos still holds. Hand the LLM both grading and flow control and the only honest scorekeeper is the tool. `score_answer` keeps a set of the question numbers it has already scored, so a repeat call is a no-op and the total can never run past three. The bound `0 <= correct <= total <= 3` holds no matter how the model behaves.
 
 ## Run it
 
-Talk to it at https://playground.mahimai.ca/demos/quick-trivia. Or fork the
-cookbook and run the worker locally.
+Talk to it at [playground.mahimai.ca/demos/quick-trivia](https://playground.mahimai.ca/demos/quick-trivia): edit a question by typing over a cell in the panel, or tell the host to change one, then play through all three. Or fork the cookbook and run the worker locally.
+
+To see the reverse channel work, type a new question into the grid before the game starts, then watch the host quiz you on your version instead of its own.
