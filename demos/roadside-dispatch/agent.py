@@ -55,6 +55,10 @@ logger = logging.getLogger(__name__)
 # --- Call-lifecycle limits (every tunable in one place) ---
 MAX_CALL_SECONDS = 300
 IDLE_HANGUP_SECONDS = 30
+# After dispatch, hold the line this long before hanging up, so a caller who is
+# still talking (a late correction the agent dispatched on too soon) keeps the
+# call instead of being cut off.
+DISPATCH_GRACE_SECONDS = 6
 
 # --- Tyto / scoring config (every tunable in one place) ---
 TYTO_MODEL = "tyto-l-16khz"
@@ -354,8 +358,11 @@ class RoadsideAgent(Agent):
                 "callback number, then dispatch. Capture each detail with its "
                 "tool as soon as you hear it. If a tool says the line is rough, "
                 "read the value back and confirm it before moving on, then call "
-                "confirm_field. Do not dispatch until every detail is confirmed. "
-                "After dispatch the call ends automatically. "
+                "confirm_field. Treat only a clear yes as confirmation; if the "
+                "caller starts to correct a value or their reply is unclear, "
+                "re-capture the new value with its tool and read it back again "
+                "instead of confirming. Do not dispatch until every detail is "
+                "confirmed. After dispatch the call ends automatically. "
                 "Keep replies short, plain text, no markdown or emojis."
             ),
         )
@@ -540,6 +547,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     closed_event = asyncio.Event()
     idle_task_holder: list[asyncio.Task] = []
+    dispatch_close_holder: list[asyncio.Task] = []
 
     async def _graceful_end(line: str) -> None:
         """Speak line (if any), end the call for everyone, then close, once."""
@@ -559,20 +567,41 @@ async def entrypoint(ctx: JobContext) -> None:
             logger.exception("delete_room failed")
         await session.aclose()
 
+    async def _dispatch_close_after_grace() -> None:
+        # Hold the line for a grace window after dispatch. A caller still talking
+        # (a correction the agent confirmed too soon, e.g. a turn-detector split
+        # that read "it is..." as a yes) cancels this from _on_user_input; only
+        # genuine silence lets the call end.
+        try:
+            await asyncio.sleep(DISPATCH_GRACE_SECONDS)
+        except asyncio.CancelledError:
+            return
+        if closed_event.is_set():
+            return
+        logger.info("dispatch grace elapsed, ending session")
+        await _graceful_end("")
+
     def _on_agent_state_changed(ev) -> None:
-        # Close the session once the post-dispatch speech finishes.
-        # Guard on old_state=="speaking" so a thinking->idle micro-transition
-        # between the tool call and the LLM turn does not fire early.
-        if (
+        # After the post-dispatch line finishes, arm the close behind a grace
+        # window instead of dropping the line at once. Guard on
+        # old_state=="speaking" so a thinking->idle micro-transition between the
+        # tool call and the LLM turn does not arm it early; skip if a close is
+        # already pending.
+        if not (
             agent.dispatched
             and ev.old_state == "speaking"
             and ev.new_state == "idle"
             and not closed_event.is_set()
         ):
-            asyncio.create_task(
-                _graceful_end(""),
-                name="dispatch_close",
-            )
+            return
+        if dispatch_close_holder and not dispatch_close_holder[0].done():
+            return
+        t = asyncio.create_task(_dispatch_close_after_grace(), name="dispatch_close")
+        t.add_done_callback(_watchdog_done_callback)
+        if dispatch_close_holder:
+            dispatch_close_holder[0] = t
+        else:
+            dispatch_close_holder.append(t)
 
     session.on("agent_state_changed", _on_agent_state_changed)
 
@@ -602,6 +631,11 @@ async def entrypoint(ctx: JobContext) -> None:
         # AgentSession._user_input_transcribed for every STT chunk.
         if closed_event.is_set():
             return
+        # A caller speaking after dispatch is not done: cancel the pending hangup
+        # so a late correction is heard instead of cut off. The agent re-captures
+        # the value with its tool and the call ends only once the caller is quiet.
+        if dispatch_close_holder and not dispatch_close_holder[0].done():
+            dispatch_close_holder[0].cancel()
         if idle_task_holder and not idle_task_holder[0].done():
             idle_task_holder[0].cancel()
         t = asyncio.create_task(_idle_watchdog(), name="idle_watchdog")
@@ -614,6 +648,8 @@ async def entrypoint(ctx: JobContext) -> None:
     session.on("user_input_transcribed", _on_user_input)
 
     def _cancel_watchdogs(_ev=None) -> None:
+        if dispatch_close_holder and not dispatch_close_holder[0].done():
+            dispatch_close_holder[0].cancel()
         if idle_task_holder and not idle_task_holder[0].done():
             idle_task_holder[0].cancel()
         if not max_task.done():
