@@ -1,19 +1,26 @@
 # quick-trivia
 
-Quizzes the caller with one short trivia question at a time and keeps score.
+Shows three trivia questions the caller can edit, then quizzes them one at a
+time and keeps score.
 
 Category: Education.
 
 ## What it does
 
-- Asks 10 trivia questions in order, one per turn.
-- Evaluates the caller's answer and accepts reasonable paraphrases.
-- Reveals the correct answer on a miss.
-- Mounts a Score card in the playground UI and updates it after every question.
-- Announces the final score after question ten.
+- Mounts an editable quiz at the start: three questions and answers the caller
+  can type over in the panel, or change by voice.
+- Plays the quiz one question per turn, each shown on a Card as it is asked.
+- Evaluates the caller's answer, accepts reasonable paraphrases, and reveals the
+  answer on a miss.
+- Mounts a Score card and updates it after every question, then announces the
+  final score.
 
-The agent uses one function tool: `score_answer`. Score state lives in the
-agent process. The playground only renders what the tool publishes.
+The agent uses three function tools: `set_question` (edit by voice during
+setup), `ask_question` (show a question and start play), and `score_answer`
+(record the result). Clickable edits arrive over a `ui_action` data channel: the
+EditableTable panel publishes the saved rows and the agent updates its quiz.
+Quiz state lives in the agent process; the playground renders what the agent
+publishes.
 
 ## Try it
 
@@ -30,7 +37,8 @@ uv run --no-project python agent.py dev
 
 Then open
 [playground.mahimai.ca/demos/quick-trivia](https://playground.mahimai.ca/demos/quick-trivia)
-and connect. Answer the questions and watch the score card update on the right.
+and connect. Edit a question in the panel (or tell the host to change one),
+say start, then answer and watch the question and score cards update on the right.
 
 ## Recording
 

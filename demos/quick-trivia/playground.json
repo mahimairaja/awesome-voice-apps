@@ -1,8 +1,8 @@
 {
   "title": "Quick trivia",
   "category": "education",
-  "description": "Quizzes the caller with one short trivia question at a time and keeps score.",
-  "who_for": "Anyone who wants a quick voice-based trivia game or wants to see live score UI updates.",
+  "description": "Shows three trivia questions the caller can edit, then quizzes them one at a time and keeps score.",
+  "who_for": "Anyone who wants a quick voice trivia game, or wants to see the playground edit data and send it back to the agent.",
   "recording_url": null,
   "required_credentials": [
     "openai_api_key",
@@ -12,5 +12,5 @@
     "livekit_api_key",
     "livekit_api_secret"
   ],
-  "ui_components": ["Score"]
+  "ui_components": ["Score", "Card", "EditableTable"]
 }

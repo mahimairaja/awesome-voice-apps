@@ -26,6 +26,26 @@ components.
 Send `mount` once per component instance, then `update` with new props as
 state changes (reuse the same `id`). The playground coalesces updates.
 
+## The reverse envelope
+
+Interactive components (today, `EditableTable`) send data back to the agent on
+the LiveKit `ui_action` topic, the mirror of `ui_event`:
+
+```json
+{
+  "type": "ui_action",
+  "component": "EditableTable",
+  "id": "<the actionId the component was given>",
+  "action": "submit",
+  "payload": { "rows": [["Q1", "A1"], ["Q2", "A2"]] }
+}
+```
+
+The agent subscribes with `room.on("data_received")`, filters
+`packet.topic == "ui_action"`, decodes the JSON, and matches on `id` and
+`action`. `payload` is component-specific. Update state, then re-publish the
+component over the forward channel so the UI reflects what the agent accepted.
+
 ## Primitives
 
 The content-agnostic building blocks. Compose a demo's UI from these.
@@ -92,6 +112,22 @@ Columns and rows of plain strings.
 ```
 props: { title?: string, columns: [string], rows: [[string]] }
 ```
+
+### EditableTable
+
+The editable twin of `Table`. Columns plus a grid of text cells the visitor can
+type into, with a Save button that publishes the edited grid back to the agent
+over the `ui_action` channel (see below). Re-send `rows` to overwrite what the
+visitor sees, for example to confirm an edit or apply a voice change. Save is
+disabled until a live session exists, so the panel is inert off-call.
+
+```
+props: { title?: string, columns: [string], rows: [[string]], submitLabel?: string, actionId?: string }
+```
+
+`actionId` is echoed as the `id` in the `ui_action` the panel publishes, so the
+agent knows which control fired. Send the same value you used for the component's
+`id`.
 
 ### Captions
 

@@ -1,78 +1,66 @@
 ---
-title: A voice trivia host that mirrors its score into live UI
+title: A voice trivia host with a quiz the caller can edit
 author: Mahimai
-summary: A ten-question voice trivia game that lets the model grade spoken answers and pushes a running score into the playground Score card, plus the state lesson when the LLM owns both grading and flow.
+summary: A three-question voice trivia game whose quiz the visitor edits by typing in the playground or by voice, built on a new reverse data channel that carries edits back to the agent.
 ---
 
 ## The problem
 
-A trivia host reads one short general-knowledge question at a time, hears
-a spoken answer, decides if it is right (a paraphrase still counts),
-reveals the answer on a miss, and keeps a running score. Ten questions,
-then a final tally. The score is the showpiece: this is the cookbook's
-canonical demo of the playground's generative-UI Score component for the
-education category. So the real audience is Mahimai AI showing off live
-score UI, plus anyone who wants a self-contained voice quiz to run locally
-and talk to.
+The host shows three trivia questions and their answers on screen at the
+start of the call. The caller keeps them, types over any in the panel, or
+tells the host to change one, then plays. One question at a time, a spoken
+answer, paraphrases count, the answer revealed on a miss, a running score,
+a final tally. The showpiece is no longer just the score card: it is the
+playground editing data and sending it back to the agent.
 
 ## Why this stack
 
 The voice path is the template default: Deepgram Nova-3 for STT, Cartesia
-Sonic-2 voicing the upbeat host, Silero VAD prewarmed once in prewarm and
-reused across sessions. The turn detector is LiveKit MultilingualModel,
-which matters for a one-question cadence: the model judges only after the
-caller has finished answering. The grading itself is OpenAI gpt-4o-mini.
-The prompt tells it to decide if the answer is correct, accepting
-paraphrases, then call score_answer with was_correct. The model, not code,
-is the grader.
+Sonic-2 voicing the upbeat host, and LiveKit inference for the rest:
+`inference.VAD` prewarmed once and reused across sessions, and
+`inference.TurnDetector` so the host judges only after the caller has
+finished answering. The grading is OpenAI gpt-4o-mini. The prompt tells it
+to decide if an answer is correct, accepting paraphrases, then call
+score_answer. The model, not code, is the grader.
 
 ## The interesting part
 
-The playground protocol wants exactly one mount per component id, then
-update for every change after. There is no separate state object tracking
-that, so a mounted set lives in userdata and a helper derives the action:
+The playground has only ever pushed UI one way, agent to screen. Letting
+the visitor edit the quiz means a return path. A new `ui_action` topic, the
+mirror of the forward `ui` channel, carries the edited grid back. The agent
+subscribes and updates its quiz:
 
 ```python
-def _ui_action(
-    mounted: set[str], component_id: str
-) -> Literal["mount", "update"]:
-    if component_id in mounted:
-        return "update"
-    mounted.add(component_id)
-    return "mount"
-
-
-def _publish_score(room: rtc.Room, data: dict) -> None:
-    publish_ui_event(
-        room,
-        "Score",
-        _ui_action(data["mounted"], "score"),
-        component_id="score",
-        props={
-            "correct": data["correct"],
-            "total": data["total"],
-            "outOf": len(QUESTIONS),
-        },
-    )
+@ctx.room.on("data_received")
+def on_ui_action(packet: rtc.DataPacket) -> None:
+    if packet.topic != UI_ACTION_TOPIC or userdata["started"]:
+        return
+    envelope = json.loads(packet.data.decode("utf-8"))
+    if envelope.get("id") != "quiz" or envelope.get("action") != "submit":
+        return
+    rows = (envelope.get("payload") or {}).get("rows")
+    if _apply_quiz_edit(userdata, rows):
+        _publish_quiz_editor(ctx.room, userdata)
 ```
 
-The first publish mounts the 0/0 card after connect, every later one
-updates it. Both the score and the mount bookkeeping live in one userdata
-dict, so the UI never disagrees with state.
+The same questions are editable by voice (a set_question tool) mutating the
+same userdata. One source of truth, two ways in. When the quiz starts, the
+editor unmounts so the answers leave the screen.
 
 ## What surprised me
 
-When you hand the LLM both grading and flow control, the only thing
-keeping the scorecard honest is the tool. A single misfire (calling the
-tool twice for one answer, or running past question ten) would publish
-11/10 against outOf 10: a progress bar past full, no error. So score_answer
-takes the question_number it is scoring and keeps a set of already-scored
-numbers in userdata. A repeat number is a no-op that returns the unchanged
-score, and a number outside 1 to 10 is refused. Because the scored set is a
-subset of the ten questions, total can never exceed outOf, so the invariant
-0 <= correct <= total <= outOf holds no matter how the model behaves.
+Two things. First, the edit has to be defensive. A half-finished grid (a
+blanked answer cell) must not wipe a question, so `_apply_quiz_edit` fills a
+blank cell from the current value and keeps the row count fixed at three, so
+the score math stays clean.
+
+Second, the old invariant still holds. Hand the LLM both grading and flow
+and the only honest scorekeeper is the tool. score_answer keeps a set of
+already-scored question numbers, so a repeat call is a no-op and total can
+never run past the three questions. The bound 0 <= correct <= total <= 3
+holds no matter how the model behaves.
 
 ## Run it
 
-Talk to it at https://playground.mahimai.ca/demos/quick-trivia. Or fork
-the cookbook and run the worker locally.
+Talk to it at https://playground.mahimai.ca/demos/quick-trivia. Or fork the
+cookbook and run the worker locally.
