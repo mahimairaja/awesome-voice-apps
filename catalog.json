@@ -16,6 +16,11 @@
       "Card"
     ],
     "released": "2026-06-06",
+    "stack": {
+      "stt": "openai",
+      "llm": "openai",
+      "tts": "openai"
+    },
     "blog": true
   },
   "drive-thru-coffee": {
@@ -39,6 +44,11 @@
       "List"
     ],
     "released": "2026-05-12",
+    "stack": {
+      "stt": "deepgram",
+      "llm": "openai",
+      "tts": "cartesia"
+    },
     "blog": true
   },
   "front-desk-interpreter": {
@@ -58,6 +68,11 @@
       "Captions"
     ],
     "released": "2026-06-11",
+    "stack": {
+      "stt": "google",
+      "llm": "google",
+      "tts": "google"
+    },
     "blog": true
   },
   "quick-trivia": {
@@ -80,6 +95,11 @@
       "EditableTable"
     ],
     "released": "2026-05-29",
+    "stack": {
+      "stt": "deepgram",
+      "llm": "openai",
+      "tts": "cartesia"
+    },
     "blog": true
   },
   "roadside-dispatch": {
@@ -104,6 +124,11 @@
       "List"
     ],
     "released": "2026-06-15",
+    "stack": {
+      "stt": "deepgram",
+      "llm": "openai",
+      "tts": "cartesia"
+    },
     "blog": true
   },
   "tenant-rights": {
@@ -123,6 +148,11 @@
       "List"
     ],
     "released": "2026-06-04",
+    "stack": {
+      "stt": "nvidia",
+      "llm": "nvidia",
+      "tts": "nvidia"
+    },
     "blog": true
   },
   "water-tracker": {
@@ -143,6 +173,11 @@
       "Stat"
     ],
     "released": "2026-05-29",
+    "stack": {
+      "stt": "deepgram",
+      "llm": "openai",
+      "tts": "cartesia"
+    },
     "blog": true
   }
 }

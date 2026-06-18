@@ -33,7 +33,10 @@ CATALOG_FIELDS = (
     "required_credentials",
     "ui_components",
     "released",
+    "stack",
 )
+
+STACK_ROLES = ("stt", "llm", "tts")
 
 BLOG_FILENAME = "blog.md"
 REQUIRED_BLOG_FIELDS = ("title", "summary")
@@ -103,6 +106,25 @@ def validate_released(playground_path: Path, released: object) -> None:
         )
 
 
+def validate_stack(playground_path: Path, stack: object) -> None:
+    """Validate a present `stack`: an object with stt, llm, tts, each a non-empty
+    provider string. Raises ValueError on anything else (including None). Absence
+    is allowed and handled by the caller, which only calls this when present."""
+    if not isinstance(stack, dict):
+        raise ValueError(f"{playground_path}: stack must be an object with stt, llm, tts")
+    for role in STACK_ROLES:
+        value = stack.get(role)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(
+                f"{playground_path}: stack.{role} must be a non-empty provider string"
+            )
+    extra = set(stack) - set(STACK_ROLES)
+    if extra:
+        raise ValueError(
+            f"{playground_path}: stack has unexpected keys: {', '.join(sorted(extra))}"
+        )
+
+
 def load_demo(playground_path: Path) -> dict:
     with playground_path.open("r", encoding="utf-8") as fh:
         try:
@@ -118,6 +140,8 @@ def load_demo(playground_path: Path) -> dict:
     entry = {field: raw[field] for field in CATALOG_FIELDS if field in raw}
     if "released" in entry:
         validate_released(playground_path, entry["released"])
+    if "stack" in entry:
+        validate_stack(playground_path, entry["stack"])
     return entry
 
 

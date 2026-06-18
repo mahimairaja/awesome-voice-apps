@@ -14,5 +14,6 @@
     "Card",
     "Captions"
   ],
-  "released": "2026-06-11"
+  "released": "2026-06-11",
+  "stack": {"stt": "google", "llm": "google", "tts": "google"}
 }

@@ -11,5 +11,6 @@
     "livekit_api_secret"
   ],
   "ui_components": ["Card", "List"],
-  "released": "2026-06-04"
+  "released": "2026-06-04",
+  "stack": {"stt": "nvidia", "llm": "nvidia", "tts": "nvidia"}
 }
