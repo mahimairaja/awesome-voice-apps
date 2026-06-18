@@ -23,14 +23,13 @@ a self-hosted LiveKit server), plus an OpenAI API key.
 ```sh
 git clone https://github.com/mahimairaja/awesome-voice-apps.git
 cd awesome-voice-apps/demos/clinic-scheduler
-cp ../../templates/livekit-base/.env.example .env
+cp .env.example .env
 uv sync
 uv run --no-project python agent.py dev
 ```
 
-This demo runs on OpenAI for STT, LLM, and TTS, so only OPENAI_API_KEY and the
-three LIVEKIT_* keys are required. The DEEPGRAM_API_KEY and CARTESIA_API_KEY
-lines in the shared template can stay blank.
+This demo runs on OpenAI for STT, LLM, and TTS, so its `.env.example` lists only
+OPENAI_API_KEY and the three LIVEKIT_* keys.
 
 Then open
 [playground.mahimai.ca/demos/clinic-scheduler](https://playground.mahimai.ca/demos/clinic-scheduler)

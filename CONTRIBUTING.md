@@ -39,6 +39,7 @@ Every demo lives at `demos/<slug>/` and carries these files:
 | --- | --- |
 | `agent.py` | The voice agent, copied from `templates/livekit-base/` and customized. |
 | `pyproject.toml` | uv-managed runtime dependencies. Template defaults plus any demo extras. |
+| `.env.example` | The credentials the demo uses, ready to copy to `.env`. |
 | `README.md` | Short visitor entry: one-line hook, what it does, four uv commands, recording placeholder. |
 | `playground.json` | Only when the demo emits playground UI events. Title, category, description, who_for, required_credentials, ui_components. |
 | `blog.md` | Required build writeup: frontmatter plus a markdown body in the frozen subset. Set `"blog": true` in `playground.json`. Renders on the demo's playground page. |
@@ -53,8 +54,9 @@ The slug is short, kebab-case, descriptive of the agent's job, never
 ending in `agent` or `demo`. Examples: `url-summarizer`,
 `drive-thru-coffee`, `intake-form-spanish`.
 
-The shared env example is `templates/livekit-base/.env.example`. Demo
-folders do not duplicate it.
+Each demo carries its own `.env.example` listing the keys it uses; copy it with
+`cp .env.example .env`. The full six-key reference set is
+`templates/livekit-base/.env.example`.
 
 ## Where metadata goes
 

@@ -23,7 +23,7 @@ self-hosted LiveKit server), plus API keys for OpenAI, Deepgram, and Cartesia.
 ```sh
 git clone https://github.com/mahimairaja/awesome-voice-apps.git
 cd awesome-voice-apps/demos/quick-trivia
-cp ../../templates/livekit-base/.env.example .env
+cp .env.example .env
 uv sync
 uv run --no-project python agent.py dev
 ```
