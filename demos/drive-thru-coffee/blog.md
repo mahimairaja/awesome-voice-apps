@@ -2,6 +2,7 @@
 title: A drive-thru cart that mirrors itself onto the screen
 summary: A coffee-ordering voice agent that adds, removes, and modifies items mid-call and mirrors the cart and a live total onto the playground. This is the cookbook's first demo, so it exists to exercise the scaffold every later demo copies. Plus the mount-once gotcha that double-mounted every card.
 author: Mahimai
+github: mahimairaja
 ---
 
 ## The problem

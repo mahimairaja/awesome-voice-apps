@@ -2,6 +2,7 @@
 title: A voice hydration coach that counts your glasses out loud
 summary: The smallest demo in the cookbook: a voice agent that logs water, mirrors a live Stat card on screen, and treats undo as a first-class problem, because voice miscounts and every count needs a way back.
 author: Mahimai
+github: mahimairaja
 ---
 
 ## The problem

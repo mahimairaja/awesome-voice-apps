@@ -134,7 +134,9 @@ Then edit:
     that order; deduplicate when STT and LLM share a provider like
     `openai`)
 - `blog.md`: a build writeup. Set `title` and `summary` in the
-  frontmatter from the hook and category. Fill the five sections (the
+  frontmatter from the hook and category, and keep `author` (Mahimai) and
+  `github` (mahimairaja); change them for an external author. Fill the five
+  sections (the
   problem, why this stack, the interesting part with the code block that
   matters, what surprised me, run it). Replace `<slug>` in the run link.
   Plain markdown only, in the frozen subset from AGENTS.md.
