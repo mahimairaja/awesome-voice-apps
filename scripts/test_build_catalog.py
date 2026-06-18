@@ -103,8 +103,10 @@ class BuildCatalogFlagTests(unittest.TestCase):
 
 
 class ValidateReleasedTests(unittest.TestCase):
-    def test_none_passes(self):
-        bc.validate_released(Path("x"), None)  # no raise
+    def test_none_rejected(self):
+        # None is an explicit JSON null, not absence; it is malformed for a date.
+        with self.assertRaises(ValueError):
+            bc.validate_released(Path("x"), None)
 
     def test_valid_date_passes(self):
         bc.validate_released(Path("x"), "2026-05-12")  # no raise
@@ -137,11 +139,16 @@ class ReleasedPassthroughTests(unittest.TestCase):
         self.assertEqual(self._load({"released": "2026-05-12"})["released"], "2026-05-12")
 
     def test_released_absent_when_missing(self):
+        # Absence is allowed: the field is optional and simply omitted.
         self.assertNotIn("released", self._load({}))
 
     def test_malformed_released_in_file_raises(self):
         with self.assertRaises(ValueError):
             self._load({"released": "nope"})
+
+    def test_explicit_null_released_in_file_raises(self):
+        with self.assertRaises(ValueError):
+            self._load({"released": None})
 
 
 if __name__ == "__main__":

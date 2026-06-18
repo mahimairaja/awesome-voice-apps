@@ -85,10 +85,12 @@ def validate_blog(blog_path: Path) -> None:
 
 
 def validate_released(playground_path: Path, released: object) -> None:
-    """Validate an optional `released` value. Raises ValueError if present and not
-    a canonical YYYY-MM-DD date string."""
-    if released is None:
-        return
+    """Validate a present `released` value: a canonical YYYY-MM-DD date string.
+
+    Raises ValueError on anything else, including None (an explicit JSON null).
+    Absence is allowed and handled by the caller, which only calls this when the
+    key is present, so 'no ship date yet' means omitting the field, not nulling
+    it."""
     if not isinstance(released, str):
         raise ValueError(f"{playground_path}: released must be a YYYY-MM-DD string")
     try:
@@ -114,7 +116,8 @@ def load_demo(playground_path: Path) -> dict:
             f"{playground_path}: expected a JSON object, got {type(raw).__name__}"
         )
     entry = {field: raw[field] for field in CATALOG_FIELDS if field in raw}
-    validate_released(playground_path, entry.get("released"))
+    if "released" in entry:
+        validate_released(playground_path, entry["released"])
     return entry
 
 
