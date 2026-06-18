@@ -2,6 +2,7 @@
 title: A renter-rights agent grounded in HUD guidance
 summary: A voice agent that answers US renter-rights questions strictly from a prebaked HUD index, names its source out loud, and refuses anything the documents don't cover. Plus the trap where a vector index is silently welded to the embedding model that built it.
 author: Mahimai
+github: mahimairaja
 ---
 
 ## The problem

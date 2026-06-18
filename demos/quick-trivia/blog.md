@@ -1,6 +1,7 @@
 ---
 title: A voice trivia host with a quiz the caller can edit
 author: Mahimai
+github: mahimairaja
 summary: A three-question voice trivia game whose quiz the visitor edits by typing in the playground or by voice, built on a new reverse data channel that carries edits back to the agent.
 ---
 

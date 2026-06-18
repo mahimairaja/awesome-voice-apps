@@ -2,6 +2,7 @@
 title: The leanest agent in the cookbook is a hotel interpreter
 summary: A speech-to-speech front-desk interpreter on Gemini Live, with no STT, TTS, VAD, or turn detector, and the one model-id gotcha that cost an afternoon.
 author: Mahimai
+github: mahimairaja
 ---
 
 ## The problem

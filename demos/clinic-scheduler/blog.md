@@ -2,6 +2,7 @@
 title: A clinic receptionist that books, confirms, and reschedules by voice
 summary: A voice receptionist that reads back real upcoming weekday slots, books one appointment, and moves it mid-call. Plus the slot-inventory invariant that took two review passes to settle, and why the agent ended up enforcing exactly one active booking.
 author: Mahimai
+github: mahimairaja
 ---
 
 ## The problem

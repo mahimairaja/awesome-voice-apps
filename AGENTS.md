@@ -95,6 +95,7 @@ Frontmatter keys (flat, simple scalars, one per line):
 - `cover` (optional external image URL; no repo binaries)
 - `canonical` (optional URL for syndication; defaults to the demo page)
 - `author` (optional, defaults to Mahimai)
+- `github` (optional, the author's GitHub username; renders their avatar and links the byline to their profile)
 
 No published date: posts carry no visible date.
 

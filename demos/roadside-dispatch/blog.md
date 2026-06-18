@@ -2,6 +2,7 @@
 title: A roadside dispatcher that scores the audio before STT runs
 summary: A breakdown-call voice agent that runs Tyto audio scoring locally and refuses to dispatch on fields it captured while the line was bad. Plus the lesson that packet loss cannot be faked from a laptop, so the gate keys off overall risk instead of any single dimension.
 author: Mahimai
+github: mahimairaja
 ---
 
 ## The problem
