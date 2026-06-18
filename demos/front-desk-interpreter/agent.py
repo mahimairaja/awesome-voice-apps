@@ -38,10 +38,7 @@ logger = logging.getLogger(__name__)
 # The agent shows the last N exchanges; the playground panel caps at 20.
 MAX_CAPTION_ROWS = 8
 
-# Pinned to the 2.5 native-audio Live model (the plugin's own default for a
-# Gemini API key). Plain "gemini-2.5-flash" is a text-API id that the Live
-# websocket rejects with a 1008, and the 3.1 live preview ignores
-# generate_reply, which this demo uses for its greeting.
+
 GEMINI_LIVE_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025"
 
 INSTRUCTIONS = (
@@ -83,9 +80,7 @@ def publish_ui_event(
         return
 
     try:
-        task = asyncio.create_task(
-            room.local_participant.publish_data(payload, topic="ui", reliable=True)
-        )
+        task = asyncio.create_task(room.local_participant.publish_data(payload, topic="ui", reliable=True))
     except RuntimeError:
         logger.exception("failed to schedule playground ui event")
         return
@@ -118,10 +113,7 @@ def _publish_scene(room: rtc.Room) -> None:
         component_id="scene",
         props={
             "title": "Front desk interpreter",
-            "body": (
-                "Hand the phone across the counter. Speak any language; "
-                "the desk hears English."
-            ),
+            "body": ("Hand the phone across the counter. Speak any language; the desk hears English."),
             "accent": True,
         },
     )
