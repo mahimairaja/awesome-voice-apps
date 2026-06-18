@@ -82,8 +82,7 @@ def validate_blog(blog_path: Path) -> None:
     missing = [f for f in REQUIRED_BLOG_FIELDS if not fields.get(f)]
     if missing:
         raise ValueError(
-            f"{blog_path}: blog.md frontmatter missing required field(s): "
-            f"{', '.join(missing)}"
+            f"{blog_path}: blog.md frontmatter missing required field(s): {', '.join(missing)}"
         )
 
 
@@ -115,9 +114,7 @@ def validate_stack(playground_path: Path, stack: object) -> None:
     for role in STACK_ROLES:
         value = stack.get(role)
         if not isinstance(value, str) or not value.strip():
-            raise ValueError(
-                f"{playground_path}: stack.{role} must be a non-empty provider string"
-            )
+            raise ValueError(f"{playground_path}: stack.{role} must be a non-empty provider string")
     extra = set(stack) - set(STACK_ROLES)
     if extra:
         raise ValueError(
@@ -134,9 +131,7 @@ def load_demo(playground_path: Path) -> dict:
                 f"{playground_path}: invalid JSON ({exc.msg} at line {exc.lineno})"
             ) from exc
     if not isinstance(raw, dict):
-        raise ValueError(
-            f"{playground_path}: expected a JSON object, got {type(raw).__name__}"
-        )
+        raise ValueError(f"{playground_path}: expected a JSON object, got {type(raw).__name__}")
     entry = {field: raw[field] for field in CATALOG_FIELDS if field in raw}
     if "released" in entry:
         validate_released(playground_path, entry["released"])
@@ -177,9 +172,7 @@ def main() -> int:
     rendered = render(catalog)
 
     if args.check:
-        current = (
-            CATALOG_PATH.read_text(encoding="utf-8") if CATALOG_PATH.exists() else ""
-        )
+        current = CATALOG_PATH.read_text(encoding="utf-8") if CATALOG_PATH.exists() else ""
         if current == rendered:
             return 0
         sys.stderr.write("catalog.json is out of date. Run scripts/build_catalog.py.\n")

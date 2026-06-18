@@ -117,9 +117,7 @@ def _ui_action(mounted: set[str], component_id: str) -> Literal["mount", "update
 
 
 def _slots_summary(slots: list[dict]) -> str:
-    return "; ".join(
-        f"{s['id']}: {s['date']} at {s['time']} with {s['doctor']}" for s in slots
-    )
+    return "; ".join(f"{s['id']}: {s['date']} at {s['time']} with {s['doctor']}" for s in slots)
 
 
 def _freed_slot(booking: dict) -> dict:
@@ -278,9 +276,7 @@ class ClinicScheduler(Agent):
             "reason": reason.strip() or "general visit",
         }
         context.userdata["booking"] = booking
-        context.userdata["available_slots"] = [
-            s for s in available if s["id"] != slot_id
-        ]
+        context.userdata["available_slots"] = [s for s in available if s["id"] != slot_id]
 
         mounted = context.userdata["ui_mounted"]
         _publish_slots(self.room, mounted, context.userdata["available_slots"])

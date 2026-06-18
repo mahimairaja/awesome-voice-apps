@@ -60,15 +60,11 @@ class EmbedBackend:
 def embedding_backend() -> EmbedBackend:
     """The NVIDIA NIM embedding backend. Requires NVIDIA_API_KEY."""
     if not os.environ.get("NVIDIA_API_KEY"):
-        raise RuntimeError(
-            "NVIDIA_API_KEY is not set; the tenant-rights stack needs it."
-        )
+        raise RuntimeError("NVIDIA_API_KEY is not set; the tenant-rights stack needs it.")
     # Floor 0.33 is tuned to nv-embedqa-e5-v5: on this model real renter-rights
     # questions score ~0.38 and up, while greetings and off-topic chatter top out
     # near 0.25, so 0.33 admits the former and rejects the latter with margin.
-    return EmbedBackend(
-        "nvidia", NIM_EMBED_MODEL, NIM_BASE_URL, "NVIDIA_API_KEY", True, 0.33
-    )
+    return EmbedBackend("nvidia", NIM_EMBED_MODEL, NIM_BASE_URL, "NVIDIA_API_KEY", True, 0.33)
 
 
 def load_index(path: str | os.PathLike) -> dict:
@@ -146,9 +142,7 @@ def _async_embed_client(backend: EmbedBackend):
     if _async_client is None:
         from openai import AsyncOpenAI
 
-        _async_client = AsyncOpenAI(
-            base_url=backend.base_url, api_key=_api_key(backend)
-        )
+        _async_client = AsyncOpenAI(base_url=backend.base_url, api_key=_api_key(backend))
     return _async_client
 
 

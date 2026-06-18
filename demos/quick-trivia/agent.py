@@ -135,9 +135,7 @@ def _unmount_quiz_editor(room: rtc.Room, data: dict) -> None:
     data["mounted"].discard("quiz")
 
 
-def _publish_question(
-    room: rtc.Room, data: dict, n: int, *, result: bool | None = None
-) -> None:
+def _publish_question(room: rtc.Room, data: dict, n: int, *, result: bool | None = None) -> None:
     """Show question n on a Card. result None while asking; True/False after scoring.
 
     All props are always sent because the playground merges card updates: when a
@@ -292,8 +290,7 @@ class TriviaHost(Agent):
         tail = "correct" if was_correct else f"answer: {answer}"
         if data["total"] == n:
             return (
-                f"Question {question_number} scored ({tail}). "
-                f"Final score: {data['correct']}/{n}."
+                f"Question {question_number} scored ({tail}). Final score: {data['correct']}/{n}."
             )
         return f"Question {question_number} scored ({tail}): {data['correct']}/{data['total']}."
 

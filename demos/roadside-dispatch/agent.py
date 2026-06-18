@@ -216,7 +216,8 @@ def _publish_details(room: rtc.Room, fields: dict[str, dict]) -> None:
         "confirmed": "confirmed",
     }
     items = [
-        {"title": name, "subtitle": str(f["value"]), "right": state_label[f["state"]]} for name, f in fields.items()
+        {"title": name, "subtitle": str(f["value"]), "right": state_label[f["state"]]}
+        for name, f in fields.items()
     ]
     publish_ui_event(
         room,
@@ -402,7 +403,9 @@ class RoadsideAgent(Agent):
         missing = [n for n in CRITICAL_FIELDS if n not in self.fields]
         if missing:
             return f"I still need your {', '.join(missing)} before I can send help."
-        unconfirmed = [n for n in CRITICAL_FIELDS if self.fields[n]["state"] == "needs_confirmation"]
+        unconfirmed = [
+            n for n in CRITICAL_FIELDS if self.fields[n]["state"] == "needs_confirmation"
+        ]
         if unconfirmed:
             return f"The line was rough. Let me confirm your {', '.join(unconfirmed)} first."
         _publish_details(self.room, self.fields)
@@ -483,9 +486,14 @@ async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect()
     _publish_warming(ctx.room)
 
-    score_task = asyncio.create_task(_score_loop(ctx.room, analyzer, health, _make_on_window(session, agent, health)))
+    score_task = asyncio.create_task(
+        _score_loop(ctx.room, analyzer, health, _make_on_window(session, agent, health))
+    )
     score_task.add_done_callback(
-        lambda t: t.cancelled() or (t.exception() and logger.exception("score loop failed", exc_info=t.exception()))
+        lambda t: (
+            t.cancelled()
+            or (t.exception() and logger.exception("score loop failed", exc_info=t.exception()))
+        )
     )
 
     closed_event = asyncio.Event()
@@ -508,9 +516,16 @@ async def entrypoint(ctx: JobContext) -> None:
         await session.aclose()
 
     def _on_agent_state_changed(ev) -> None:
-        if agent.dispatched and ev.old_state == "speaking" and ev.new_state == "idle" and not closed_event.is_set():
+        if (
+            agent.dispatched
+            and ev.old_state == "speaking"
+            and ev.new_state == "idle"
+            and not closed_event.is_set()
+        ):
             asyncio.create_task(
-                _graceful_end("Thank you. Help is on the way. Stay safe and stand clear of traffic."),
+                _graceful_end(
+                    "Thank you. Help is on the way. Stay safe and stand clear of traffic."
+                ),
                 name="dispatch_close",
             )
 

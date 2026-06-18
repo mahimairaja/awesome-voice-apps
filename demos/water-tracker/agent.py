@@ -90,9 +90,7 @@ def _ui_action(data: dict, component_id: str) -> Literal["mount", "update"]:
 def _publish_stat(room: rtc.Room, data: dict, glasses: int, goal: int) -> None:
     remaining = max(0, goal - glasses)
     caption = (
-        "Goal reached! Great job."
-        if glasses >= goal
-        else f"{remaining} more to reach your goal."
+        "Goal reached! Great job." if glasses >= goal else f"{remaining} more to reach your goal."
     )
     publish_ui_event(
         room,

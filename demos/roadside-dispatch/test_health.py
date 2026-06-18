@@ -36,10 +36,10 @@ def test_intervention_is_debounced_then_does_not_refire():
     h = AudioHealth()
     raw = {"risk_score": 0.9, "noise": 0.9}
     h.update(raw)
-    assert h.newly_fired() == []        # one window: not yet
+    assert h.newly_fired() == []  # one window: not yet
     h.update(raw)
-    assert "noise" in h.newly_fired()   # two windows: fires
-    assert h.newly_fired() == []        # already active: no refire
+    assert "noise" in h.newly_fired()  # two windows: fires
+    assert h.newly_fired() == []  # already active: no refire
 
 
 def test_intervention_clears_after_audio_recovers():
@@ -49,9 +49,9 @@ def test_intervention_clears_after_audio_recovers():
     h.update(bad)
     h.newly_fired()
     h.update({"risk_score": 0.0, "noise": 0.0})
-    assert h.newly_cleared() == []      # smoothed noise still above threshold
+    assert h.newly_cleared() == []  # smoothed noise still above threshold
     h.update({"risk_score": 0.0, "noise": 0.0})
-    assert "noise" in h.newly_cleared() # second clean window drops it below
+    assert "noise" in h.newly_cleared()  # second clean window drops it below
 
 
 def test_field_gate_uses_band():

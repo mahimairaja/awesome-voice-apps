@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: "en-US"
+early_access: false
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  auto_review:
+    enabled: true
+    drafts: false
+  path_instructions:
+    - path: "**/*.py"
+      instructions: |
+        Python cookbook of LiveKit voice agents. Ensure:
+          - Each public function and class has a clear docstring (purpose, params, returns).
+          - Avoid bare `except Exception` unless it is re-raised or logged with context.
+          - No em dashes anywhere; use colons, periods, or parentheses.
+          - Prefer uv over pip and ruff over black plus flake8.
+    - path: "demos/**/*.py"
+      instructions: |
+        This is a LiveKit voice agent demo. Additionally ensure:
+          - The entrypoint and every `@function_tool` method are `async def`. Flag blocking I/O on the async path.
+          - LiveKit plugin usage (STT, TTS, LLM, VAD, turn detection) follows the LiveKit Agents conventions.
+          - Tool docstrings are clear and LLM-readable: they are surfaced to the model.
+          - The agent `instructions` string stays short, plain text, no markdown or emojis (it is read into synthesis).
+    - path: "scripts/**/*.py"
+      instructions: |
+        Repo tooling (catalog build, tests). Stdlib only, no new dependencies, and clear error messages.
+    - path: "templates/livekit-base/**/*.py"
+      instructions: |
+        The canonical starter every demo copies from. Review carefully: changes here propagate to new demos.
+chat:
+  auto_reply: true

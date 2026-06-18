@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="85" height="20" role="img" aria-label="style: ruff">
+  <title>style: ruff</title>
+  <linearGradient id="g" x2="0" y2="100%"><stop offset="0" stop-color="#fff" stop-opacity=".12"/><stop offset="1" stop-opacity=".12"/></linearGradient>
+  <clipPath id="r"><rect width="85" height="20" rx="4" fill="#fff"/></clipPath>
+  <g clip-path="url(#r)">
+    <rect width="45" height="20" fill="#2b2f38"/>
+    <rect x="45" width="40" height="20" fill="#D7FF64"/>
+    <rect width="85" height="20" fill="url(#g)"/>
+  </g>
+  <g font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
+
+    <text x="22" y="14.5" fill="#fff" text-anchor="middle">style</text>
+    <text x="65" y="14.5" fill="#261230" text-anchor="middle" font-weight="600">ruff</text>
+  </g>
+</svg>
