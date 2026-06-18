@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 # --- Call-lifecycle limits (every tunable in one place) ---
 MAX_CALL_SECONDS = 300
-IDLE_HANGUP_SECONDS = 30
+IDLE_HANGUP_SECONDS = 45
 
 # --- Tyto / scoring config (every tunable in one place) ---
 TYTO_MODEL = "tyto-l-16khz"
@@ -560,19 +560,21 @@ async def entrypoint(ctx: JobContext) -> None:
         await session.aclose()
 
     def _on_agent_state_changed(ev) -> None:
+        if closed_event.is_set():
+            return
         # Close the session once the post-dispatch speech finishes.
         # Guard on old_state=="speaking" so a thinking->idle micro-transition
         # between the tool call and the LLM turn does not fire early.
-        if (
-            agent.dispatched
-            and ev.old_state == "speaking"
-            and ev.new_state == "idle"
-            and not closed_event.is_set()
-        ):
+        if agent.dispatched and ev.old_state == "speaking" and ev.new_state == "idle":
             asyncio.create_task(
                 _graceful_end(""),
                 name="dispatch_close",
             )
+            return
+        # The agent thinking, speaking, or just handing the turn back is activity:
+        # the call is not idle. Reset the idle timer so a long read-back or a
+        # caller pausing to verify a number is not mistaken for a dead line.
+        _reset_idle()
 
     session.on("agent_state_changed", _on_agent_state_changed)
 
@@ -596,10 +598,9 @@ async def entrypoint(ctx: JobContext) -> None:
         logger.info("max call limit reached, ending session")
         await _graceful_end("We have reached the time limit for this call. Take care.")
 
-    def _on_user_input(ev) -> None:
-        # Reset the idle watchdog on every user speech event (final or interim).
-        # confirmed: "user_input_transcribed" is emitted by
-        # AgentSession._user_input_transcribed for every STT chunk.
+    def _reset_idle() -> None:
+        """Restart the idle timer. Called on any activity (user speech or the
+        agent working), so the hangup only fires on genuine two-sided silence."""
         if closed_event.is_set():
             return
         if idle_task_holder and not idle_task_holder[0].done():
@@ -610,6 +611,11 @@ async def entrypoint(ctx: JobContext) -> None:
             idle_task_holder[0] = t
         else:
             idle_task_holder.append(t)
+
+    def _on_user_input(ev) -> None:
+        # Reset the idle watchdog on every user speech event (final or interim).
+        # "user_input_transcribed" is emitted for every STT chunk.
+        _reset_idle()
 
     session.on("user_input_transcribed", _on_user_input)
 
@@ -623,9 +629,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     session.on("close", _cancel_watchdogs)
 
-    idle_t = asyncio.create_task(_idle_watchdog(), name="idle_watchdog")
-    idle_t.add_done_callback(_watchdog_done_callback)
-    idle_task_holder.append(idle_t)
+    _reset_idle()
 
     max_task = asyncio.create_task(_max_call_watchdog(), name="max_call_watchdog")
     max_task.add_done_callback(_watchdog_done_callback)
