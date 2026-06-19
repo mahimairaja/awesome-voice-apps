@@ -33,6 +33,7 @@ CATALOG_FIELDS = (
     "required_credentials",
     "ui_components",
     "released",
+    "multiparty",
     "stack",
 )
 

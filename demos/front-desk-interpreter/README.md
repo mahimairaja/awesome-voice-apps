@@ -45,10 +45,18 @@ Gemini key stays in the local agent `.env`.
 
 Then open https://playground.mahimai.ca/demos/front-desk-interpreter, paste
 your three LiveKit values, and start talking. Try opening in English, then
-switching to any other language mid-call; hand the phone back and forth.
+switching to any other language mid-call.
 
 No download-files step: there are no local VAD or turn-detector weights to
 fetch.
+
+## Two-party call
+
+The two speakers can also be on their own devices. Once connected, use "invite a
+guest" to copy a join link, then open it in another tab or send it to a second
+device. That person joins the same room on camera, and the interpreter relays
+both directions, switching to whoever is speaking. Use headphones (or two
+devices) so the speakers do not echo into the mics.
 
 ## Recording
 

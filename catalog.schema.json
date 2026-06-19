@@ -90,6 +90,9 @@
       },
       "blog": {
         "type": "boolean"
+      },
+      "multiparty": {
+        "type": "boolean"
       }
     }
   }

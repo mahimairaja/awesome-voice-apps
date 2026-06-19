@@ -15,5 +15,6 @@
     "Captions"
   ],
   "released": "2026-06-11",
+  "multiparty": true,
   "stack": {"stt": "google", "llm": "google", "tts": "google"}
 }
