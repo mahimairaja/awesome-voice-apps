@@ -326,9 +326,7 @@ server = AgentServer()
 def prewarm(proc: JobProcess) -> None:
     proc.userdata["vad"] = silero.VAD.load()
     if not INDEX_PATH.exists():
-        raise RuntimeError(
-            f"index not found at {INDEX_PATH}. Run: uv run python build_index.py"
-        )
+        raise RuntimeError(f"index not found at {INDEX_PATH}. Run: uv run python build_index.py")
     index = load_index(INDEX_PATH)
     backend = embedding_backend()
     if index["model"] != backend.model:
