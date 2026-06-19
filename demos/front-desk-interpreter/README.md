@@ -58,6 +58,11 @@ device. That person joins the same room on camera, and the interpreter relays
 both directions, switching to whoever is speaking. Use headphones (or two
 devices) so the speakers do not echo into the mics.
 
+Before connecting, pick the desk-side language (default English) from the target
+language dropdown. Everything the guest says is rendered into that language, and
+that language is rendered back into whatever the guest speaks. Changing it means
+reconnecting, since the interpreter's instructions are fixed for the session.
+
 ## Recording
 
 Coming after the demo is recorded.
