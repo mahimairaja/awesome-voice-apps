@@ -117,7 +117,8 @@ def _publish_scene(room: rtc.Room) -> None:
         props={
             "title": "Front desk interpreter",
             "body": (
-                "Hand the phone across the counter. Speak any language; the desk hears English."
+                "Invite a guest to join on their own device. Speak any language; "
+                "the interpreter relays both ways."
             ),
             "accent": True,
         },
@@ -201,7 +202,10 @@ async def entrypoint(ctx: JobContext) -> None:
     def on_active_speakers(speakers: list[rtc.Participant]) -> None:
         if agent_speaking["now"]:
             return
-        room_io = session.room_io
+        # session.room_io raises until the session is started; this event only
+        # fires after connect, but read the backing attribute so an early fire
+        # is skipped rather than raised.
+        room_io = getattr(session, "_room_io", None)
         if room_io is None:
             return
         local_identity = ctx.room.local_participant.identity
