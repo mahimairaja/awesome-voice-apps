@@ -39,6 +39,10 @@ logger = logging.getLogger(__name__)
 # The agent shows the last N exchanges; the playground panel caps at 20.
 MAX_CAPTION_ROWS = 8
 
+# A late joiner asks for the current UI on this topic once its data handler is
+# attached; the agent replays the scene and captions to just that participant.
+UI_REQUEST_TOPIC = "ui_request"
+
 
 GEMINI_LIVE_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025"
 
@@ -264,18 +268,21 @@ async def entrypoint(ctx: JobContext) -> None:
 
     ctx.room.on("active_speakers_changed", on_active_speakers)
 
-    def on_participant_connected(participant: rtc.RemoteParticipant) -> None:
+    def on_ui_request(packet: rtc.DataPacket) -> None:
         # A late joiner (the invited guest) missed the initial broadcast mounts,
-        # and the playground drops UI updates for components it never mounted.
-        # Replay the current UI to just this participant as fresh mounts so their
-        # captions panel populates without disturbing the host.
-        if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_AGENT:
+        # and the playground drops UI updates for a component it never mounted.
+        # Replaying on participant_connected would race the joiner's data
+        # handler, which only attaches after it finishes connecting its media.
+        # Instead the joiner asks for the UI once it is listening, and we replay
+        # the current scene and captions to just that participant.
+        if packet.topic != UI_REQUEST_TOPIC or packet.participant is None:
             return
-        _publish_scene(ctx.room, to=participant.identity)
+        identity = packet.participant.identity
+        _publish_scene(ctx.room, to=identity)
         if captions:
-            _publish_captions(ctx.room, captions, to=participant.identity)
+            _publish_captions(ctx.room, captions, to=identity)
 
-    ctx.room.on("participant_connected", on_participant_connected)
+    ctx.room.on("data_received", on_ui_request)
 
     await session.start(agent=FrontDeskInterpreter(target_language), room=ctx.room)
     await ctx.connect()
