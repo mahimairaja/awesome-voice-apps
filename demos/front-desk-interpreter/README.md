@@ -40,7 +40,7 @@ Gemini key stays in the local agent `.env`.
 3. Start the agent.
 
    ```sh
-   uv run --no-project python agent.py dev
+   uv run python agent.py dev
    ```
 
 Then open https://playground.mahimai.ca/demos/front-desk-interpreter, paste

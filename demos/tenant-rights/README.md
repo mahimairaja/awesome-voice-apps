@@ -38,7 +38,7 @@ The agent retrieves from a prebaked index. Build it once before the first run:
 ```sh
 cp .env.example .env   # fill NVIDIA_API_KEY
 uv sync
-uv run --no-project python build_index.py
+uv run python build_index.py
 ```
 
 The index records which embedding model produced it, and the agent refuses to
@@ -51,13 +51,13 @@ the documents in `data/`.
 2. Sync and download the voice models.
 
    ```sh
-   uv run --no-project python agent.py download-files
+   uv run python agent.py download-files
    ```
 
 3. Start the agent.
 
    ```sh
-   uv run --no-project python agent.py dev
+   uv run python agent.py dev
    ```
 
 Then open https://playground.mahimai.ca/demos/tenant-rights, paste your three
@@ -69,7 +69,7 @@ The grounding and refusal logic is pure and has no LiveKit or network
 dependency:
 
 ```sh
-uv run --no-project python test_rag.py
+uv run python test_rag.py
 ```
 
 ## Recording

@@ -6,7 +6,7 @@ and handles reschedules.
 Run it:
 1. Copy templates/livekit-base/.env.example to .env and fill the keys.
 2. Run: uv sync
-3. Run: uv run --no-project python agent.py dev
+3. Run: uv run python agent.py dev
    Then open https://playground.mahimai.ca/demos/clinic-scheduler.
 """
 

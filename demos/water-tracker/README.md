@@ -10,7 +10,7 @@ Tell the agent how many glasses you have drunk and it updates the live stat card
 cp .env.example .env
 # fill the six keys: LiveKit, OpenAI, Deepgram, Cartesia
 uv sync
-uv run --no-project python agent.py dev
+uv run python agent.py dev
 ```
 
 Open [playground.mahimai.ca/demos/water-tracker](https://playground.mahimai.ca/demos/water-tracker) and talk to the agent.

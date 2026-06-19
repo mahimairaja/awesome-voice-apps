@@ -10,9 +10,9 @@ not a second provider.
 Run it:
 1. Copy .env.example to .env and fill NVIDIA_API_KEY plus the three LiveKit keys.
 2. uv sync
-3. uv run --no-project python build_index.py (builds the retrieval index once)
-4. uv run --no-project python agent.py download-files
-5. uv run --no-project python agent.py dev, then open
+3. uv run python build_index.py (builds the retrieval index once)
+4. uv run python agent.py download-files
+5. uv run python agent.py dev, then open
    https://playground.mahimai.ca/demos/tenant-rights.
 """
 
@@ -327,7 +327,7 @@ def prewarm(proc: JobProcess) -> None:
     proc.userdata["vad"] = silero.VAD.load()
     if not INDEX_PATH.exists():
         raise RuntimeError(
-            f"index not found at {INDEX_PATH}. Run: uv run --no-project python build_index.py"
+            f"index not found at {INDEX_PATH}. Run: uv run python build_index.py"
         )
     index = load_index(INDEX_PATH)
     backend = embedding_backend()
@@ -336,7 +336,7 @@ def prewarm(proc: JobProcess) -> None:
         raise RuntimeError(
             f"index was built with embeddings '{built}' but the current keys "
             f"select '{backend.model}'. Rebuild it: "
-            "uv run --no-project python build_index.py"
+            "uv run python build_index.py"
         )
     proc.userdata["index"] = index
     proc.userdata["floor"] = backend.floor

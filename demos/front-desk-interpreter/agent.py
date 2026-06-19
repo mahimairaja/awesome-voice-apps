@@ -7,7 +7,7 @@ Gemini Live API: no STT, no TTS, no VAD model, no turn detector.
 Run it:
 1. Copy .env.example to .env and fill GOOGLE_API_KEY plus the three LiveKit keys.
 2. uv sync
-3. uv run --no-project python agent.py dev, then open
+3. uv run python agent.py dev, then open
    https://playground.mahimai.ca/demos/front-desk-interpreter.
 """
 

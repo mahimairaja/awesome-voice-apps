@@ -32,7 +32,7 @@ git clone https://github.com/mahimairaja/awesome-voice-apps.git
 cd awesome-voice-apps/demos/quick-trivia
 cp .env.example .env
 uv sync
-uv run --no-project python agent.py dev
+uv run python agent.py dev
 ```
 
 Then open

@@ -17,7 +17,7 @@ Accepts three input shapes:
 When `demo-builder` finishes, confirm the demo boots locally:
 
 ```sh
-cd demos/<slug> && uv sync && uv run --no-project python agent.py download-files && uv run --no-project python agent.py dev
+cd demos/<slug> && uv sync && uv run python agent.py download-files && uv run python agent.py dev
 ```
 
 Then commit. The pre-commit hook regenerates `catalog.json` from the

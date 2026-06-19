@@ -144,8 +144,8 @@ Then edit:
   - title and one-line hook
   - "What it does" with three to five bullets drawn from the hook
   - "Run it" with the four uv commands
-    (`uv sync`, `uv run --no-project python agent.py download-files`,
-    `uv run --no-project python agent.py dev`, plus the
+    (`uv sync`, `uv run python agent.py download-files`,
+    `uv run python agent.py dev`, plus the
     `cp .env.example .env` line), then a closing line that tells the
     reader to open `playground.mahimai.ca/demos/<slug>`, paste their
     three LiveKit values, and start talking. Never point at
@@ -194,7 +194,7 @@ list:
 - the function tools added
 - rough LOC count for `agent.py`
 - the one-line command to run the demo locally:
-  `cd demos/<slug> && uv sync && uv run --no-project python agent.py dev`
+  `cd demos/<slug> && uv sync && uv run python agent.py dev`
 - confirmation that the quality bar below was checked (state invariants, UI
   mirrors state, prompt matches tools, fresh data, edge cases, run docs)
 

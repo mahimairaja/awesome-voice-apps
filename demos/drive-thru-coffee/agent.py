@@ -7,7 +7,7 @@ pickup name.
 Run it:
 1. Copy templates/livekit-base/.env.example to .env and fill the six keys.
 2. Run uv sync.
-3. Run uv run --no-project python agent.py dev, then open
+3. Run uv run python agent.py dev, then open
    https://playground.mahimai.ca/demos/drive-thru-coffee.
 
 Recording: coming after the demo is recorded.
