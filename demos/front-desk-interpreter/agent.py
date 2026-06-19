@@ -23,6 +23,7 @@ from livekit.agents import (
     Agent,
     AgentServer,
     AgentSession,
+    AgentStateChangedEvent,
     ConversationItemAddedEvent,
     JobContext,
     UserInputTranscribedEvent,
@@ -42,18 +43,18 @@ MAX_CAPTION_ROWS = 8
 GEMINI_LIVE_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025"
 
 INSTRUCTIONS = (
-    "You are a live interpreter at a hotel front desk. Two people share one "
-    "phone: a guest who may speak any language, and a desk clerk who speaks "
-    "English. You interpret between them and do nothing else. When you hear a "
-    "language other than English, say it again in English. When you hear "
-    "English, say it again in the language the guest has been speaking. If "
-    "English is spoken before the guest has said anything, say in one short "
-    "English sentence that you are ready and the guest may speak any language. "
-    "Interpret faithfully and completely, in the first person, keeping "
-    "questions as questions. Never answer questions yourself, never add advice "
-    "or opinions, never summarize. Keep exactly the meaning and tone of what "
-    "was said. Greet once at the start, in English, with one sentence that "
-    "explains the setup."
+    "You are a live interpreter on a call between two people. One is a desk "
+    "clerk who speaks English; the other is a guest who may speak any "
+    "language. They are on their own devices on the same call. You interpret "
+    "between them and do nothing else. When you hear a language other than "
+    "English, say it again in English. When you hear English, say it again in "
+    "the language the guest has been speaking. If English is spoken before the "
+    "guest has said anything, say in one short English sentence that you are "
+    "ready and the guest may speak any language. Interpret faithfully and "
+    "completely, in the first person, keeping questions as questions. Never "
+    "answer questions yourself, never add advice or opinions, never summarize. "
+    "Keep exactly the meaning and tone of what was said. Greet once at the "
+    "start, in English, with one sentence that explains the setup."
 )
 
 
@@ -184,6 +185,41 @@ async def entrypoint(ctx: JobContext) -> None:
         captions.append(row)
         del captions[:-MAX_CAPTION_ROWS]
         _publish_captions(ctx.room, captions)
+
+    # A single AgentSession links to one participant (the first to join), so on
+    # a two-party call the agent would hear only one side and ignore the other.
+    # Track the active speaker and re-link the session to whoever is talking, so
+    # it interprets both directions. Skip the switch while the agent itself is
+    # speaking: its synthesized audio can echo through a participant's mic and
+    # would otherwise yank the link mid-sentence.
+    agent_speaking = {"now": False}
+
+    @session.on("agent_state_changed")
+    def on_agent_state(ev: AgentStateChangedEvent) -> None:
+        agent_speaking["now"] = ev.new_state == "speaking"
+
+    def on_active_speakers(speakers: list[rtc.Participant]) -> None:
+        if agent_speaking["now"]:
+            return
+        room_io = session.room_io
+        if room_io is None:
+            return
+        local_identity = ctx.room.local_participant.identity
+        for sp in speakers:
+            if sp.identity == local_identity:
+                continue
+            if sp.kind == rtc.ParticipantKind.PARTICIPANT_KIND_AGENT:
+                continue
+            current = getattr(room_io, "linked_participant", None)
+            if current is None or current.identity != sp.identity:
+                try:
+                    room_io.set_participant(sp.identity)
+                    logger.info("interpreting active speaker %s", sp.identity)
+                except Exception:
+                    logger.exception("failed to switch linked participant")
+            break
+
+    ctx.room.on("active_speakers_changed", on_active_speakers)
 
     await session.start(agent=FrontDeskInterpreter(), room=ctx.room)
     await ctx.connect()
