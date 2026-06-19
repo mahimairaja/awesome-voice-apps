@@ -7,7 +7,7 @@ host to change one, then plays the quiz the host now asks from the edited set.
 Run it:
 1. Copy .env.example to .env and fill the six keys.
 2. uv sync
-3. uv run --no-project python agent.py dev, then open
+3. uv run python agent.py dev, then open
    https://playground.mahimai.ca/demos/quick-trivia.
 """
 

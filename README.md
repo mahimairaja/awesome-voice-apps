@@ -33,8 +33,8 @@ git clone https://github.com/mahimairaja/awesome-voice-apps.git
 cd awesome-voice-apps/templates/livekit-base
 cp .env.example .env
 uv sync
-uv run --no-project python agent.py download-files
-uv run --no-project python agent.py dev
+uv run python agent.py download-files
+uv run python agent.py dev
 ```
 
 Open the demo at [playground.mahimai.ca/demos](https://playground.mahimai.ca/demos), paste your three LiveKit values, and start the call. [`templates/livekit-base/`](templates/livekit-base/) is the starter every demo copies from: change the instructions, add a `@function_tool`, ship.

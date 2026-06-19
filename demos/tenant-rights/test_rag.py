@@ -1,6 +1,6 @@
 """Unit tests for the portable retrieval core. No LiveKit, no network.
 
-Run directly:   uv run --no-project python test_rag.py
+Run directly:   uv run python test_rag.py
 Or with pytest: pytest test_rag.py
 
 These guard the grounding boundary: a matching query clears the floor and

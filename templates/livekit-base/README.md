@@ -36,13 +36,13 @@ Cartesia.
 3. Download the Silero VAD weights and the turn detector model.
 
    ```sh
-   uv run --no-project python agent.py download-files
+   uv run python agent.py download-files
    ```
 
 4. Start the agent in dev mode.
 
    ```sh
-   uv run --no-project python agent.py dev
+   uv run python agent.py dev
    ```
 
    Then open the playground at

@@ -2,7 +2,7 @@
 
 Run once, with NVIDIA_API_KEY set, before the demo can answer:
 
-    uv run --no-project python build_index.py
+    uv run python build_index.py
 
 It reads each source markdown file, splits it into one chunk per section
 heading, embeds the chunks via NVIDIA NIM (passage mode), and writes

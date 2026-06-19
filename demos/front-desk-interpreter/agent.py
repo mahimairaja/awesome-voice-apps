@@ -7,7 +7,7 @@ Gemini Live API: no STT, no TTS, no VAD model, no turn detector.
 Run it:
 1. Copy .env.example to .env and fill GOOGLE_API_KEY plus the three LiveKit keys.
 2. uv sync
-3. uv run --no-project python agent.py dev, then open
+3. uv run python agent.py dev, then open
    https://playground.mahimai.ca/demos/front-desk-interpreter.
 """
 
@@ -39,23 +39,50 @@ logger = logging.getLogger(__name__)
 # The agent shows the last N exchanges; the playground panel caps at 20.
 MAX_CAPTION_ROWS = 8
 
+# A late joiner asks for the current UI on this topic once its data handler is
+# attached; the agent replays the scene and captions to just that participant.
+UI_REQUEST_TOPIC = "ui_request"
+
 
 GEMINI_LIVE_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025"
 
-INSTRUCTIONS = (
-    "You are a live interpreter on a call between two people. One is a desk "
-    "clerk who speaks English; the other is a guest who may speak any "
-    "language. They are on their own devices on the same call. You interpret "
-    "between them and do nothing else. When you hear a language other than "
-    "English, say it again in English. When you hear English, say it again in "
-    "the language the guest has been speaking. If English is spoken before the "
-    "guest has said anything, say in one short English sentence that you are "
-    "ready and the guest may speak any language. Interpret faithfully and "
-    "completely, in the first person, keeping questions as questions. Never "
-    "answer questions yourself, never add advice or opinions, never summarize. "
-    "Keep exactly the meaning and tone of what was said. Greet once at the "
-    "start, in English, with one sentence that explains the setup."
-)
+# The desk-side anchor language. The host picks it on the playground; it rides
+# the agent-dispatch metadata and arrives as ctx.job.metadata. Everything the
+# guest says is rendered into this language, and this language is rendered back
+# into whatever the guest speaks.
+DEFAULT_TARGET_LANGUAGE = "English"
+MAX_TARGET_LANGUAGE_LEN = 40
+
+
+def resolve_target_language(metadata: str | None) -> str:
+    """Read the target language from dispatch metadata, with a safe fallback.
+
+    The token is minted in the visitor's browser, so the value is untrusted:
+    fall back to English when empty and cap the length before it lands in the
+    instructions string.
+    """
+    target = (metadata or "").strip()
+    if not target:
+        return DEFAULT_TARGET_LANGUAGE
+    return target[:MAX_TARGET_LANGUAGE_LEN]
+
+
+def build_instructions(target: str) -> str:
+    return (
+        f"You are a live interpreter on a call between two people. One is a "
+        f"desk clerk who speaks {target}; the other is a guest who may speak "
+        f"any language. They are on their own devices on the same call. You "
+        f"interpret between them and do nothing else. When you hear a language "
+        f"other than {target}, say it again in {target}. When you hear "
+        f"{target}, say it again in the language the guest has been speaking. "
+        f"If {target} is spoken before the guest has said anything, say in one "
+        f"short {target} sentence that you are ready and the guest may speak "
+        f"any language. Interpret faithfully and completely, in the first "
+        f"person, keeping questions as questions. Never answer questions "
+        f"yourself, never add advice or opinions, never summarize. Keep exactly "
+        f"the meaning and tone of what was said. Greet once at the start, in "
+        f"{target}, with one sentence that explains the setup."
+    )
 
 
 def publish_ui_event(
@@ -64,6 +91,7 @@ def publish_ui_event(
     action: Literal["mount", "update", "unmount"],
     props: dict | None = None,
     component_id: str | None = None,
+    destination_identities: list[str] | None = None,
 ) -> None:
     envelope = {
         "type": "ui_event",
@@ -82,7 +110,14 @@ def publish_ui_event(
 
     try:
         task = asyncio.create_task(
-            room.local_participant.publish_data(payload, topic="ui", reliable=True)
+            room.local_participant.publish_data(
+                payload,
+                topic="ui",
+                reliable=True,
+                # Empty list broadcasts to everyone; a specific identity targets
+                # a single late joiner without re-mounting on existing clients.
+                destination_identities=destination_identities or [],
+            )
         )
     except RuntimeError:
         logger.exception("failed to schedule playground ui event")
@@ -108,11 +143,14 @@ def _ui_action(room: rtc.Room, component_id: str) -> Literal["mount", "update"]:
     return "mount"
 
 
-def _publish_scene(room: rtc.Room) -> None:
+def _publish_scene(room: rtc.Room, to: str | None = None) -> None:
+    # A targeted publish is a replay to a late joiner, so force a fresh mount;
+    # the broadcast path keeps its mount-once-then-update bookkeeping.
+    action = "mount" if to else _ui_action(room, "scene")
     publish_ui_event(
         room,
         "Card",
-        _ui_action(room, "scene"),
+        action,
         component_id="scene",
         props={
             "title": "Front desk interpreter",
@@ -122,22 +160,25 @@ def _publish_scene(room: rtc.Room) -> None:
             ),
             "accent": True,
         },
+        destination_identities=[to] if to else None,
     )
 
 
-def _publish_captions(room: rtc.Room, rows: list[dict]) -> None:
+def _publish_captions(room: rtc.Room, rows: list[dict], to: str | None = None) -> None:
+    action = "mount" if to else _ui_action(room, "captions")
     publish_ui_event(
         room,
         "Captions",
-        _ui_action(room, "captions"),
+        action,
         component_id="captions",
         props={"title": "live captions", "items": rows},
+        destination_identities=[to] if to else None,
     )
 
 
 class FrontDeskInterpreter(Agent):
-    def __init__(self) -> None:
-        super().__init__(instructions=INSTRUCTIONS)
+    def __init__(self, target_language: str = DEFAULT_TARGET_LANGUAGE) -> None:
+        super().__init__(instructions=build_instructions(target_language))
 
 
 server = AgentServer()
@@ -150,6 +191,8 @@ server = AgentServer()
 @server.rtc_session(agent_name="front-desk-interpreter")
 async def entrypoint(ctx: JobContext) -> None:
     ctx.log_context_fields = {"room": ctx.room.name}
+    target_language = resolve_target_language(ctx.job.metadata)
+    logger.info("interpreting with desk language %s", target_language)
 
     session = AgentSession(
         llm=google.realtime.RealtimeModel(
@@ -225,14 +268,30 @@ async def entrypoint(ctx: JobContext) -> None:
 
     ctx.room.on("active_speakers_changed", on_active_speakers)
 
-    await session.start(agent=FrontDeskInterpreter(), room=ctx.room)
+    def on_ui_request(packet: rtc.DataPacket) -> None:
+        # A late joiner (the invited guest) missed the initial broadcast mounts,
+        # and the playground drops UI updates for a component it never mounted.
+        # Replaying on participant_connected would race the joiner's data
+        # handler, which only attaches after it finishes connecting its media.
+        # Instead the joiner asks for the UI once it is listening, and we replay
+        # the current scene and captions to just that participant.
+        if packet.topic != UI_REQUEST_TOPIC or packet.participant is None:
+            return
+        identity = packet.participant.identity
+        _publish_scene(ctx.room, to=identity)
+        if captions:
+            _publish_captions(ctx.room, captions, to=identity)
+
+    ctx.room.on("data_received", on_ui_request)
+
+    await session.start(agent=FrontDeskInterpreter(target_language), room=ctx.room)
     await ctx.connect()
     _publish_scene(ctx.room)
     await session.generate_reply(
         instructions=(
-            "Greet in one short English sentence: you are the front desk "
-            "interpreter, the guest may speak any language, and the desk "
-            "hears English."
+            f"Greet in one short {target_language} sentence: you are the front "
+            f"desk interpreter, the guest may speak any language, and the desk "
+            f"hears {target_language}."
         )
     )
 
