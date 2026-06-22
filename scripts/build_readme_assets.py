@@ -90,3 +90,36 @@ def graticule(x0, y0, x1, y1, step, opacity):
         + "".join(lines)
         + "</g>"
     )
+
+
+def _esc(s):
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def truncate(text, limit=52):
+    text = text.strip()
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def render_card(slug, entry):
+    wave = speech_wave(slug, 24, 456, 44, 20, n=160, carrier=0.16)
+    category = _esc(entry["category"].upper())
+    desc = _esc(truncate(entry["description"]))
+    return (
+        '<svg width="480" height="150" viewBox="0 0 480 150" '
+        'xmlns="http://www.w3.org/2000/svg">'
+        f"{DEFS}"
+        '<rect width="480" height="150" rx="10" fill="url(#vign)"/>'
+        '<rect x="0.5" y="0.5" width="479" height="149" rx="10" fill="none" '
+        f'stroke="{AMBER}" stroke-opacity="0.18"/>'
+        f"{graticule(0, 0, 480, 150, 48, 0.05)}"
+        f'<path d="{wave}" fill="none" stroke="{AMBER}" stroke-width="2" '
+        'stroke-linecap="round" filter="url(#glow)"/>'
+        f'<text x="24" y="98" font-family="{MONO}" font-size="22" '
+        f'font-weight="700" fill="{SCOPE_TEXT}">{_esc(slug)}</text>'
+        f'<text x="24" y="120" font-family="{MONO}" font-size="11" '
+        f'fill="{AMBER}" letter-spacing="1.5">{category}</text>'
+        f'<text x="24" y="138" font-family="{MONO}" font-size="12.5" '
+        f'fill="{SCOPE_DIM}">{desc}</text>'
+        "</svg>\n"
+    )

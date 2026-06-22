@@ -21,3 +21,29 @@ def test_graticule_is_a_group_of_lines():
     g = gen.graticule(0, 0, 100, 100, 50, 0.06)
     assert g.startswith("<g") and g.endswith("</g>")
     assert g.count("<line") == 6  # x at 0,50,100 + y at 0,50,100
+
+
+from xml.dom.minidom import parseString  # noqa: E402
+
+ENTRY = {
+    "category": "healthcare",
+    "description": "Books a doctor appointment by voice, finds open slots, and handles reschedules.",
+}
+
+
+def test_truncate_adds_ellipsis_past_limit():
+    assert gen.truncate("short", 52) == "short"
+    out = gen.truncate("x" * 80, 52)
+    assert len(out) == 52 and out.endswith("…")
+
+
+def test_render_card_is_wellformed_and_has_content():
+    svg = gen.render_card("clinic-scheduler", ENTRY)
+    parseString(svg)  # raises if not well-formed XML
+    assert "clinic-scheduler" in svg
+    assert "HEALTHCARE" in svg
+    assert "Books a doctor appointment" in svg
+
+
+def test_render_card_is_deterministic():
+    assert gen.render_card("clinic-scheduler", ENTRY) == gen.render_card("clinic-scheduler", ENTRY)
