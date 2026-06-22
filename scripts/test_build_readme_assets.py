@@ -47,3 +47,22 @@ def test_render_card_is_wellformed_and_has_content():
 
 def test_render_card_is_deterministic():
     assert gen.render_card("clinic-scheduler", ENTRY) == gen.render_card("clinic-scheduler", ENTRY)
+
+
+def test_render_banner_wellformed_and_branded():
+    svg = gen.render_banner()
+    parseString(svg)
+    assert "awesome-voice-apps" in svg
+    assert 'width="1280"' in svg and 'height="320"' in svg
+
+
+def test_render_pipeline_wellformed_with_nodes():
+    svg = gen.render_pipeline()
+    parseString(svg)
+    for caption in ("hear", "think", "speak"):
+        assert caption in svg
+
+
+def test_banner_and_pipeline_are_deterministic():
+    assert gen.render_banner() == gen.render_banner()
+    assert gen.render_pipeline() == gen.render_pipeline()
