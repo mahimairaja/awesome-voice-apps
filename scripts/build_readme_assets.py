@@ -31,27 +31,36 @@ MONO = "ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace"
 GALLERY_START = "<!-- gallery:start -->"
 GALLERY_END = "<!-- gallery:end -->"
 
-DEFS = (
-    "<defs>"
+_VIGN = (
     '<radialGradient id="vign" cx="50%" cy="42%" r="80%">'
     f'<stop offset="55%" stop-color="{SCOPE}"/>'
     f'<stop offset="100%" stop-color="{SCOPE_EDGE}"/>'
     "</radialGradient>"
+)
+_HALO = (
     '<radialGradient id="halo" cx="50%" cy="50%" r="50%">'
     f'<stop offset="0" stop-color="{AMBER}" stop-opacity="0.22"/>'
     f'<stop offset="1" stop-color="{AMBER}" stop-opacity="0"/>'
     "</radialGradient>"
+)
+_BARS = (
     '<linearGradient id="bars" x1="0" y1="0" x2="1" y2="0">'
     f'<stop offset="0" stop-color="{AMBER_DEEP}"/>'
     f'<stop offset="0.4" stop-color="{AMBER}"/>'
     f'<stop offset="1" stop-color="{AMBER}"/>'
     "</linearGradient>"
+)
+_GLOW = (
     '<filter id="glow" x="-8%" y="-60%" width="116%" height="220%">'
     '<feGaussianBlur stdDeviation="2.6" result="b"/>'
     '<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>'
     "</filter>"
-    "</defs>"
 )
+
+# Cards and the pipeline strip use only the vignette and glow.
+DEFS = "<defs>" + _VIGN + _GLOW + "</defs>"
+# The banner additionally uses the halo and the bar gradient.
+DEFS_BANNER = "<defs>" + _VIGN + _HALO + _BARS + _GLOW + "</defs>"
 
 
 def _seed(key):
@@ -177,7 +186,7 @@ def render_banner():
     return (
         '<svg width="1280" height="320" viewBox="0 0 1280 320" '
         'xmlns="http://www.w3.org/2000/svg">'
-        f"{DEFS}"
+        f"{DEFS_BANNER}"
         '<rect width="1280" height="320" fill="url(#vign)"/>'
         f"{graticule(0, 0, 1280, 320, 64, 0.05)}"
         '<ellipse cx="360" cy="250" rx="430" ry="150" fill="url(#halo)"/>'
