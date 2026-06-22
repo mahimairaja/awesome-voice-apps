@@ -31,6 +31,12 @@ repos:
         language: system
         files: ^(demos/|catalog\.json$|scripts/build_catalog\.py$)
         pass_filenames: false
+      - id: build-readme-assets
+        name: regenerate README banner + gallery
+        entry: python3 scripts/build_readme_assets.py
+        language: system
+        files: ^(catalog\.json$|scripts/build_readme_assets\.py$|README\.md$|assets/)
+        pass_filenames: false
 
 ci:
   autofix_commit_msg: "style: pre-commit auto-fixes"
