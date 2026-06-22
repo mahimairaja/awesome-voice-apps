@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/banner.svg" width="100%" alt="awesome-voice-apps">
+
 # awesome-voice-apps
 
 Voice agents that answer the phone, take the order, book the slot.
@@ -26,6 +28,12 @@ A cookbook of small, self-contained voice AI you can clone and talk to.
 
 Each folder under [`demos/`](demos/) is one voice agent: a few hundred lines of Python on [LiveKit Agents](https://docs.livekit.io/agents), Deepgram for hearing, an LLM for thinking, Cartesia for speaking. Swap any provider in a line. Run one locally, then talk to it in your browser at [playground.mahimai.ca](https://playground.mahimai.ca).
 
+## How a voice agent works
+
+<img src="assets/pipeline.svg" width="100%" alt="hear, think, speak">
+
+Three providers in a loop: Deepgram hears, an LLM decides, Cartesia speaks. Each demo is that loop plus a few `@function_tool`s. Swap any provider in a line.
+
 ## Run one
 
 ```sh
@@ -41,17 +49,39 @@ Open the demo at [playground.mahimai.ca/demos](https://playground.mahimai.ca/dem
 
 ## The demos
 
-| Demo | Industry | What it does |
-| --- | --- | --- |
-| [clinic-scheduler](demos/clinic-scheduler/) | healthcare | Books a doctor appointment by voice, finds open slots, and handles reschedules. |
-| [drive-thru-coffee](demos/drive-thru-coffee/) | restaurant | Takes a coffee order, edits it mid-flow, totals the cart. |
-| [front-desk-interpreter](demos/front-desk-interpreter/) | hospitality | Interprets between a guest in any language and an English-speaking desk, with live captions. |
-| [quick-trivia](demos/quick-trivia/) | education | Quizzes the caller and keeps score on screen. |
-| [roadside-dispatch](demos/roadside-dispatch/) | automotive | Dispatches roadside help, scores caller audio with Tyto, and gates field accuracy when the line degrades. |
-| [tenant-rights](demos/tenant-rights/) | legal | Answers US renter questions from HUD guidance and names its source. |
-| [water-tracker](demos/water-tracker/) | fitness | Logs glasses of water against a daily goal. |
+<!-- gallery:start -->
+<table>
+<tr>
+<td width="50%"><a href="demos/clinic-scheduler/"><img src="assets/demos/clinic-scheduler.svg" width="100%" alt="clinic-scheduler"></a></td>
+<td width="50%"><a href="demos/drive-thru-coffee/"><img src="assets/demos/drive-thru-coffee.svg" width="100%" alt="drive-thru-coffee"></a></td>
+</tr>
+<tr>
+<td width="50%"><a href="demos/front-desk-interpreter/"><img src="assets/demos/front-desk-interpreter.svg" width="100%" alt="front-desk-interpreter"></a></td>
+<td width="50%"><a href="demos/quick-trivia/"><img src="assets/demos/quick-trivia.svg" width="100%" alt="quick-trivia"></a></td>
+</tr>
+<tr>
+<td width="50%"><a href="demos/roadside-dispatch/"><img src="assets/demos/roadside-dispatch.svg" width="100%" alt="roadside-dispatch"></a></td>
+<td width="50%"><a href="demos/tenant-rights/"><img src="assets/demos/tenant-rights.svg" width="100%" alt="tenant-rights"></a></td>
+</tr>
+<tr>
+<td width="50%"><a href="demos/water-tracker/"><img src="assets/demos/water-tracker.svg" width="100%" alt="water-tracker"></a></td>
+<td width="50%"></td>
+</tr>
+</table>
+<!-- gallery:end -->
 
 Every demo is tagged with the one industry it serves: healthcare, legal, finance, realestate, hospitality, restaurant, automotive, education, retail, recruiting, construction, travel, fitness, beauty, logistics, insurance, nonprofit, gov, media. Per-demo metadata lives in [`catalog.json`](catalog.json).
+
+## Tech stack
+
+| Layer | Choice |
+| --- | --- |
+| Language | Python 3.11 (`uv`) |
+| Voice runtime | LiveKit Agents 1.x |
+| Default STT / LLM / TTS | Deepgram Nova-3 / OpenAI gpt-4o-mini / Cartesia Sonic-2 |
+| VAD / turn detection | Silero / LiveKit MultilingualModel |
+| Lint / format | ruff |
+| Quality gates | pre-commit, pytest evals (LiveKit judges) |
 
 ## Add one
 
