@@ -113,3 +113,21 @@ def test_build_check_passes_then_detects_staleness(tmp_path, monkeypatch):
     assert gen.build(check=True) == []  # now clean
     (tmp_path / "assets" / "demos" / "a.svg").write_text("mutated")
     assert gen.build(check=True)  # mutation detected
+
+
+def test_every_demo_has_an_icon():
+    for slug in [
+        "clinic-scheduler",
+        "drive-thru-coffee",
+        "front-desk-interpreter",
+        "quick-trivia",
+        "roadside-dispatch",
+        "tenant-rights",
+        "water-tracker",
+    ]:
+        assert slug in gen.ICONS
+
+
+def test_icon_box_falls_back_for_unknown_slug():
+    assert gen.DEFAULT_ICON in gen.icon_box("unknown-demo", 0, 0)
+    assert gen.ICONS["drive-thru-coffee"] in gen.icon_box("drive-thru-coffee", 0, 0)

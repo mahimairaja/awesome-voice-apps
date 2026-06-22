@@ -33,17 +33,21 @@ GALLERY_END = "<!-- gallery:end -->"
 
 DEFS = (
     "<defs>"
-    '<radialGradient id="vign" cx="50%" cy="44%" r="78%">'
-    f'<stop offset="58%" stop-color="{SCOPE}"/>'
+    '<radialGradient id="vign" cx="50%" cy="42%" r="80%">'
+    f'<stop offset="55%" stop-color="{SCOPE}"/>'
     f'<stop offset="100%" stop-color="{SCOPE_EDGE}"/>'
     "</radialGradient>"
-    '<linearGradient id="trace" x1="0" y1="0" x2="1" y2="0">'
+    '<radialGradient id="halo" cx="50%" cy="50%" r="50%">'
+    f'<stop offset="0" stop-color="{AMBER}" stop-opacity="0.22"/>'
+    f'<stop offset="1" stop-color="{AMBER}" stop-opacity="0"/>'
+    "</radialGradient>"
+    '<linearGradient id="bars" x1="0" y1="0" x2="1" y2="0">'
     f'<stop offset="0" stop-color="{AMBER_DEEP}"/>'
-    f'<stop offset="0.35" stop-color="{AMBER}"/>'
+    f'<stop offset="0.4" stop-color="{AMBER}"/>'
     f'<stop offset="1" stop-color="{AMBER}"/>'
     "</linearGradient>"
-    '<filter id="glow" x="-5%" y="-60%" width="110%" height="220%">'
-    '<feGaussianBlur stdDeviation="3.2" result="b"/>'
+    '<filter id="glow" x="-8%" y="-60%" width="116%" height="220%">'
+    '<feGaussianBlur stdDeviation="2.6" result="b"/>'
     '<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>'
     "</filter>"
     "</defs>"
@@ -101,50 +105,89 @@ def truncate(text, limit=52):
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
+ICONS = {
+    "clinic-scheduler": '<rect x="-14" y="-12" width="28" height="24" rx="3"/><path d="M-14 -4h28 M-7 -17v6 M7 -17v6"/><path d="M-5 4l3.5 3.5l6.5 -8"/>',
+    "drive-thru-coffee": '<path d="M-10 -9h15v10a7.5 7.5 0 0 1 -15 0z"/><path d="M5 -5h4.5a4.5 4.5 0 0 1 0 9h-4.5"/><path d="M-6 -15q2.5 2.5 0 5 M1 -15q2.5 2.5 0 5"/>',
+    "front-desk-interpreter": '<path d="M-15 -11h15a3 3 0 0 1 3 3v6a3 3 0 0 1 -3 3h-7l-5 4v-4h-3a3 3 0 0 1 -3 -3v-6a3 3 0 0 1 3 -3z"/><path d="M3 -1h11a3 3 0 0 1 3 3v6a3 3 0 0 1 -3 3v4l-5 -4"/>',
+    "quick-trivia": '<circle r="14"/><path d="M-4.5 -5a4.5 4.5 0 1 1 5.5 5.2c-1.2 0.9 -1.2 1.8 -1.2 3.3"/><circle cx="0" cy="9" r="1.4" fill="'
+    + AMBER
+    + '"/>',
+    "roadside-dispatch": '<path d="M-14 4h28 M-12 4l1 -5l3 -6h16l3 6l1 5"/><path d="M-7 -7h12"/><circle cx="-7" cy="5" r="3"/><circle cx="8" cy="5" r="3"/>',
+    "tenant-rights": '<path d="M-13 -1l13 -12l13 12"/><path d="M-9 -3v13h18v-13"/><path d="M-2 10v-7h4v7"/>',
+    "water-tracker": '<path d="M0 -14C8 -3 7 11 0 13C-7 11 -8 -3 0 -14Z"/><path d="M-5 5a5 5 0 0 0 10 0"/>',
+}
+
+# Fallback glyph (an info dot) so a demo added without an icon still renders.
+DEFAULT_ICON = '<circle r="13"/><path d="M0 -6v8"/><circle cx="0" cy="7" r="1.3" fill="' + AMBER + '"/>'
+
+
+def icon_box(slug, x, y):
+    glyph = ICONS.get(slug, DEFAULT_ICON)
+    return (
+        f'<g transform="translate({x},{y})">'
+        '<rect x="-32" y="-32" width="64" height="64" rx="14" fill="none" '
+        f'stroke="{AMBER}" stroke-opacity="0.45" stroke-width="1.5"/>'
+        f'<g stroke="{AMBER}" stroke-width="2.1" fill="none" stroke-linecap="round" '
+        f'stroke-linejoin="round" filter="url(#glow)">{glyph}</g>'
+        "</g>"
+    )
+
+
 def render_card(slug, entry):
-    wave = speech_wave(slug, 24, 456, 44, 20, n=160, carrier=0.16)
     category = _esc(entry["category"].upper())
-    desc = _esc(truncate(entry["description"]))
+    desc = _esc(truncate(entry["description"], 46))
     return (
         '<svg width="480" height="150" viewBox="0 0 480 150" '
         'xmlns="http://www.w3.org/2000/svg">'
         f"{DEFS}"
-        '<rect width="480" height="150" rx="10" fill="url(#vign)"/>'
-        '<rect x="0.5" y="0.5" width="479" height="149" rx="10" fill="none" '
-        f'stroke="{AMBER}" stroke-opacity="0.18"/>'
-        f"{graticule(0, 0, 480, 150, 48, 0.05)}"
-        f'<path d="{wave}" fill="none" stroke="{AMBER}" stroke-width="2" '
-        'stroke-linecap="round" filter="url(#glow)"/>'
-        f'<text x="24" y="98" font-family="{MONO}" font-size="22" '
+        '<rect width="480" height="150" rx="12" fill="url(#vign)"/>'
+        '<rect x="0.5" y="0.5" width="479" height="149" rx="12" fill="none" '
+        f'stroke="{AMBER}" stroke-opacity="0.16"/>'
+        f"{graticule(0, 0, 480, 150, 48, 0.04)}"
+        f"{icon_box(slug, 66, 75)}"
+        f'<text x="124" y="62" font-family="{MONO}" font-size="21" '
         f'font-weight="700" fill="{SCOPE_TEXT}">{_esc(slug)}</text>'
-        f'<text x="24" y="120" font-family="{MONO}" font-size="11" '
+        f'<text x="124" y="84" font-family="{MONO}" font-size="10.5" '
         f'fill="{AMBER}" letter-spacing="1.5">{category}</text>'
-        f'<text x="24" y="138" font-family="{MONO}" font-size="12.5" '
+        f'<text x="124" y="110" font-family="{MONO}" font-size="12" '
         f'fill="{SCOPE_DIM}">{desc}</text>'
         "</svg>\n"
     )
 
 
+def _voice_envelope(t):
+    """Smooth, deterministic speech-like amplitude in ~[0,1] for bar t in [0,1]."""
+    base = 0.45 + 0.55 * abs(math.sin(t * math.pi))
+    detail = 0.55 + 0.45 * math.sin(t * 22 + 0.5) * 0.6 + 0.25 * math.sin(t * 7 + 1.2)
+    return base * detail
+
+
 def render_banner():
-    wave = speech_wave("banner", 40, 1240, 168, 92, carrier=0.085)
+    cx, n, midy = 150, 58, 128
+    gap = (1280 - 2 * cx) / (n - 1)
+    bars = []
+    for i in range(n):
+        t = i / (n - 1)
+        h = 18 + 150 * max(0.06, min(1.0, abs(_voice_envelope(t))))
+        x = cx + i * gap
+        bars.append(
+            f'<rect x="{x - 3:.1f}" y="{midy - h / 2:.1f}" '
+            f'width="6" height="{h:.1f}" rx="3" fill="url(#bars)"/>'
+        )
     return (
         '<svg width="1280" height="320" viewBox="0 0 1280 320" '
         'xmlns="http://www.w3.org/2000/svg">'
         f"{DEFS}"
         '<rect width="1280" height="320" fill="url(#vign)"/>'
-        f"{graticule(0, 0, 1280, 320, 64, 0.06)}"
-        f'<line x1="0" y1="160" x2="1280" y2="160" stroke="{AMBER}" '
-        'stroke-opacity="0.14"/>'
-        f'<path d="{wave}" fill="none" stroke="url(#trace)" stroke-width="3" '
-        'stroke-linecap="round" filter="url(#glow)"/>'
-        f'<text x="48" y="40" font-family="{MONO}" font-size="14" fill="{AMBER}" '
-        'letter-spacing="2">&#9679; LIVE</text>'
-        f'<text x="1090" y="40" font-family="{MONO}" font-size="13" '
-        f'fill="{SCOPE_DIM}">CH1 &#183; 20ms/div</text>'
-        f'<text x="48" y="252" font-family="{MONO}" font-size="58" '
+        f"{graticule(0, 0, 1280, 320, 64, 0.05)}"
+        '<ellipse cx="360" cy="250" rx="430" ry="150" fill="url(#halo)"/>'
+        f'<g filter="url(#glow)">{"".join(bars)}</g>'
+        f'<text x="60" y="252" font-family="{MONO}" font-size="60" '
         f'font-weight="700" fill="{SCOPE_TEXT}" letter-spacing="-1">awesome-voice-apps</text>'
-        f'<text x="52" y="289" font-family="{MONO}" font-size="19" '
-        f'fill="{SCOPE_DIM}">a cookbook of small voice agents you can clone and talk to</text>'
+        f'<text x="64" y="290" font-family="{MONO}" font-size="19" '
+        f'fill="{SCOPE_DIM}">small voice agents you can clone and talk to</text>'
+        f'<text x="60" y="46" font-family="{MONO}" font-size="13" fill="{AMBER}" '
+        'letter-spacing="3">&#9679; REC 00:14</text>'
         "</svg>\n"
     )
 
