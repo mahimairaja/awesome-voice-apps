@@ -66,3 +66,27 @@ def test_render_pipeline_wellformed_with_nodes():
 def test_banner_and_pipeline_are_deterministic():
     assert gen.render_banner() == gen.render_banner()
     assert gen.render_pipeline() == gen.render_pipeline()
+
+
+def test_render_gallery_links_each_demo_in_order():
+    html = gen.render_gallery(["a", "b", "c"])
+    assert html.count("<img") == 3
+    assert html.index('demos/a/') < html.index('demos/b/') < html.index('demos/c/')
+    assert '<img src="assets/demos/a.svg" width="100%" alt="a">' in html
+    # odd count pads the last row to two columns
+    assert html.count('<td') == 4
+
+
+def test_rewrite_gallery_replaces_between_markers():
+    text = f"before\n{gen.GALLERY_START}\nOLD\n{gen.GALLERY_END}\nafter"
+    out = gen.rewrite_gallery(text, "NEW")
+    assert "OLD" not in out
+    assert "NEW" in out
+    assert out.startswith("before") and out.endswith("after")
+
+
+def test_rewrite_gallery_requires_markers():
+    import pytest
+
+    with pytest.raises(ValueError):
+        gen.rewrite_gallery("no markers here", "NEW")

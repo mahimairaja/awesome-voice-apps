@@ -187,3 +187,29 @@ def render_pipeline():
         f'{_node(870, 65, "cartesia &#183; speak", spk)}'
         "</svg>\n"
     )
+
+
+def render_gallery(slugs):
+    cells = [
+        f'<td width="50%"><a href="demos/{s}/">'
+        f'<img src="assets/demos/{s}.svg" width="100%" alt="{s}"></a></td>'
+        for s in slugs
+    ]
+    rows = []
+    for i in range(0, len(cells), 2):
+        pair = cells[i : i + 2]
+        if len(pair) == 1:
+            pair.append('<td width="50%"></td>')
+        rows.append("<tr>\n" + "\n".join(pair) + "\n</tr>")
+    return "<table>\n" + "\n".join(rows) + "\n</table>"
+
+
+def rewrite_gallery(text, gallery_html):
+    pattern = re.compile(
+        re.escape(GALLERY_START) + ".*?" + re.escape(GALLERY_END), re.DOTALL
+    )
+    if not pattern.search(text):
+        raise ValueError("README gallery markers not found")
+    return pattern.sub(
+        GALLERY_START + "\n" + gallery_html + "\n" + GALLERY_END, text
+    )
