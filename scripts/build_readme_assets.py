@@ -213,3 +213,54 @@ def rewrite_gallery(text, gallery_html):
     return pattern.sub(
         GALLERY_START + "\n" + gallery_html + "\n" + GALLERY_END, text
     )
+
+
+def _planned_files(catalog):
+    slugs = list(catalog)
+    files = {
+        ASSETS / "banner.svg": render_banner(),
+        ASSETS / "pipeline.svg": render_pipeline(),
+    }
+    for s in slugs:
+        files[DEMO_ASSETS / f"{s}.svg"] = render_card(s, catalog[s])
+    return slugs, files
+
+
+def build(check=False):
+    catalog = json.loads(CATALOG.read_text())
+    slugs, files = _planned_files(catalog)
+    readme = README.read_text()
+    new_readme = rewrite_gallery(readme, render_gallery(slugs))
+
+    if check:
+        stale = [
+            p.relative_to(REPO)
+            for p, content in files.items()
+            if not p.exists() or p.read_text() != content
+        ]
+        if new_readme != readme:
+            stale.append(README.relative_to(REPO))
+        return stale
+
+    DEMO_ASSETS.mkdir(parents=True, exist_ok=True)
+    for p, content in files.items():
+        p.write_text(content)
+    README.write_text(new_readme)
+    return []
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="Build README banner + gallery assets.")
+    ap.add_argument("--check", action="store_true", help="verify assets are current")
+    args = ap.parse_args(argv)
+    stale = build(check=args.check)
+    if args.check and stale:
+        print("stale README assets (run scripts/build_readme_assets.py):")
+        for p in stale:
+            print(f"  {p}")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

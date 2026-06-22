@@ -90,3 +90,26 @@ def test_rewrite_gallery_requires_markers():
 
     with pytest.raises(ValueError):
         gen.rewrite_gallery("no markers here", "NEW")
+
+
+def test_build_check_passes_then_detects_staleness(tmp_path, monkeypatch):
+    # Point the generator at a throwaway repo layout.
+    catalog = {"a": {"title": "A", "category": "healthcare", "description": "does a."}}
+    (tmp_path / "catalog.json").write_text(__import__("json").dumps(catalog))
+    (tmp_path / "assets" / "demos").mkdir(parents=True)
+    (tmp_path / "README.md").write_text(
+        f"top\n{gen.GALLERY_START}\nstale\n{gen.GALLERY_END}\nbottom\n"
+    )
+    monkeypatch.setattr(gen, "REPO", tmp_path)
+    monkeypatch.setattr(gen, "CATALOG", tmp_path / "catalog.json")
+    monkeypatch.setattr(gen, "ASSETS", tmp_path / "assets")
+    monkeypatch.setattr(gen, "DEMO_ASSETS", tmp_path / "assets" / "demos")
+    monkeypatch.setattr(gen, "README", tmp_path / "README.md")
+
+    assert gen.build(check=True)  # stale before generating (non-empty list)
+    assert gen.build(check=False) == []  # generate everything
+    assert (tmp_path / "assets" / "banner.svg").exists()
+    assert (tmp_path / "assets" / "demos" / "a.svg").exists()
+    assert gen.build(check=True) == []  # now clean
+    (tmp_path / "assets" / "demos" / "a.svg").write_text("mutated")
+    assert gen.build(check=True)  # mutation detected
