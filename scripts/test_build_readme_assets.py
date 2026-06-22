@@ -71,10 +71,10 @@ def test_banner_and_pipeline_are_deterministic():
 def test_render_gallery_links_each_demo_in_order():
     html = gen.render_gallery(["a", "b", "c"])
     assert html.count("<img") == 3
-    assert html.index('demos/a/') < html.index('demos/b/') < html.index('demos/c/')
+    assert html.index("demos/a/") < html.index("demos/b/") < html.index("demos/c/")
     assert '<img src="assets/demos/a.svg" width="100%" alt="a">' in html
     # odd count pads the last row to two columns
-    assert html.count('<td') == 4
+    assert html.count("<td") == 4
 
 
 def test_rewrite_gallery_replaces_between_markers():

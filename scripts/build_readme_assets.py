@@ -127,7 +127,9 @@ ICONS = {
 }
 
 # Fallback glyph (an info dot) so a demo added without an icon still renders.
-DEFAULT_ICON = '<circle r="13"/><path d="M0 -6v8"/><circle cx="0" cy="7" r="1.3" fill="' + AMBER + '"/>'
+DEFAULT_ICON = (
+    '<circle r="13"/><path d="M0 -6v8"/><circle cx="0" cy="7" r="1.3" fill="' + AMBER + '"/>'
+)
 
 
 def icon_box(slug, x, y):
@@ -234,9 +236,9 @@ def render_pipeline():
         'stroke-opacity="0.3" stroke-width="1.5" stroke-dasharray="2 6"/>'
         f'<path d="{seg1}" fill="none" stroke="{AMBER}" stroke-width="2" filter="url(#glow)"/>'
         f'<path d="{seg2}" fill="none" stroke="{AMBER}" stroke-width="2" filter="url(#glow)"/>'
-        f'{_node(170, 65, "deepgram &#183; hear", ear)}'
-        f'{_node(520, 65, "llm &#183; think", chip)}'
-        f'{_node(870, 65, "cartesia &#183; speak", spk)}'
+        f"{_node(170, 65, 'deepgram &#183; hear', ear)}"
+        f"{_node(520, 65, 'llm &#183; think', chip)}"
+        f"{_node(870, 65, 'cartesia &#183; speak', spk)}"
         "</svg>\n"
     )
 
@@ -257,14 +259,10 @@ def render_gallery(slugs):
 
 
 def rewrite_gallery(text, gallery_html):
-    pattern = re.compile(
-        re.escape(GALLERY_START) + ".*?" + re.escape(GALLERY_END), re.DOTALL
-    )
+    pattern = re.compile(re.escape(GALLERY_START) + ".*?" + re.escape(GALLERY_END), re.DOTALL)
     if not pattern.search(text):
         raise ValueError("README gallery markers not found")
-    return pattern.sub(
-        GALLERY_START + "\n" + gallery_html + "\n" + GALLERY_END, text
-    )
+    return pattern.sub(GALLERY_START + "\n" + gallery_html + "\n" + GALLERY_END, text)
 
 
 def _planned_files(catalog):
