@@ -4,6 +4,6 @@ version = "0.1.0"
 description = "Takes an auto insurance claim by voice, validates each field, and files it."
 requires-python = ">=3.11"
 dependencies = [
-    "livekit-agents[assemblyai,google,inworld]>=1.6,<2.0",
+    "livekit-agents[assemblyai,google,inworld,openai]>=1.6,<2.0",
     "python-dotenv>=1.0",
 ]
