@@ -409,15 +409,23 @@ name = "claim-intake"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "livekit-agents", extra = ["assemblyai", "google", "inworld", "openai"] },
+    { name = "livekit-agents", extra = ["assemblyai", "google", "inworld"] },
     { name = "python-dotenv" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "livekit-agents", extra = ["openai"] },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "livekit-agents", extras = ["assemblyai", "google", "inworld", "openai"], specifier = ">=1.6,<2.0" },
+    { name = "livekit-agents", extras = ["assemblyai", "google", "inworld"], specifier = ">=1.6,<2.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
 ]
+
+[package.metadata.requires-dev]
+dev = [{ name = "livekit-agents", extras = ["openai"], specifier = ">=1.6,<2.0" }]
 
 [[package]]
 name = "click"
