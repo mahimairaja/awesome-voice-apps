@@ -19,6 +19,7 @@ jobs:
           - water-tracker
           - roadside-dispatch
           - tenant-rights
+          - claim-intake
     steps:
       - uses: actions/checkout@v4
 
@@ -34,6 +35,7 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         run: >
           uv --project demos/${{ matrix.demo }} run
           --with pytest --with pytest-asyncio --with pytest-cov

@@ -1,0 +1,18 @@
+{
+  "title": "Claim intake",
+  "category": "insurance",
+  "description": "Takes an auto insurance claim by voice, validates each field, and files it.",
+  "who_for": "Insurers that want first-notice-of-loss intake by phone without a live rep on every call.",
+  "recording_url": null,
+  "required_credentials": [
+    "assemblyai_api_key",
+    "google_api_key",
+    "inworld_api_key",
+    "livekit_url",
+    "livekit_api_key",
+    "livekit_api_secret"
+  ],
+  "ui_components": ["KeyValue", "Stat", "Card"],
+  "released": "2026-07-08",
+  "stack": {"stt": "assemblyai", "llm": "google", "tts": "inworld"}
+}
