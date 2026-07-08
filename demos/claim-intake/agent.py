@@ -160,7 +160,7 @@ def _ui_action(room: rtc.Room, component_id: str) -> Literal["mount", "update"]:
 
 
 def _claim_rows(claim: dict) -> list[dict]:
-    return [{"label": FIELD_LABELS[f], "value": claim.get(f) or "—"} for f in FIELDS]
+    return [{"label": FIELD_LABELS[f], "value": claim.get(f) or "-"} for f in FIELDS]
 
 
 def _publish_claim(room: rtc.Room, claim: dict) -> None:

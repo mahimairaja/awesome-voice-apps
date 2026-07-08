@@ -20,8 +20,8 @@ VAD and turn detector, so there is no local model to download.
 
 ## The interesting part
 
-The whole agent is one claim dict and two tools. `record_field` is generic — one
-`Literal` of field names, one `VALIDATORS` map — so adding a field is a line, not
+The whole agent is one claim dict and two tools. `record_field` is generic: one
+`Literal` of field names, one `VALIDATORS` map, so adding a field is a line, not
 a tool:
 
 ```python
