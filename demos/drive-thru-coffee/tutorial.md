@@ -99,8 +99,8 @@ async def add_item(
     ...
 ```
 
-`remove_item` is its exact inverse, popping by index and re-publishing, so the
-cart and the screen never drift:
+`remove_item` is the inverse operation, popping by index and re-publishing, so
+the cart and the screen never drift:
 
 ```python
 @function_tool()

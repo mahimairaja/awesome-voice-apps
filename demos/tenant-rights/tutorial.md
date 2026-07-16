@@ -142,6 +142,10 @@ uv run python build_index.py
 ```
 
 ```sh
+uv run python agent.py download-files
+```
+
+```sh
 uv run python agent.py dev
 ```
 

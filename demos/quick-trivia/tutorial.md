@@ -63,7 +63,11 @@ mirror of the forward `ui` channel. The entrypoint subscribes and applies them:
 def on_ui_action(packet: rtc.DataPacket) -> None:
     if packet.topic != UI_ACTION_TOPIC or userdata["started"]:
         return
-    envelope = json.loads(packet.data.decode("utf-8"))
+    try:
+        envelope = json.loads(packet.data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+        logger.exception("failed to decode ui_action payload")
+        return
     if envelope.get("id") != "quiz" or envelope.get("action") != "submit":
         return
     rows = (envelope.get("payload") or {}).get("rows")

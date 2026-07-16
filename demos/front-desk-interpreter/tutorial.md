@@ -103,7 +103,11 @@ def on_active_speakers(speakers: list[rtc.Participant]) -> None:
             continue
         current = getattr(room_io, "linked_participant", None)
         if current is None or current.identity != sp.identity:
-            room_io.set_participant(sp.identity)
+            try:
+                room_io.set_participant(sp.identity)
+                logger.info("interpreting active speaker %s", sp.identity)
+            except Exception:
+                logger.exception("failed to switch linked participant")
         break
 
 ctx.room.on("active_speakers_changed", on_active_speakers)

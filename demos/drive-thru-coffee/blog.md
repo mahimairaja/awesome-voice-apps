@@ -22,8 +22,8 @@ def _fmt(cents: int) -> str:
 ```
 
 The cart is one list in `userdata`. `add_item` looks the item up in the menu,
-appends it, and re-publishes the Order and Total; `remove_item` is its exact
-inverse, so the cart and the screen never drift:
+appends it, and re-publishes the Order and Total; `remove_item` is the inverse
+operation, so the cart and the screen never drift:
 
 ```python
 cart = context.userdata["cart"]
