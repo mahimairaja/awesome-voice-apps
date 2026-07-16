@@ -60,12 +60,16 @@ Open the demo at [playground.mahimai.ca/demos](https://playground.mahimai.ca/dem
 <td width="50%"><a href="demos/front-desk-interpreter/"><img src="assets/demos/front-desk-interpreter.svg" width="100%" alt="front-desk-interpreter"></a></td>
 </tr>
 <tr>
+<td width="50%"><a href="demos/panel-scribe/"><img src="assets/demos/panel-scribe.svg" width="100%" alt="panel-scribe"></a></td>
 <td width="50%"><a href="demos/quick-trivia/"><img src="assets/demos/quick-trivia.svg" width="100%" alt="quick-trivia"></a></td>
-<td width="50%"><a href="demos/roadside-dispatch/"><img src="assets/demos/roadside-dispatch.svg" width="100%" alt="roadside-dispatch"></a></td>
 </tr>
 <tr>
+<td width="50%"><a href="demos/roadside-dispatch/"><img src="assets/demos/roadside-dispatch.svg" width="100%" alt="roadside-dispatch"></a></td>
 <td width="50%"><a href="demos/tenant-rights/"><img src="assets/demos/tenant-rights.svg" width="100%" alt="tenant-rights"></a></td>
+</tr>
+<tr>
 <td width="50%"><a href="demos/water-tracker/"><img src="assets/demos/water-tracker.svg" width="100%" alt="water-tracker"></a></td>
+<td width="50%"></td>
 </tr>
 </table>
 <!-- gallery:end -->
