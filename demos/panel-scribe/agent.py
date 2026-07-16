@@ -16,6 +16,7 @@ Run it:
 import asyncio
 import json
 import logging
+from typing import Literal
 
 import aiohttp
 import numpy as np
@@ -173,3 +174,94 @@ class PyannoteLive:
             await self._ws.close()
         if self._http:
             await self._http.close()
+
+
+def publish_ui_event(
+    room: rtc.Room,
+    component: str,
+    action: Literal["mount", "update", "unmount"],
+    props: dict | None = None,
+    component_id: str | None = None,
+) -> None:
+    envelope = {"type": "ui_event", "component": component, "action": action, "props": props or {}}
+    if component_id is not None:
+        envelope["id"] = component_id
+    try:
+        payload = json.dumps(envelope).encode("utf-8")
+    except (TypeError, ValueError):
+        logger.exception("failed to encode playground ui event")
+        return
+    try:
+        task = asyncio.create_task(
+            room.local_participant.publish_data(payload, topic="ui", reliable=True)
+        )
+    except RuntimeError:
+        logger.exception("failed to schedule playground ui event")
+        return
+
+    def log_publish_failure(task: asyncio.Task[None]) -> None:
+        try:
+            task.result()
+        except Exception:
+            logger.exception("failed to publish playground ui event")
+
+    task.add_done_callback(log_publish_failure)
+
+
+def _ui_action(room: rtc.Room, component_id: str) -> Literal["mount", "update"]:
+    mounted = getattr(room, "_awesome_voice_ui_mounted", None)
+    if mounted is None:
+        mounted = set()
+        setattr(room, "_awesome_voice_ui_mounted", mounted)
+    if component_id in mounted:
+        return "update"
+    mounted.add(component_id)
+    return "mount"
+
+
+def publish_transcript(room: rtc.Room, lines: list[dict]) -> None:
+    items = [
+        {"text": f"{ln['speaker']}: {ln['text']}", "original": ln["text"]} for ln in lines[-20:]
+    ]
+    publish_ui_event(
+        room,
+        "Captions",
+        _ui_action(room, "transcript"),
+        component_id="transcript",
+        props={"title": "panel transcript", "items": items},
+    )
+
+
+def publish_talk_time(room: rtc.Room, items: list[dict]) -> None:
+    publish_ui_event(
+        room,
+        "Meters",
+        _ui_action(room, "talk-time"),
+        component_id="talk-time",
+        props={"title": "talk time", "items": items},
+    )
+
+
+def publish_scorecard_ui(room: rtc.Room, rows: list[dict], consensus: str) -> None:
+    table_rows = [
+        [r.get("interviewer", ""), r.get("strengths", ""), r.get("concerns", ""), r.get("lean", "")]
+        for r in rows
+    ]
+    publish_ui_event(
+        room,
+        "Table",
+        _ui_action(room, "scorecard"),
+        component_id="scorecard",
+        props={
+            "title": "debrief scorecard",
+            "columns": ["interviewer", "strengths", "concerns", "lean"],
+            "rows": table_rows,
+        },
+    )
+    publish_ui_event(
+        room,
+        "Card",
+        _ui_action(room, "consensus"),
+        component_id="consensus",
+        props={"title": "panel consensus", "body": consensus, "accent": True},
+    )
