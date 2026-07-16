@@ -125,6 +125,11 @@ ICONS = {
     "tenant-rights": '<path d="M-13 -1l13 -12l13 12"/><path d="M-9 -3v13h18v-13"/><path d="M-2 10v-7h4v7"/>',
     "water-tracker": '<path d="M0 -14C8 -3 7 11 0 13C-7 11 -8 -3 0 -14Z"/><path d="M-5 5a5 5 0 0 0 10 0"/>',
     "claim-intake": '<rect x="-11" y="-13" width="22" height="28" rx="3"/><rect x="-5.5" y="-16" width="11" height="6" rx="1.8"/><path d="M-6 -3h12 M-6 3h9"/><path d="M-6 9l3.2 3.2l7 -8"/>',
+    "panel-scribe": '<path d="M-13 -5v10 M-6.5 -12v24 M0 -7v14 M6.5 -14v28 M13 -9v18"/><circle cx="-6.5" cy="-16" r="1.4" fill="'
+    + AMBER
+    + '"/><circle cx="6.5" cy="-18" r="1.4" fill="'
+    + AMBER
+    + '"/>',
 }
 
 # Fallback glyph (an info dot) so a demo added without an icon still renders.

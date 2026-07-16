@@ -1,0 +1,19 @@
+{
+  "title": "Panel scribe",
+  "category": "recruiting",
+  "description": "Labels each interviewer's voice live in a candidate debrief and turns it into an attributed scorecard.",
+  "who_for": "Recruiting teams that want a hands-off scribe for panel debriefs, with who-said-what and a structured scorecard.",
+  "recording_url": null,
+  "required_credentials": [
+    "deepgram_api_key",
+    "cerebras_api_key",
+    "rime_api_key",
+    "pyannote_api_key",
+    "livekit_url",
+    "livekit_api_key",
+    "livekit_api_secret"
+  ],
+  "ui_components": ["Captions", "Meters", "Table", "Card"],
+  "released": "2026-07-16",
+  "stack": {"stt": "deepgram", "llm": "cerebras", "tts": "rime"}
+}
