@@ -1,54 +1,68 @@
 ---
-title: A hiring-panel scribe that knows who said what
-summary: A recruiting debrief agent that separates every interviewer's voice live with pyannoteAI Live streaming diarization, on Deepgram, Cerebras, and Rime.
+title: How to build a panel-scribe voice agent with live diarization
+summary: A recruiting-debrief scribe that separates each interviewer's voice live with pyannoteAI Live, keeps a who-said-what transcript, and writes an attributed scorecard, on Deepgram, Cerebras, and Rime.
 ---
 
-## The problem
-
 A hiring debrief is three or four people talking over one speakerphone. The
-useful record is not the words alone, it is who said them: which interviewer
-loved the system design, which one flagged the thin testing story. One
-microphone, several voices, and plain transcription flattens them into one wall
-of text.
+useful record is not the words, it is who said them: which interviewer loved the
+system design, which one flagged the thin testing story. One microphone, several
+voices, and plain transcription flattens them into one wall of text.
 
-## Why this stack
+Diarization is the hero, so it drives the stack. pyannoteAI Live is a cloud
+WebSocket: stream 16 kHz PCM, get speaker-turn labels back in real time, no local
+model and no GPU. Deepgram Nova-3 transcribes the words, Cerebras GPT-OSS 120B
+writes the scorecard, and Rime reads it back. The trio is the voice; pyannote is
+the ears.
 
-Diarization is the hero, so it drives the choice. pyannoteAI Live is a cloud
-WebSocket: stream 16 kHz PCM, get speaker-turn labels back in real time, no
-local model and no GPU. Deepgram Nova-3 transcribes the words, Cerebras writes
-the scorecard fast enough to feel instant, and Rime reads the summary back. The
-trio is the voice; pyannote is the ears.
-
-## The interesting part
-
-The agent has to stay quiet. A panel talks among themselves, and a scribe that
-answered every pause would be unusable. So it forks the audio and stays passive:
-each STT frame is teed to pyannote inside `stt_node`, and every finished turn
-records the line, then raises `StopResponse`, unless the turn contains the word
-scribe.
+The sidecar POSTs for a pre-authorized socket, then streams the room's audio to
+it:
 
 ```python
-async def on_user_turn_completed(self, turn_ctx, new_message):
-    speaker = self.sidecar.display_speaker()
-    text = new_message.text_content or ""
-    new_message.content = [f"[{speaker}] {text}"]
-    self.transcript.append({"speaker": speaker, "text": text})
-    if TRIGGER not in text.lower():
-        raise StopResponse()
+resp = await self._http.post(
+    PYANNOTE_REST_URL, headers={"Authorization": f"Bearer {self._api_key}"}
+)
+resp.raise_for_status()
+body = await resp.json()
+url = body.get("stream", {}).get("url") or body.get("url") or body.get("wsUrl")
+self._ws = await self._http.ws_connect(url)
 ```
 
-Because each line enters the model's context already tagged with its speaker,
-the recap needs no separate state: the LLM reads its own attributed history and
-writes the scorecard.
+That audio comes from forking the STT frames, so one source feeds both Deepgram
+and pyannote with no second subscription:
 
-## The one gotcha
+```python
+async def stt_node(self, audio, model_settings):
+    async def tee():
+        async for frame in audio:
+            self.sidecar.feed_frame(frame)
+            yield frame
 
-Diarization needs more than one voice. A solo tester hears nothing interesting,
-because there is only one speaker to separate. The demo tells you to play a
-panel recording into the mic or gather a few people, and the eval feeds
-pre-labeled turns so it can test the recap without audio.
+    async for event in Agent.default.stt_node(self, tee(), model_settings):
+        yield event
+```
 
-## Run it
+The agent has to stay quiet. A panel talks among themselves, so every finished
+turn records its line, prefixed with the active speaker, then raises
+`StopResponse`, unless the turn contains the word scribe:
 
-Talk to it at https://playground.mahimai.ca/demos/panel-scribe, or fork the
-cookbook and run the worker locally.
+```python
+speaker = self.sidecar.display_speaker()
+if self.sidecar.current_speaker is not None:
+    new_message.content = [f"[{speaker}] {text}"]
+self.transcript.append({"speaker": speaker, "text": text})
+...
+if TRIGGER not in text.lower():
+    raise StopResponse()
+```
+
+Because each line enters the model's context already tagged with its speaker, the
+recap needs no separate state: on "scribe, recap" the LLM reads its own
+attributed history and calls `publish_scorecard`.
+
+> [!NOTE]
+> Diarization needs more than one voice. A solo tester hears nothing
+> interesting, so play a panel recording into the mic or gather a few people. The
+> eval feeds pre-labeled turns to test the recap without audio.
+
+Build it from an empty folder in the full walkthrough, or talk to the finished
+agent at https://playground.mahimai.ca/demos/panel-scribe.
