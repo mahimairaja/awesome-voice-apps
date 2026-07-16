@@ -73,22 +73,36 @@ Every demo carries these files:
 | `.env.example` | The credentials the demo uses, ready to copy to `.env`. A subset of the shared six-key reference. |
 | `README.md` | Short visitor entry: one-line hook, what it does, four uv commands, recording placeholder. |
 | `playground.json` | Only when the demo emits playground UI events. Title, category, description, who_for, required_credentials, ui_components, released, stack. |
-| `blog.md` | Build writeup: frontmatter (title, summary) plus a markdown body in the frozen subset. Renders on the demo's playground page. Always written by the subagent; optional when scaffolding by hand. |
+| `blog.md` | Short "How to build" build-along: frontmatter (title, summary) plus a 350 to 600 word body in the frozen subset. Renders on the demo's playground page. Always written by the subagent; optional when scaffolding by hand. |
+| `tutorial.md` | Full "How to build" walkthrough: the complete build from empty folder to running agent, in the frozen subset plus callouts. Renders on the demo's own tutorial page. Optional; the subagent writes it alongside `blog.md`. |
 
 Each demo carries its own `.env.example` listing exactly the credentials it
 uses, so `cp .env.example .env` works from the demo folder. The full six-key
 reference set still lives at `templates/livekit-base/.env.example`.
 
-`blog.md` is the one writeup file a demo may carry. The subagent always
-scaffolds it; a human scaffolding by hand may omit it. It is a build
-writeup for builders: the problem, the stack choice, the interesting code,
-the one gotcha, a run link. The `README.md` stays the run instructions;
-`blog.md` adds the story. `reel.md` and other marketing content still do
-not belong in this repo; the operator writes those elsewhere.
+A demo carries two writeups, both framed as "How to build a <thing>", both
+generated from the demo's real files (`agent.py`, `pyproject.toml`,
+`playground.json`, `README.md`) so the guide matches what actually ships. The
+`README.md` stays the run instructions. `reel.md` and other marketing content
+still do not belong in this repo; the operator writes those elsewhere.
 
-A `blog.md` is YAML frontmatter plus a markdown body.
+`blog.md` is the short build-along, rendered on the demo page. The body is 350
+to 600 words in this order: one or two sentences on the problem; the stack in
+one sentence; the three or four key code moves, each a short paragraph plus a
+fenced block lifted verbatim from the real `agent.py` (this is the part a
+reader copies); one callout with the single gotcha; a closing line linking the
+full tutorial and the run link.
 
-Frontmatter keys (flat, simple scalars, one per line):
+`tutorial.md` is the full walkthrough, rendered on the demo's tutorial page. It
+is a deliberate long-form exception to the keep-it-short rule. The body builds
+from an empty folder to a running agent in numbered `##` sections, each showing
+the real code for that step: what you will build and prerequisites; scaffold;
+the agent; the tools and state; the playground UI; the eval; run it. Callouts
+carry gotchas, tips, and warnings inline. Length is whatever the build honestly
+needs, tight, no filler.
+
+Both files are YAML frontmatter plus a markdown body. Frontmatter keys (flat,
+simple scalars, one per line):
 
 - `title` (required)
 - `summary` (required, one or two sentences, used as the page meta description)
@@ -101,12 +115,22 @@ No published date: posts carry no visible date.
 
 Allowed markdown: headings, paragraphs, bold and italic, links, inline
 code, fenced code blocks with a language, bullet and numbered lists,
-blockquotes, and external images. No raw HTML. Images must be hosted at a
-public internet URL and linked inline like `![alt](https://host/file.svg)`;
-image files are not committed to the repo and inline `<svg>` or HTML is
-stripped, so the URL must be publicly fetchable. This subset is frozen the
-same way `ui_components` is: a writeup that needs more is a deliberate
-playground change, not a demo declaration.
+blockquotes, callouts (below), and external images. No raw HTML. Images must be
+hosted at a public internet URL and linked inline like
+`![alt](https://host/file.svg)`; image files are not committed to the repo and
+inline `<svg>` or HTML is stripped, so the URL must be publicly fetchable. This
+subset is frozen the same way `ui_components` is: a writeup that needs more is a
+deliberate playground change, not a demo declaration.
+
+Callouts are the one subset extension: GitHub-style alert blockquotes (pure
+markdown, no raw HTML). A callout is a blockquote whose first line is a marker,
+one of `[!NOTE]`, `[!TIP]`, `[!WARNING]`, `[!IMPORTANT]`, `[!CAUTION]`:
+
+    > [!WARNING]
+    > record_field rejects a bad policy number. Never invent a value.
+
+If the renderer does not special-case them they degrade to plain blockquotes,
+so they stay safe inside the frozen subset.
 
 When a demo ships, link the demo folder under the matching category in
 `README.md`. Drop a bold demo name and a one-line description so a
