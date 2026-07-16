@@ -1,0 +1,17 @@
+[project]
+name = "panel-scribe"
+version = "0.1.0"
+description = "Recruiting-panel scribe: live speaker diarization (pyannoteAI Live) plus an attributed scorecard."
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "livekit-agents[deepgram,cerebras,rime]>=1.6,<2.0",
+    "aiohttp>=3.9",
+    "numpy>=1.26",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = ["livekit-agents[openai]>=1.6,<2.0"]
+
+[tool.ruff]
+line-length = 100
