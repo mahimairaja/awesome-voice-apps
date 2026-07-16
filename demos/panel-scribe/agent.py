@@ -16,6 +16,7 @@ Run it:
 import asyncio
 import json
 import logging
+import os
 from typing import Literal
 
 import aiohttp
@@ -24,10 +25,17 @@ from dotenv import load_dotenv
 from livekit import rtc
 from livekit.agents import (
     Agent,
+    AgentServer,
+    AgentSession,
+    JobContext,
+    JobProcess,
     RunContext,
     StopResponse,
+    cli,
     function_tool,
+    inference,
 )
+from livekit.plugins import cerebras, deepgram, rime
 
 load_dotenv()
 
@@ -325,3 +333,57 @@ class PanelScribe(Agent):
         """
         publish_scorecard_ui(self.room, rows, consensus)
         return "scorecard published"
+
+
+server = AgentServer()
+
+
+def prewarm(proc: JobProcess) -> None:
+    proc.userdata["vad"] = inference.VAD()
+
+
+server.setup_fnc = prewarm
+
+
+@server.rtc_session(agent_name="panel-scribe")
+async def entrypoint(ctx: JobContext) -> None:
+    ctx.log_context_fields = {"room": ctx.room.name}
+
+    pyannote_key = os.environ.get("PYANNOTE_API_KEY", "")
+    sidecar = PyannoteLive(api_key=pyannote_key)
+
+    session = AgentSession(
+        stt=deepgram.STT(model="nova-3", language="en"),
+        llm=cerebras.LLM(model="llama-3.3-70b"),
+        tts=rime.TTS(model="arcana", speaker="celeste", use_websocket=True),
+        vad=ctx.proc.userdata["vad"],
+        turn_detection=inference.TurnDetector(),
+    )
+
+    agent = PanelScribe(ctx.room, sidecar)
+    await session.start(agent=agent, room=ctx.room)
+    await ctx.connect()
+
+    if pyannote_key:
+        asyncio.create_task(sidecar.run())
+
+        async def _stop_sidecar() -> None:
+            await sidecar.aclose()
+
+        ctx.add_shutdown_callback(_stop_sidecar)
+    else:
+        logger.warning("PYANNOTE_API_KEY not set: diarization disabled, labels will be Speaker ?")
+
+    publish_transcript(ctx.room, [])
+    publish_talk_time(ctx.room, [])
+    await session.generate_reply(
+        instructions=(
+            "Greet the panel in one sentence: say you are listening and labeling "
+            "each voice, and that they should say scribe recap when they want the "
+            "scorecard. Then stop."
+        )
+    )
+
+
+if __name__ == "__main__":
+    cli.run_app(server)
