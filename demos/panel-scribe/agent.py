@@ -22,6 +22,12 @@ import aiohttp
 import numpy as np
 from dotenv import load_dotenv
 from livekit import rtc
+from livekit.agents import (
+    Agent,
+    RunContext,
+    StopResponse,
+    function_tool,
+)
 
 load_dotenv()
 
@@ -265,3 +271,57 @@ def publish_scorecard_ui(room: rtc.Room, rows: list[dict], consensus: str) -> No
         component_id="consensus",
         props={"title": "panel consensus", "body": consensus, "accent": True},
     )
+
+
+INSTRUCTIONS = (
+    "You are a scribe for a hiring panel debrief. Several interviewers are "
+    "talking to each other about a candidate. Stay silent and just listen. Do "
+    "not answer or comment on what they say. Only speak when someone says the "
+    "word scribe, for example scribe recap or scribe give us the scorecard. "
+    "When that happens, review the whole conversation so far, where each line is "
+    "prefixed with the speaker like Speaker 1 or Speaker 2, and call "
+    "publish_scorecard once. Give one row per interviewer with their strengths, "
+    "their concerns, and their lean toward hiring, plus a one sentence panel "
+    "consensus. After the tool call, say a short spoken summary in one or two "
+    "sentences. Keep speech plain text, no markdown, no emojis."
+)
+
+
+class PanelScribe(Agent):
+    def __init__(self, room: rtc.Room, sidecar: PyannoteLive) -> None:
+        super().__init__(instructions=INSTRUCTIONS)
+        self.room = room
+        self.sidecar = sidecar
+        self.transcript: list[dict] = []
+
+    async def stt_node(self, audio, model_settings):
+        async def tee():
+            async for frame in audio:
+                self.sidecar.feed_frame(frame)
+                yield frame
+
+        async for event in Agent.default.stt_node(self, tee(), model_settings):
+            yield event
+
+    async def on_user_turn_completed(self, turn_ctx, new_message) -> None:
+        text = (new_message.text_content or "").strip()
+        if not text:
+            raise StopResponse()
+        speaker = self.sidecar.display_speaker()
+        new_message.content = [f"[{speaker}] {text}"]
+        self.transcript.append({"speaker": speaker, "text": text})
+        publish_transcript(self.room, self.transcript)
+        loop = asyncio.get_running_loop()
+        publish_talk_time(self.room, self.sidecar.talk_time_items(now=loop.time()))
+        if TRIGGER not in text.lower():
+            raise StopResponse()
+
+    @function_tool()
+    async def publish_scorecard(self, context: RunContext, rows: list[dict], consensus: str) -> str:
+        """Render the debrief scorecard on screen.
+
+        rows: one dict per interviewer with keys interviewer, strengths,
+        concerns, lean. consensus: one sentence overall hiring lean.
+        """
+        publish_scorecard_ui(self.room, rows, consensus)
+        return "scorecard published"
