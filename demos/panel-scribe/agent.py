@@ -358,7 +358,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     session = AgentSession(
         stt=deepgram.STT(model="nova-3", language="en"),
-        llm=cerebras.LLM(model="llama-3.3-70b"),
+        llm=cerebras.LLM(model="gpt-oss-120b"),
         tts=rime.TTS(model="arcana", speaker="celeste", use_websocket=True),
         vad=ctx.proc.userdata["vad"],
         turn_detection=inference.TurnDetector(),

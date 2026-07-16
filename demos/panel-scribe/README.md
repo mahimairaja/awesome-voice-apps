@@ -14,7 +14,7 @@ scorecard.
 - Stays silent while the panel talks. Say "scribe, recap" and it writes a
   scorecard: one row per interviewer with strengths, concerns, and a hiring
   lean, plus a one-line consensus, and reads a short summary back.
-- Stack: Deepgram Nova-3 (STT), Cerebras Llama 3.3 70B (LLM), Rime Arcana (TTS),
+- Stack: Deepgram Nova-3 (STT), Cerebras GPT-OSS 120B (LLM), Rime Arcana (TTS),
   pyannoteAI Live (diarization).
 
 ## Run it

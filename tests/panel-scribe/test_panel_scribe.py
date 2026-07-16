@@ -15,7 +15,7 @@ async def test_recap_attributes_feedback_by_speaker(fake_room, judge_llm):
     # the speaker prefix that reconciliation would produce, so display_speaker
     # is not exercised. Only the trio (the recap behavior) is under test.
     sidecar = PyannoteLive(api_key="")
-    async with AgentSession(llm=cerebras.LLM(model="llama-3.3-70b")) as session:
+    async with AgentSession(llm=cerebras.LLM(model="gpt-oss-120b")) as session:
         await session.start(PanelScribe(fake_room, sidecar))
 
         # Three pre-labeled feedback turns. The scribe stays silent on each.
