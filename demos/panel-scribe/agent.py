@@ -316,7 +316,11 @@ class PanelScribe(Agent):
         if not text:
             raise StopResponse()
         speaker = self.sidecar.display_speaker()
-        new_message.content = [f"[{speaker}] {text}"]
+        # Prefix the model context with the speaker only when pyannote has
+        # actually labeled one. During a diarization gap current_speaker is None,
+        # and injecting "Speaker ?" would muddy attribution in the scorecard.
+        if self.sidecar.current_speaker is not None:
+            new_message.content = [f"[{speaker}] {text}"]
         self.transcript.append({"speaker": speaker, "text": text})
         publish_transcript(self.room, self.transcript)
         loop = asyncio.get_running_loop()
@@ -365,7 +369,17 @@ async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect()
 
     if pyannote_key:
-        asyncio.create_task(sidecar.run())
+        task = asyncio.create_task(sidecar.run())
+
+        def _log_sidecar_exit(finished: asyncio.Task) -> None:
+            try:
+                finished.result()
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.exception("pyannote live sidecar stopped unexpectedly")
+
+        task.add_done_callback(_log_sidecar_exit)
 
         async def _stop_sidecar() -> None:
             await sidecar.aclose()
