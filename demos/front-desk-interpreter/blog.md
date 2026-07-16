@@ -1,29 +1,17 @@
 ---
-title: The leanest agent in the cookbook is a hotel interpreter
-summary: A speech-to-speech front-desk interpreter on Gemini Live, with no STT, TTS, VAD, or turn detector, and the one model-id gotcha that cost an afternoon.
+title: How to build a live interpreter voice agent
+summary: A speech-to-speech front-desk interpreter on Gemini Live, no STT, TTS, VAD, or turn detector, that bridges two people on a call in real time.
 author: Mahimai
 github: mahimairaja
 ---
 
-## The problem
+A hotel front desk gets a guest who speaks no English. The job is small and well
+defined: hear one side, say it back to the other, do nothing else. This agent
+does exactly that, both directions, in real time.
 
-A hotel front desk gets a guest who speaks no English. Today that means a
-phone tree, a paid interpreter line, or a clerk and guest poking at
-translation apps. The job is small and well defined: hear one side, say it
-back to the other, do nothing else.
-
-## Why this stack
-
-One model does the whole thing. Gemini Live is speech to speech, so there
-is no separate STT, no TTS, no VAD model, and no turn detector to wire up
-or pay for. The agent is the leanest in the cookbook: an instructions
-string, a session, and two event handlers for captions. English anchors
-the desk side; the guest language is whatever the model last heard that
-was not English, so direction lives in the prompt, not in code.
-
-## The interesting part
-
-The session is the whole runtime. No plugins beyond the realtime model:
+One model does the whole thing. Gemini Live is speech to speech, so there is no
+separate STT, no TTS, no VAD, and no turn detector. The session is the whole
+runtime:
 
 ```python
 session = AgentSession(
@@ -36,22 +24,44 @@ session = AgentSession(
 )
 ```
 
-Captions pair the guest line with its translation: `user_input_transcribed`
-accumulates multi-segment finals (one long utterance emits several), and
-`conversation_item_added` flushes the pending original onto the assistant
-row.
+The desk-side language is not hard-coded. The host picks it in the playground
+and it rides the agent-dispatch metadata, arriving as `ctx.job.metadata`. The
+agent defaults to English and caps the length, since a browser-minted value is
+untrusted.
 
-## What surprised me
+The catch is that a single session links to one participant, the first to join.
+On a two-party call it would hear only one side. So the agent tracks the active
+speaker and re-links the session to whoever is talking, which makes it interpret
+both ways:
 
-The model id is load-bearing and the docs lie about the default. Passing
-`gemini-2.5-flash` (a text-API id) makes the Live websocket close with a
-1008 policy violation: that model has no `bidiGenerateContent`. The id
-that works for a Gemini API key is
-`gemini-2.5-flash-native-audio-preview-12-2025`. An afternoon went to a
-one-line constant.
+```python
+current = getattr(room_io, "linked_participant", None)
+if current is None or current.identity != sp.identity:
+    room_io.set_participant(sp.identity)
+```
 
-## Run it
+Captions pair each line with its translation. `user_input_transcribed`
+accumulates the guest's speech (one long utterance emits several final segments),
+and `conversation_item_added` flushes that pending original onto the assistant
+row when the reply lands:
 
-Talk to it at https://playground.mahimai.ca/demos/front-desk-interpreter.
-Open in English, switch to any other language mid-call, and hand the phone
-back and forth. Or fork the cookbook and run the worker locally.
+```python
+row: dict = {"text": text}
+if pending["original"]:
+    row["original"] = pending["original"]
+    pending["original"] = None
+captions.append(row)
+```
+
+One more multiparty detail: the invited guest joins after the initial UI
+broadcast, so it asks for the scene and captions once its data handler is
+listening, and the agent replays them to just that participant.
+
+> [!WARNING]
+> The model id is load-bearing and a text-API id will not work. Passing
+> `gemini-2.5-flash` closes the Live socket with a 1008 policy violation: that
+> model has no `bidiGenerateContent`. Use
+> `gemini-2.5-flash-native-audio-preview-12-2025`.
+
+Build it from an empty folder in the full walkthrough, or talk to the finished
+agent at https://playground.mahimai.ca/demos/front-desk-interpreter.
