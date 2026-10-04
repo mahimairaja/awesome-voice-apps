@@ -6,16 +6,23 @@ import logging
 import os
 import time
 import uuid
-from decimal import Decimal, ROUND_CEILING
+from decimal import ROUND_CEILING, Decimal
 
 import httpx
 import voicegateway
-from livekit.agents import APIConnectOptions, AgentServer, AgentSession, JobExecutorType, JobRequest, cli, get_job_context
+from agent import DriveThruAttendant, _publish_cart, _publish_menu
+from livekit.agents import (
+    AgentServer,
+    AgentSession,
+    APIConnectOptions,
+    JobExecutorType,
+    JobRequest,
+    cli,
+    get_job_context,
+)
 from livekit.agents.voice.agent_session import SessionConnectOptions
 from livekit.plugins import cartesia, deepgram, openai, silero
 from voicegateway.services.sinks import RemoteCollectorSink
-
-from agent import DriveThruAttendant, _publish_cart, _publish_menu
 
 logger = logging.getLogger(__name__)
 claims: dict[str, dict] = {}
@@ -31,7 +38,7 @@ def spawn(coro) -> asyncio.Task:
 
 async def control(action: str, reservation: str, **fields) -> dict:
     origin = os.environ["PLAYGROUND_ORIGIN"].rstrip("/")
-    if not (origin.startswith("https://") or origin.startswith("http://127.0.0.1:")):
+    if not origin.startswith(("https://", "http://127.0.0.1:")):
         raise ValueError("PLAYGROUND_ORIGIN must use HTTPS outside localhost")
     async with httpx.AsyncClient(timeout=5) as client:
         result = await client.post(
@@ -61,7 +68,7 @@ async def authorize(req: JobRequest) -> None:
         if approved["room"] != req.room.name or not 0 < remaining <= 120:
             raise ValueError("Invalid reservation deadline")
         claims[req.room.name] = approved
-    except Exception:
+    except Exception:  # noqa: BLE001 - every failed admission must reject the job
         # Do not log provider credentials, metadata or HTTP response bodies.
         logger.warning("Rejected unapproved playground call")
         await req.reject()
@@ -75,6 +82,7 @@ async def authorize(req: JobRequest) -> None:
 
 class PlaygroundSink(RemoteCollectorSink):
     """Attribute VoiceGateway costs to this reservation, never the shared account."""
+
     def __init__(self, reservation: str):
         super().__init__(os.environ["VOICEGW_COLLECTOR_URL"], os.environ["VOICEGW_API_KEY"])
         self.reservation = reservation
@@ -85,12 +93,19 @@ class PlaygroundSink(RemoteCollectorSink):
         if record.project == "mahimai-playground" and record.modality == "eou":
             await super().log_request(record)
             return
-        if record.project != "mahimai-playground" or record.provider not in {"openai", "deepgram", "cartesia"}:
+        if record.project != "mahimai-playground" or record.provider not in {
+            "openai",
+            "deepgram",
+            "cartesia",
+        }:
             raise ValueError("Unexpected playground cost attribution")
         cost = Decimal(str(record.cost_usd))
         if not cost.is_finite() or cost < 0:
             raise ValueError("Invalid metered cost")
-        self.records[record.id] = (record.provider, max(cost, self.records.get(record.id, (None, Decimal(0)))[1]))
+        self.records[record.id] = (
+            record.provider,
+            max(cost, self.records.get(record.id, (None, Decimal(0)))[1]),
+        )
         await super().log_request(record)
         await self.report()
 
@@ -100,8 +115,12 @@ class PlaygroundSink(RemoteCollectorSink):
             for provider, cost in self.records.values():
                 totals[provider] = totals.get(provider, Decimal(0)) + cost
             for provider, cost in totals.items():
-                await control("usage", self.reservation, service=provider,
-                              microusd=int((cost * 1_000_000).to_integral_value(rounding=ROUND_CEILING)))
+                await control(
+                    "usage",
+                    self.reservation,
+                    service=provider,
+                    microusd=int((cost * 1_000_000).to_integral_value(rounding=ROUND_CEILING)),
+                )
 
     async def flush(self):
         await super().flush()
@@ -118,7 +137,9 @@ class HostedCoffee(DriveThruAttendant):
         # Per-agent clients keep component metrics isolated between concurrent calls.
         self.update_options(
             stt=deepgram.STT(model="nova-3"),
-            llm=openai.LLM(model="gpt-4o-mini", max_completion_tokens=180, max_retries=0, store=False),
+            llm=openai.LLM(
+                model="gpt-4o-mini", max_completion_tokens=180, max_retries=0, store=False
+            ),
             tts=cartesia.TTS(model="sonic-2"),
         )
         self._llm_requests = 0
@@ -130,7 +151,10 @@ class HostedCoffee(DriveThruAttendant):
         # Bound billable work before sending it, independently of delayed metrics.
         self._llm_requests += 1
         scale = self.approval["seconds"] / 120
-        if self._llm_requests > max(1, int(12 * scale)) or len(json.dumps(chat_ctx.to_dict()).encode()) > 16000:
+        if (
+            self._llm_requests > max(1, int(12 * scale))
+            or len(json.dumps(chat_ctx.to_dict()).encode()) > 16000
+        ):
             spawn(self._finish())
             return
         async for chunk in super().llm_node(chat_ctx, tools, model_settings):
@@ -144,6 +168,7 @@ class HostedCoffee(DriveThruAttendant):
                     spawn(self._finish())
                     return
                 yield chunk
+
         async for frame in super().tts_node(bounded_text(), model_settings):
             yield frame
 
@@ -187,14 +212,19 @@ class HostedCoffee(DriveThruAttendant):
         self._active_session.shutdown(drain=False)
         try:
             await control("finish", self.approval["id"])
-        except Exception:
+        except (httpx.HTTPError, ValueError):
             logger.warning("Room cleanup pending server recovery")
         finally:
             await self.room.disconnect()
 
 
 def build_server() -> AgentServer:
-    for key in ("PLAYGROUND_WORKER_SECRET", "PLAYGROUND_ORIGIN", "VOICEGW_COLLECTOR_URL", "VOICEGW_API_KEY"):
+    for key in (
+        "PLAYGROUND_WORKER_SECRET",
+        "PLAYGROUND_ORIGIN",
+        "VOICEGW_COLLECTOR_URL",
+        "VOICEGW_API_KEY",
+    ):
         if not os.environ.get(key):
             raise RuntimeError(f"Missing {key}")
     server = AgentServer(
@@ -213,7 +243,9 @@ def build_server() -> AgentServer:
                 llm_conn_options=APIConnectOptions(max_retry=0),
                 tts_conn_options=APIConnectOptions(max_retry=0),
             ),
-            userdata={"cart": []}, vad=ctx.proc.userdata["vad"], max_tool_steps=3,
+            userdata={"cart": []},
+            vad=ctx.proc.userdata["vad"],
+            max_tool_steps=3,
             turn_handling={"turn_detection": "vad", "interruption": {"mode": "vad"}},
         )
         await ctx.connect()
