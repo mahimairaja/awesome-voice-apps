@@ -6,7 +6,7 @@ independently runnable.
 
 ## Runtime
 
-Install `requirements-hosted.txt` in Python 3.12 and run `python hosted.py start`.
+Install `requirements-hosted.txt` in Python 3.11 and run `python hosted.py start`.
 The Docker build context is this demo directory. LiveKit uses one process with threaded jobs and
 admission limited to two calls. Local Silero VAD handles turn boundaries; the
 large multilingual turn detector is not loaded. Every session creates its own cart.

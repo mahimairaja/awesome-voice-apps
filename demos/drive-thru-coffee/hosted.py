@@ -64,6 +64,9 @@ async def authorize(req: JobRequest) -> None:
     try:
         reservation = parse_job(req.job.metadata, req.room.name)
         approved = await control("claim", reservation)
+        seconds = approved.get("seconds")
+        if approved.get("id") != reservation or type(seconds) is not int or not 1 <= seconds <= 120:
+            raise ValueError("Invalid reservation allowance")
         remaining = approved["deadline"] - time.time()
         if approved["room"] != req.room.name or not 0 < remaining <= 120:
             raise ValueError("Invalid reservation deadline")

@@ -44,7 +44,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
 
     async def test_accepts_only_server_deadline(self):
         request = self.request()
-        approval = {"id": ID, "room": ROOM, "deadline": time.time() + 60}
+        approval = {"id": ID, "room": ROOM, "deadline": time.time() + 60, "seconds": 60}
         with patch.object(hosted, "control", new_callable=AsyncMock, return_value=approval):
             await hosted.authorize(request)
         request.accept.assert_awaited_once()
@@ -57,10 +57,34 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
                 hosted,
                 "control",
                 new_callable=AsyncMock,
-                return_value={"id": ID, "room": ROOM, "deadline": time.time() + offset},
+                return_value={
+                    "id": ID,
+                    "room": ROOM,
+                    "deadline": time.time() + offset,
+                    "seconds": 120,
+                },
             ):
                 await hosted.authorize(request)
             request.reject.assert_awaited_once()
+
+    async def test_rejects_invalid_allowance_or_identity(self):
+        for seconds in (None, True, 0, -1, 121, 60.5, "60"):
+            with self.subTest(seconds=seconds):
+                request = self.request()
+                approval = {"id": ID, "room": ROOM, "deadline": time.time() + 60}
+                if seconds is not None:
+                    approval["seconds"] = seconds
+                with patch.object(hosted, "control", new_callable=AsyncMock, return_value=approval):
+                    await hosted.authorize(request)
+                request.reject.assert_awaited_once()
+                request.accept.assert_not_awaited()
+                self.assertFalse(hosted.claims)
+        request = self.request()
+        approval = {"id": "another-call", "room": ROOM, "deadline": time.time() + 60, "seconds": 60}
+        with patch.object(hosted, "control", new_callable=AsyncMock, return_value=approval):
+            await hosted.authorize(request)
+        request.reject.assert_awaited_once()
+        self.assertFalse(hosted.claims)
 
     async def test_deadline_stops_call_without_browser(self):
         agent = SimpleNamespace(approval={"deadline": time.time() + 0.01}, _finish=AsyncMock())
@@ -176,7 +200,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
                 hosted,
                 "control",
                 new_callable=AsyncMock,
-                return_value={"id": ID, "room": ROOM, "deadline": time.time() + 60},
+                return_value={"id": ID, "room": ROOM, "deadline": time.time() + 60, "seconds": 60},
             ),
             self.assertRaises(RuntimeError),
         ):
