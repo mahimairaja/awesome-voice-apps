@@ -22,6 +22,8 @@ from livekit.agents import (
 )
 from livekit.agents.voice.agent_session import SessionConnectOptions
 from livekit.plugins import cartesia, deepgram, openai, silero
+from trivia import QUESTIONS, HostedTriviaHost, initial_state, publish_trivia
+from voicegateway.services.inside_call import InsideCall
 from voicegateway.services.sinks import RemoteCollectorSink
 
 logger = logging.getLogger(__name__)
@@ -55,7 +57,7 @@ def parse_job(metadata: str, room: str) -> str:
     reservation = data.get("reservation", "")
     if str(uuid.UUID(reservation, version=4)) != reservation:
         raise ValueError("Invalid reservation")
-    if data.get("agent") != "coffee" or room != f"playground-{reservation}":
+    if data.get("agent") not in {"coffee", "trivia"} or room != f"playground-{reservation}":
         raise ValueError("Unapproved demo or room")
     return reservation
 
@@ -67,6 +69,8 @@ async def authorize(req: JobRequest) -> None:
         seconds = approved.get("seconds")
         if approved.get("id") != reservation or type(seconds) is not int or not 1 <= seconds <= 120:
             raise ValueError("Invalid reservation allowance")
+        if approved.get("demo", "coffee") != json.loads(req.job.metadata)["agent"]:
+            raise ValueError("Reservation demo mismatch")
         remaining = approved["deadline"] - time.time()
         if approved["room"] != req.room.name or not 0 < remaining <= 120:
             raise ValueError("Invalid reservation deadline")
@@ -90,6 +94,7 @@ class PlaygroundSink(RemoteCollectorSink):
         super().__init__(os.environ["VOICEGW_COLLECTOR_URL"], os.environ["VOICEGW_API_KEY"])
         self.reservation = reservation
         self.records = {}
+        self.insights = InsideCall()
         self.report_lock = asyncio.Lock()
 
     async def log_request(self, record):
@@ -102,6 +107,7 @@ class PlaygroundSink(RemoteCollectorSink):
             "cartesia",
         }:
             raise ValueError("Unexpected playground cost attribution")
+        self.insights.record(record)
         cost = Decimal(str(record.cost_usd))
         if not cost.is_finite() or cost < 0:
             raise ValueError("Invalid metered cost")
@@ -125,12 +131,16 @@ class PlaygroundSink(RemoteCollectorSink):
                     microusd=int((cost * 1_000_000).to_integral_value(rounding=ROUND_CEILING)),
                 )
 
+            await control("insights", self.reservation, summary=self.insights.snapshot())
+
     async def flush(self):
         await super().flush()
         await self.report()
 
 
-class HostedCoffee(DriveThruAttendant):
+class HostedGuard:
+    demo = "coffee"
+
     def __init__(self) -> None:
         ctx = get_job_context()
         self.approval = claims.pop(ctx.room.name, None)
@@ -177,7 +187,7 @@ class HostedCoffee(DriveThruAttendant):
 
     async def on_enter(self) -> None:
         self._active_session = self.session
-        self.session.userdata = {"cart": []}
+        self.session.userdata = {"cart": []} if self.demo == "coffee" else initial_state()
         self._deadline_task = spawn(self._watch_deadline())
         self.session.on("close", lambda _: spawn(self._finish()))
         # Each visitor gets their own state. Never put a cart in pool session_kwargs.
@@ -185,7 +195,7 @@ class HostedCoffee(DriveThruAttendant):
             voicegateway.attach(
                 self.session,
                 project="mahimai-playground",
-                agent_id="coffee",
+                agent_id=self.demo,
                 sink=PlaygroundSink(self.approval["id"]),
                 room=self.room.name,
                 transcript=False,
@@ -193,11 +203,17 @@ class HostedCoffee(DriveThruAttendant):
                 turns=False,
                 dead_air=False,
             )
-            _publish_cart(self.room, self.session.userdata["cart"])
-            _publish_menu(self.room)
-            await self.session.generate_reply(
-                instructions="Say this is a coffee-ordering simulation, no real order or payment. Ask what they would like."
-            )
+            if self.demo == "coffee":
+                _publish_cart(self.room, self.session.userdata["cart"])
+                _publish_menu(self.room)
+                greeting = "Say this is a coffee-ordering simulation, no real order or payment. Ask what they would like."
+            else:
+                publish_trivia(self.room, self.session.userdata)
+                greeting = (
+                    "Welcome them to a three-question trivia game, then ask only: "
+                    + QUESTIONS[0][0]
+                )
+            await self.session.generate_reply(instructions=greeting)
         except Exception:
             await self._finish()
             raise
@@ -219,6 +235,14 @@ class HostedCoffee(DriveThruAttendant):
             logger.warning("Room cleanup pending server recovery")
         finally:
             await self.room.disconnect()
+
+
+class HostedCoffee(HostedGuard, DriveThruAttendant):
+    pass
+
+
+class HostedTrivia(HostedGuard, HostedTriviaHost):
+    demo = "trivia"
 
 
 def build_server() -> AgentServer:
@@ -252,7 +276,9 @@ def build_server() -> AgentServer:
             turn_handling={"turn_detection": "vad", "interruption": {"mode": "vad"}},
         )
         await ctx.connect()
-        await session.start(agent=HostedCoffee(), room=ctx.room, record=False)
+        approval = claims.get(ctx.room.name, {})
+        agent = HostedTrivia() if approval.get("demo") == "trivia" else HostedCoffee()
+        await session.start(agent=agent, room=ctx.room, record=False)
 
     return server
 

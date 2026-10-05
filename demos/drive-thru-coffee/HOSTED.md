@@ -81,3 +81,22 @@ The planned Railway collector uses a private service with persistent SQLite.
 No public collector domain is needed. The worker connects outbound to LiveKit and
 the authenticated site control endpoint. Keep admission disabled until the site,
 worker, collector persistence and monthly budget are configured together.
+
+## Two hosted experiences
+
+The shared hosted entry point accepts `coffee` or `trivia` in its validated
+reservation metadata. Both dispatch to the same worker and share the site's
+quota, concurrency, duration, and budget limits. The hosted trivia variant
+in `trivia.py` asks three fixed questions, grades with a deterministic tool,
+and publishes `Trivia` events for the website's score panel. Duplicate answers
+do not increment the score, and each call owns its own state.
+
+The worker sends allowlisted cumulative `InsideCall` snapshots to the site's
+worker endpoint. The website stores the latest revision and exposes it only to
+the GitHub account that owns that reservation. No transcript or operator token
+is sent to the browser. Provider timings are not end-to-end latency.
+
+Deploy the site migration `0013_playground_insights.sql` and compatible API
+before updating this worker. The pinned VoiceGateway revision includes the
+summary helper; older releases do not. Run `python -m pytest test_hosted.py`
+from this folder for offline dispatch, limit, trivia, and metering tests.

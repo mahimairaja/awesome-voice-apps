@@ -1,6 +1,6 @@
 # Hosted worker pins, independently runnable from the original demo.
 livekit-agents[deepgram,openai,cartesia,silero]==1.6.10
-# Pinned metering fix: https://github.com/mahimailabs/voicegateway/pull/309
-voicegateway[livekit] @ git+https://github.com/mahimailabs/voicegateway.git@3ca71b431d667dfa80906a1b3e30ee7a740c4486
+# Pinned metering fix: https://github.com/mahimailabs/voicegateway/pull/310
+voicegateway[livekit] @ git+https://github.com/mahimailabs/voicegateway.git@64f156a2f1ad5851cf8011d092688721a06c1991
 python-dotenv==1.2.2
 httpx==0.28.1

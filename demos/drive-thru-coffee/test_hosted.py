@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import hosted
+from trivia import HostedTriviaHost, initial_state
 
 ID = "598cd768-86d4-42a1-bb44-adc44fba4207"
 ROOM = f"playground-{ID}"
@@ -155,6 +156,9 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
                 id=identifier,
                 provider=provider,
                 cost_usd=cost,
+                model_id="test",
+                input_units=0,
+                output_units=0,
                 modality="llm",
                 project="mahimai-playground",
             )
@@ -165,9 +169,9 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         ):
             await sink.log_request(record("one", "openai", 0.0000012))
             await sink.log_request(record("one", "openai", 0.0000012))
-            control.assert_awaited_with("usage", ID, service="openai", microusd=2)
+            control.assert_any_await("usage", ID, service="openai", microusd=2)
             await sink.log_request(record("two", "openai", 0.000002))
-            control.assert_awaited_with("usage", ID, service="openai", microusd=4)
+            control.assert_any_await("usage", ID, service="openai", microusd=4)
             invalid = record("other", "openai", 1)
             invalid.project = "another-app"
             with self.assertRaises(ValueError):
@@ -191,6 +195,37 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         with patch.dict(hosted.os.environ, env):
             server = hosted.build_server()
         self.assertIsInstance(server, hosted.AgentServer)
+
+    async def test_trivia_scoring_is_ordered_idempotent_and_isolated(self):
+        agent = HostedTriviaHost(SimpleNamespace())
+        state = initial_state()
+        other = initial_state()
+        context = SimpleNamespace(userdata=state)
+        with patch("trivia.publish_trivia"):
+            await agent.answer_question(context, 2, "six")
+            self.assertEqual(state["index"], 0)
+            await agent.answer_question(context, 1, "Mercury")
+            await agent.answer_question(context, 1, "Mercury")
+            self.assertEqual(state["correct"], 1)
+            await agent.answer_question(context, 2, "skip")
+            await agent.answer_question(context, 3, "H two O")
+        self.assertEqual(state["correct"], 2)
+        self.assertEqual(state["index"], 3)
+        self.assertEqual(other["index"], 0)
+
+    async def test_demo_substitution_is_rejected(self):
+        request = self.request({"agent": "trivia", "reservation": ID})
+        approval = {
+            "id": ID,
+            "room": ROOM,
+            "deadline": time.time() + 60,
+            "seconds": 60,
+            "demo": "coffee",
+        }
+        with patch.object(hosted, "control", new_callable=AsyncMock, return_value=approval):
+            await hosted.authorize(request)
+        request.reject.assert_awaited_once()
+        self.assertFalse(hosted.claims)
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()
