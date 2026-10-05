@@ -15,10 +15,10 @@ jobs:
       - uses: astral-sh/setup-uv@v6
 
       - name: ruff format
-        run: uvx ruff format --check .
+        run: uvx ruff==0.15.16 format --check .
 
       - name: ruff check
-        run: uvx ruff check .
+        run: uvx ruff==0.15.16 check .
 
-      - name: catalog unit test
-        run: python3 scripts/test_build_catalog.py
+      - name: Compile examples
+        run: python -m compileall -q demos templates

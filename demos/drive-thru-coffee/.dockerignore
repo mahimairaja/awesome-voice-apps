@@ -1,0 +1,6 @@
+*
+!Dockerfile
+!requirements-hosted.txt
+!agent.py
+!hosted.py
+!trivia.py
