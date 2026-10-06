@@ -6,7 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
   "livekit-agents[openai,silero]==1.8.5",
   "python-dotenv>=1.0,<2",
-  "voicegateway[livekit] @ git+https://github.com/mahimailabs/voicegateway.git@d24acec6",
+  "voicegateway[livekit]==0.27.0",
 ]
 
 [dependency-groups]

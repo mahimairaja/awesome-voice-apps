@@ -41,7 +41,7 @@ uv run pytest -q
 VoiceGateway records voice-session seconds and the delegated backend's token
 usage separately in local SQLite. Transcript and audio capture are disabled.
 Provider costs are estimates; they exclude LiveKit transport and worker hosting.
-The dependency currently pins the metering fix while its release is prepared.
+The example pins VoiceGateway 0.27.0 for GPT-Live duration and backend pricing.
 
 A synthetic-audio smoke test exercised a Friday-to-Monday correction and confirmed
 one Monday meeting through the native LiveKit session and public `attach()` API.

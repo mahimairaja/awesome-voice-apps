@@ -2894,7 +2894,7 @@ dev = [
 requires-dist = [
     { name = "livekit-agents", extras = ["openai", "silero"], specifier = "==1.8.5" },
     { name = "python-dotenv", specifier = ">=1.0,<2" },
-    { name = "voicegateway", extras = ["livekit"], git = "https://github.com/mahimailabs/voicegateway.git?rev=d24acec6" },
+    { name = "voicegateway", extras = ["livekit"], specifier = "==0.27.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -2993,8 +2993,8 @@ wheels = [
 
 [[package]]
 name = "voicegateway"
-version = "0.26.2.dev74+gd24acec67"
-source = { git = "https://github.com/mahimailabs/voicegateway.git?rev=d24acec6#d24acec67690d82ff30bc58cda2083374215b16d" }
+version = "0.27.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiosqlite" },
     { name = "alembic" },
@@ -3012,6 +3012,10 @@ dependencies = [
     { name = "sqlmodel" },
     { name = "typer" },
     { name = "voice-prices" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/86/6b/3c3036b06e2db07b3c75585523526305ce18e608e62ed33b00f660e7c88c/voicegateway-0.27.0.tar.gz", hash = "sha256:a52fb02867a40dc632fac887f75cffbd058fcba56503b4bc38924e3a4a2b7a55", size = 2507270, upload-time = "2026-10-06T03:43:53.817Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0b/bf/ce9812ff9ce3a1d97faa81ebc9a95c053225b8c81a66c7c8fc3c25782a69/voicegateway-0.27.0-py3-none-any.whl", hash = "sha256:c366e8631ae043de69b41b7dc5d3fab5afe01aeba550c2c010683b21ec8faa8a", size = 1467478, upload-time = "2026-10-06T03:43:52.069Z" },
 ]
 
 [package.optional-dependencies]
