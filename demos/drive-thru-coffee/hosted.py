@@ -57,7 +57,7 @@ def parse_job(metadata: str, room: str) -> str:
     reservation = data.get("reservation", "")
     if str(uuid.UUID(reservation, version=4)) != reservation:
         raise ValueError("Invalid reservation")
-    if data.get("agent") not in {"coffee", "trivia"} or room != f"playground-{reservation}":
+    if data.get("agent") not in {"coffee", "trivia", "sdr"} or room != f"playground-{reservation}":
         raise ValueError("Unapproved demo or room")
     return reservation
 
@@ -90,8 +90,9 @@ async def authorize(req: JobRequest) -> None:
 class PlaygroundSink(RemoteCollectorSink):
     """Attribute VoiceGateway costs to this reservation, never the shared account."""
 
-    def __init__(self, reservation: str):
+    def __init__(self, reservation: str, stop=None):
         super().__init__(os.environ["VOICEGW_COLLECTOR_URL"], os.environ["VOICEGW_API_KEY"])
+        self.stop = stop
         self.reservation = reservation
         self.records = {}
         self.insights = InsideCall()
@@ -115,6 +116,11 @@ class PlaygroundSink(RemoteCollectorSink):
             record.provider,
             max(cost, self.records.get(record.id, (None, Decimal(0)))[1]),
         )
+        if self.stop and (
+            sum(value[1] for value in self.records.values()) >= Decimal("0.20")
+            or getattr(record, "metadata", {}).get("pricing_complete") is False
+        ):
+            spawn(self.stop())
         await super().log_request(record)
         await self.report()
 
@@ -264,6 +270,66 @@ def build_server() -> AgentServer:
 
     @server.rtc_session(agent_name="mahimai-playground-coffee", on_request=authorize)
     async def coffee(ctx):
+        approval = claims.get(ctx.room.name, {})
+        if approval.get("demo") == "sdr":
+            from hosted_sdr import BACKEND_INSTRUCTIONS, HostedSDR
+
+            claims.pop(ctx.room.name)
+            session = AgentSession(
+                llm=openai.realtime.GPTLiveModel(
+                    voice="marin",
+                    responses_options={
+                        "model": "gpt-5.6-luna",
+                        "instructions": BACKEND_INSTRUCTIONS,
+                        "parallel_tool_calls": False,
+                        "max_output_tokens": 600,
+                        "reasoning": {"effort": "low"},
+                    },
+                ),
+                vad=ctx.proc.userdata["vad"],
+                conn_options=SessionConnectOptions(llm_conn_options=APIConnectOptions(max_retry=0)),
+            )
+            closing = False
+
+            async def finish_sdr():
+                nonlocal closing
+                if closing:
+                    return
+                closing = True
+                session.shutdown(drain=False)
+                try:
+                    await control("finish", approval["id"])
+                except (httpx.HTTPError, ValueError):
+                    logger.warning("SDR room cleanup pending server recovery")
+                finally:
+                    await ctx.room.disconnect()
+
+            async def deadline():
+                await asyncio.sleep(max(0, approval["deadline"] - time.time()))
+                await finish_sdr()
+
+            timer = spawn(deadline())
+            session.on("close", lambda _: spawn(finish_sdr()))
+            agent = HostedSDR(
+                ctx.room, approval, finish_sdr, spawn, PlaygroundSink(approval["id"], finish_sdr)
+            )
+            session.on(
+                "user_input_transcribed",
+                lambda event: agent.hear(event.transcript) if event.is_final else None,
+            )
+
+            async def cleanup():
+                timer.cancel()
+                await finish_sdr()
+
+            ctx.add_shutdown_callback(cleanup)
+            try:
+                await ctx.connect()
+                await session.start(agent=agent, room=ctx.room, record=False)
+            except Exception:
+                await cleanup()
+                raise
+            return
         session = AgentSession(
             conn_options=SessionConnectOptions(
                 stt_conn_options=APIConnectOptions(max_retry=0),
