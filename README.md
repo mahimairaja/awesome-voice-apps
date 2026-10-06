@@ -36,6 +36,7 @@ README lists its requirements and any extra setup. Provider usage may cost money
 | [Panel scribe](demos/panel-scribe/) | Labels each interviewer's voice live in a candidate debrief and turns it into an attributed scorecard. |
 | [Quick trivia](demos/quick-trivia/) | Shows three trivia questions the caller can edit, then quizzes them one at a time and keeps score. |
 | [Roadside dispatch](demos/roadside-dispatch/) | Roadside dispatcher: scores caller audio with Tyto, adapts when the line degrades, and re-confirms details captured over a bad line. |
+| [Talk to our team](demos/talk-to-our-team/) | GPT-Live sales conversation with request corrections and a guarded simulated calendar. |
 | [Tenant rights](demos/tenant-rights/) | Answers US renter questions from public HUD guidance, names the source, and redirects to legal help when a question is out of scope. |
 | [Water tracker](demos/water-tracker/) | Logs glasses of water by voice and tracks progress toward a daily goal. |
 
