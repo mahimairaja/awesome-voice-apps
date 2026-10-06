@@ -266,7 +266,10 @@ def build_server() -> AgentServer:
         load_fnc=lambda worker: len(worker.active_jobs) / 2,
         load_threshold=1,
     )
-    server.setup_fnc = lambda proc: proc.userdata.update(vad=silero.VAD.load())
+    # Thread jobs share the immutable ONNX session; each VAD stream owns its state.
+    # Loading another model for every call retains unnecessary inference memory.
+    vad = silero.VAD.load()
+    server.setup_fnc = lambda proc: proc.userdata.update(vad=vad)
 
     @server.rtc_session(agent_name="mahimai-playground-coffee", on_request=authorize)
     async def coffee(ctx):
@@ -290,19 +293,39 @@ def build_server() -> AgentServer:
                 conn_options=SessionConnectOptions(llm_conn_options=APIConnectOptions(max_retry=0)),
             )
             closing = False
+            finished = asyncio.Event()
+            sink = PlaygroundSink(approval["id"])
 
             async def finish_sdr():
                 nonlocal closing
                 if closing:
+                    await finished.wait()
                     return
                 closing = True
                 session.shutdown(drain=False)
                 try:
+                    # GPT Live reports the final duration on close. Let metering
+                    # finish before removing the room and ending the job loop.
+                    try:
+                        async with asyncio.timeout(8):
+                            await session.aclose()
+                            capture = getattr(session, "_vg_capture", None)
+                            if capture:
+                                await capture.reconcile(session)
+                                await capture.drain()
+                            await sink.flush()
+                    except Exception:
+                        logger.warning("SDR final metering pending; reservation retained")
                     await control("finish", approval["id"])
                 except (httpx.HTTPError, ValueError):
                     logger.warning("SDR room cleanup pending server recovery")
                 finally:
-                    await ctx.room.disconnect()
+                    try:
+                        await ctx.room.disconnect()
+                    finally:
+                        finished.set()
+
+            sink.stop = finish_sdr
 
             async def deadline():
                 await asyncio.sleep(max(0, approval["deadline"] - time.time()))
@@ -310,9 +333,7 @@ def build_server() -> AgentServer:
 
             timer = spawn(deadline())
             session.on("close", lambda _: spawn(finish_sdr()))
-            agent = HostedSDR(
-                ctx.room, approval, finish_sdr, spawn, PlaygroundSink(approval["id"], finish_sdr)
-            )
+            agent = HostedSDR(ctx.room, approval, finish_sdr, spawn, sink)
             session.on(
                 "user_input_transcribed",
                 lambda event: agent.hear(event.transcript) if event.is_final else None,
