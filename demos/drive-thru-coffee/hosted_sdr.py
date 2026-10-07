@@ -26,6 +26,55 @@ def meeting_state(booking):
     }
 
 
+TOOL_NAMES = {
+    "update_request",
+    "check_availability",
+    "propose_meeting",
+    "book_meeting",
+    "explain_services",
+}
+# Calendar facts only. Caller needs and attendee roles never reach the page.
+SAFE_KEYS = {"booking", "day", "revision", "services", "simulation", "slot", "slots", "status"}
+
+
+def _safe(value, depth=0):
+    if isinstance(value, (bool, int)):
+        return value
+    if isinstance(value, str):
+        return value[:80]
+    if isinstance(value, list):
+        return [item[:80] for item in value[:6] if isinstance(item, str)]
+    if isinstance(value, dict) and depth < 2:
+        return {k: _safe(v, depth + 1) for k, v in value.items() if k in SAFE_KEYS}
+    return None
+
+
+def _parse(text):
+    try:
+        data = json.loads(text) if text else {}
+    except (TypeError, ValueError):
+        return {}
+    return _safe(data) if isinstance(data, dict) else {}
+
+
+def tool_calls(event):
+    """Summarize executed tools for the page with allowlisted arguments and results."""
+    calls = []
+    for call, result in zip(event.function_calls, event.function_call_outputs):
+        if call.name not in TOOL_NAMES:
+            continue
+        calls.append(
+            {
+                "id": str(call.call_id)[:64],
+                "name": call.name,
+                "input": _parse(call.arguments),
+                "output": _parse(result.output) if result else None,
+                "error": bool(result and result.is_error),
+            }
+        )
+    return calls
+
+
 class HostedSDR(SalesAssistant):
     def __init__(self, room, approval, finish, spawn, sink):
         super().__init__()
@@ -44,6 +93,15 @@ class HostedSDR(SalesAssistant):
             reliable=True,
             topic="ui",
         )
+
+    async def publish_tools(self, event):
+        for call in tool_calls(event):
+            await self.room.local_participant.publish_data(
+                json.dumps({"type": "ui_event", "component": "ToolCall", "props": call}).encode(),
+                reliable=True,
+                topic="ui",
+            )
+        await self.publish()
 
     def hear(self, text):
         super().hear(text)
@@ -71,6 +129,8 @@ class HostedSDR(SalesAssistant):
             dead_air=False,
         )
         self.duplex_session.on("openai_server_event_received", self.budget_event)
-        self.session.on("function_tools_executed", lambda _: self.spawn(self.publish()))
+        self.session.on(
+            "function_tools_executed", lambda event: self.spawn(self.publish_tools(event))
+        )
         await self.publish()
         await super().on_enter()
