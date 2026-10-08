@@ -6,10 +6,13 @@ import os
 import sys
 import time
 import unittest
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import hosted
+import hosted_claim
+import hosted_clinic
 import hosted_tenant
 import hosted_water
 from trivia import HostedTriviaHost, initial_state
@@ -232,12 +235,14 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(hosted.claims)
 
     async def test_registry_admits_each_demo_and_nothing_else(self):
-        self.assertEqual(hosted.DEMOS, {"coffee", "trivia", "water", "tenant", "sdr"})
+        self.assertEqual(
+            hosted.DEMOS, {"coffee", "trivia", "water", "clinic", "claim", "tenant", "sdr"}
+        )
         for demo in hosted.DEMOS:
             metadata = json.dumps({"agent": demo, "reservation": ID})
             self.assertEqual(hosted.parse_job(metadata, ROOM), ID)
         with self.assertRaises(ValueError):
-            hosted.parse_job(json.dumps({"agent": "clinic", "reservation": ID}), ROOM)
+            hosted.parse_job(json.dumps({"agent": "roadside", "reservation": ID}), ROOM)
         for demo, agent in hosted.CASCADE_AGENTS.items():
             self.assertEqual(agent.demo, demo)
             self.assertTrue(agent.greeting)
@@ -306,6 +311,105 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(agent.sink.report.await_count, 2)
         hosted_tenant._index = None
+
+    async def test_clinic_calls_start_with_fresh_slots_and_stay_isolated(self):
+        agent = object.__new__(hosted.HostedClinic)
+        first, second = agent.initial_state(), agent.initial_state()
+        self.assertEqual(len(first["available_slots"]), 6)
+        self.assertIsNone(first["booking"])
+        self.assertIsNot(first["available_slots"], second["available_slots"])
+        self.assertIsNot(first["ui_mounted"], second["ui_mounted"])
+        scheduler = hosted_clinic.ClinicScheduler(SimpleNamespace())
+        context = SimpleNamespace(userdata=first)
+        with patch.object(hosted_clinic._module, "publish_ui_event") as publish:
+            hosted_clinic.publish_clinic(scheduler.room, first)
+            await scheduler.book_appointment(context, "s1", "Sam Rivera", "checkup")
+            await scheduler.reschedule(context, "s3")
+        self.assertEqual(first["booking"]["slot_id"], "s3")
+        self.assertEqual(
+            [s["id"] for s in first["available_slots"]], ["s1", "s2", "s4", "s5", "s6"]
+        )
+        self.assertEqual(len(second["available_slots"]), 6)
+        self.assertIsNone(second["booking"])
+        components = [(c.args[1], c.args[2]) for c in publish.call_args_list]
+        self.assertEqual(components[0], ("List", "mount"))
+        self.assertEqual(components[-1], ("Card", "update"))
+        self.assertEqual(publish.call_args.kwargs["props"]["footer"], "rescheduled")
+        with patch.object(hosted_clinic._module, "publish_ui_event") as publish:
+            await scheduler.cancel_appointment(context)
+        self.assertIsNone(first["booking"])
+        self.assertEqual(len(first["available_slots"]), 6)
+        self.assertEqual(publish.call_args.args[1:3], ("Card", "unmount"))
+
+    async def test_claim_calls_start_empty_and_stay_isolated(self):
+        agent = object.__new__(hosted.HostedClaim)
+        first, second = agent.initial_state(), agent.initial_state()
+        self.assertEqual(first, {"claim": {}, "claim_ref": None})
+        self.assertIsNot(first["claim"], second["claim"])
+        intake = hosted_claim.ClaimIntake(SimpleNamespace())
+        context = SimpleNamespace(userdata=first)
+        with patch.object(hosted_claim._module, "publish_ui_event") as publish:
+            self.assertIn("rejected", await intake.record_field(context, "policy_number", "12"))
+            self.assertIn("missing", await intake.file_claim(context))
+            answers = {
+                "claimant_name": "Alex Chen",
+                "policy_number": "ab-123456",
+                "date_of_loss": hosted_claim.today().isoformat(),
+                "location": "Highway 401 near exit 320",
+                "vehicle": "2021 Honda Civic",
+                "description": "Rear-ended at a red light",
+                "injuries": "No.",
+                "drivable": "yeah",
+            }
+            for field, value in answers.items():
+                self.assertEqual(
+                    await intake.record_field(context, field, value), f"recorded {field}"
+                )
+            filed = await intake.file_claim(context)
+            again = await intake.file_claim(context)
+        self.assertEqual(first["claim"]["policy_number"], "AB123456")
+        self.assertEqual((first["claim"]["injuries"], first["claim"]["drivable"]), ("no", "yes"))
+        self.assertRegex(first["claim_ref"], rf"^CLM-{hosted_claim.today():%Y%m%d}-[0-9A-F]{{4}}$")
+        self.assertEqual(filed, again)
+        self.assertEqual(second, {"claim": {}, "claim_ref": None})
+        components = [call.args[1] for call in publish.call_args_list]
+        self.assertIn("Card", components)
+        progress = [c.kwargs["props"] for c in publish.call_args_list if c.args[1] == "Stat"]
+        self.assertEqual((progress[-1]["value"], progress[-1]["of"]), (8, 8))
+
+    async def test_claim_dates_follow_the_calendar_not_worker_start(self):
+        validate = hosted_claim._module.VALIDATORS["date_of_loss"]
+        later = hosted_claim.today() + timedelta(days=2)
+        with patch.object(hosted_claim, "today", return_value=later):
+            self.assertTrue(validate((later - timedelta(days=1)).isoformat())[0])
+            self.assertIn(f"{later:%B}", hosted_claim.instructions())
+        self.assertFalse(validate(later.isoformat())[0])
+
+    async def test_claim_loads_without_its_original_provider_plugins(self):
+        for name in hosted_claim._PROVIDERS:
+            self.assertNotIn(f"livekit.plugins.{name}", sys.modules)
+        self.assertEqual(hosted.HostedClaim.llm_budget, 24)
+        hosted.claims[ROOM] = {"id": ID}
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                },
+            ),
+            patch.object(
+                hosted,
+                "get_job_context",
+                return_value=SimpleNamespace(room=SimpleNamespace(name=ROOM)),
+            ),
+        ):
+            agent = hosted.HostedClaim()
+        self.assertIn("record each of them", agent.instructions)
+        self.assertTrue(type(agent.llm).__module__.startswith("livekit.plugins.openai"))
+        await agent.llm.aclose()
+        self.assertEqual(hosted.HostedGuard.llm_budget, 12)
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()
