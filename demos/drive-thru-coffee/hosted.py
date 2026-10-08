@@ -22,6 +22,8 @@ from livekit.agents import (
 )
 from livekit.agents.voice.agent_session import SessionConnectOptions
 from livekit.plugins import cartesia, deepgram, openai, silero
+from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
+from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
 from hosted_water import initial_state as water_state
 from trivia import QUESTIONS, HostedTriviaHost, publish_trivia
@@ -213,12 +215,13 @@ class HostedGuard:
         self._deadline_task = spawn(self._watch_deadline())
         self.session.on("close", lambda _: spawn(self._finish()))
         # Each visitor gets their own state. Never put a cart in pool session_kwargs.
+        self.sink = PlaygroundSink(self.approval["id"])
         try:
             voicegateway.attach(
                 self.session,
                 project="mahimai-playground",
                 agent_id=self.demo,
-                sink=PlaygroundSink(self.approval["id"]),
+                sink=self.sink,
                 room=self.room.name,
                 transcript=False,
                 snapshots=False,
@@ -289,6 +292,27 @@ class HostedWater(HostedGuard, WaterCoach):
         publish_water(self.room, self.session.userdata)
 
 
+class HostedTenant(HostedGuard, TenantGuide):
+    demo = "tenant"
+    greeting = TENANT_GREETING
+
+    def initial_state(self) -> dict:
+        return {}
+
+    def publish_initial(self) -> None:
+        publish_tenant(self.room, self._index)
+
+    async def on_enter(self) -> None:
+        await self.load_index()
+        await super().on_enter()
+
+    def meter_embedding(self, tokens: int) -> None:
+        # VoiceGateway does not see direct embedding calls; bill them here.
+        cost = Decimal(max(0, tokens)) * EMBED_USD_PER_TOKEN
+        self.sink.records[f"tenant-embedding-{uuid.uuid4()}"] = ("openai", cost)
+        spawn(self.sink.report())
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -296,6 +320,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "coffee": HostedCoffee,
     "trivia": HostedTrivia,
     "water": HostedWater,
+    "tenant": HostedTenant,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 
