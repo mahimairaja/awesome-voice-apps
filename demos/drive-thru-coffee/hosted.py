@@ -11,6 +11,11 @@ from decimal import ROUND_CEILING, Decimal
 import httpx
 import voicegateway
 from agent import DriveThruAttendant, _publish_cart, _publish_menu
+from hosted_claim import ClaimIntake, publish_claim
+from hosted_claim import initial_state as claim_state
+from hosted_claim import instructions as claim_instructions
+from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
+from hosted_water import initial_state as water_state
 from livekit.agents import (
     AgentServer,
     AgentSession,
@@ -22,8 +27,6 @@ from livekit.agents import (
 )
 from livekit.agents.voice.agent_session import SessionConnectOptions
 from livekit.plugins import cartesia, deepgram, openai, silero
-from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
-from hosted_water import initial_state as water_state
 from trivia import QUESTIONS, HostedTriviaHost, publish_trivia
 from trivia import initial_state as trivia_state
 from voicegateway.services.inside_call import InsideCall
@@ -156,6 +159,8 @@ class HostedGuard:
 
     demo = "coffee"
     greeting = ""
+    # LLM requests allowed in a full two-minute call; shorter calls scale down.
+    llm_budget = 12
 
     def initial_state(self) -> dict:
         raise NotImplementedError
@@ -187,7 +192,7 @@ class HostedGuard:
         self._llm_requests += 1
         scale = self.approval["seconds"] / 120
         if (
-            self._llm_requests > max(1, int(12 * scale))
+            self._llm_requests > max(1, int(self.llm_budget * scale))
             or len(json.dumps(chat_ctx.to_dict()).encode()) > 16000
         ):
             spawn(self._finish())
@@ -289,6 +294,26 @@ class HostedWater(HostedGuard, WaterCoach):
         publish_water(self.room, self.session.userdata)
 
 
+class HostedClaim(HostedGuard, ClaimIntake):
+    demo = "claim"
+    # Eight fields, a read-back and filing: each answer is a tool call plus a reply.
+    llm_budget = 24
+    greeting = (
+        "Say this is an auto claim intake simulation: nothing is filed or saved, "
+        "so use made-up details. Ask for their name to start the claim."
+    )
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._instructions = claim_instructions()
+
+    def initial_state(self) -> dict:
+        return claim_state()
+
+    def publish_initial(self) -> None:
+        publish_claim(self.room, self.session.userdata)
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -296,6 +321,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "coffee": HostedCoffee,
     "trivia": HostedTrivia,
     "water": HostedWater,
+    "claim": HostedClaim,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 
