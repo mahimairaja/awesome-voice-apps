@@ -292,6 +292,8 @@ class HostedWater(HostedGuard, WaterCoach):
 
 
 class HostedRoadside(HostedGuard, RoadsideDispatcher):
+    """Roadside dispatcher under the shared call limits; scoring stops when the call ends."""
+
     demo = "roadside"
     greeting = (
         "Say this is a roadside-assistance simulation and no real truck is sent. "

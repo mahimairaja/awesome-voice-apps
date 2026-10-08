@@ -316,6 +316,22 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(publish.call_args.kwargs["props"]["body"], "audio scoring is off")
         await agent.llm.aclose()
 
+    async def test_roadside_does_not_score_after_call_ends_during_model_load(self):
+        agent = self.roadside()
+
+        def load_model():
+            agent.stop_scoring()  # the call ends while the model loads
+            return object()
+
+        with (
+            patch.dict(hosted.os.environ, {"AIC_SDK_LICENSE": "offline"}),
+            patch.object(hosted_roadside, "tyto_model", load_model),
+            patch.object(hosted_roadside.aic, "FileAnalyzer"),
+        ):
+            await agent.start_scoring()
+        self.assertIsNone(agent._score_task)
+        await agent.llm.aclose()
+
     async def test_roadside_finish_cancels_scoring(self):
         agent = self.roadside()
         agent._score_task = asyncio.create_task(asyncio.sleep(60))

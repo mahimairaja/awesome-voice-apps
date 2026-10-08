@@ -73,7 +73,10 @@ def tyto_model():
 
 
 def initial_state() -> dict:
-    # Captured fields and audio health live on the per-call agent, not userdata.
+    """Return the per-call session userdata, which is empty for this demo.
+
+    Captured fields and audio health live on the per-call agent instead.
+    """
     return {}
 
 
@@ -86,6 +89,7 @@ class RoadsideDispatcher(RoadsideAgent):
         self._ended = False
 
     def publish_roadside(self) -> None:
+        """Show the warming-up meter and the empty dispatch details."""
         _module._publish_warming(self.room)
         _module._publish_details(self.room, self.fields)
 
@@ -99,8 +103,11 @@ class RoadsideDispatcher(RoadsideAgent):
         try:
             analyzer = aic.FileAnalyzer(await asyncio.to_thread(tyto_model), licence)
         except Exception:  # noqa: BLE001 - a scoring failure must not end the call
-            logger.warning("Tyto unavailable; roadside audio scoring is off")
+            logger.warning("Tyto unavailable; roadside audio scoring is off", exc_info=True)
             self._scoring_off()
+            return
+        if self._ended:
+            # The call finished while the model was loading; never score a closed room.
             return
         on_window = _module._make_on_window(self.session, self, self.health)
 
@@ -128,6 +135,7 @@ class RoadsideDispatcher(RoadsideAgent):
         )
 
     def stop_scoring(self) -> None:
+        """Stop scoring for good; a start still loading the model will not begin."""
         self._ended = True
         if self._score_task and not self._score_task.done():
             self._score_task.cancel()
@@ -153,5 +161,5 @@ class RoadsideDispatcher(RoadsideAgent):
             handle = self.session.say(CLOSING_LINE, allow_interruptions=False)
             await handle
         except Exception:  # noqa: BLE001 - the call still has to end
-            logger.warning("Roadside closing line failed")
+            logger.warning("Roadside closing line failed", exc_info=True)
         await end()
