@@ -4,7 +4,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from hosted_sdr import HostedSDR, meeting_state, _module
+from hosted_sdr import HostedSDR, _module, meeting_state, tool_calls
 
 
 class SDRSafety(unittest.IsolatedAsyncioTestCase):
@@ -21,6 +21,41 @@ class SDRSafety(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             meeting_state(booking), {"day": "monday", "slot": "Monday 10:00", "booked": True}
         )
+
+    async def test_tool_events_carry_calendar_facts_only(self):
+        booked = {
+            "status": "booked",
+            "booking": {"id": "SIM-001", "slot": "Monday 10:00", "need": "private project"},
+        }
+        event = SimpleNamespace(
+            function_calls=[
+                SimpleNamespace(
+                    call_id="c1",
+                    name="update_request",
+                    arguments=json.dumps(
+                        {"need": "private project", "day": "monday", "attendees": "private"}
+                    ),
+                ),
+                SimpleNamespace(
+                    call_id="c2",
+                    name="book_meeting",
+                    arguments=json.dumps({"revision": 2, "slot": "Monday 10:00"}),
+                ),
+                SimpleNamespace(call_id="c3", name="unknown_tool", arguments="{}"),
+            ],
+            function_call_outputs=[
+                SimpleNamespace(
+                    output=json.dumps({"revision": 2, "need": "private"}), is_error=False
+                ),
+                SimpleNamespace(output=json.dumps(booked), is_error=False),
+                None,
+            ],
+        )
+        calls = tool_calls(event)
+        self.assertEqual([call["name"] for call in calls], ["update_request", "book_meeting"])
+        self.assertEqual(calls[0]["input"], {"day": "monday"})
+        self.assertEqual(calls[1]["output"]["booking"], {"slot": "Monday 10:00"})
+        self.assertNotIn("private", json.dumps(calls))
 
     async def test_native_response_guard_stops_excess_delegation(self):
         finish = AsyncMock()
