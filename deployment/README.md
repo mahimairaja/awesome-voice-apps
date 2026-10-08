@@ -3,7 +3,7 @@
 Maintainer-owned integration for mahimai.ca. Contributors only need a runnable demo.
 
 Build from the repository root with `deployment/playground.Dockerfile`. The single
-worker accepts server-approved coffee, trivia, water and SDR reservations. Keep the
+worker accepts server-approved coffee, trivia, water, roadside and SDR reservations. Keep the
 existing `mahimai-playground-coffee` dispatch name for compatibility.
 
 To host another STT, LLM and TTS demo: add a small adapter beside `hosted.py`
@@ -15,7 +15,9 @@ supported by `PlaygroundSink`; unknown pricing ends the call.
 
 Required environment: LiveKit credentials, OpenAI, Deepgram and Cartesia keys,
 `PLAYGROUND_ORIGIN`, `PLAYGROUND_WORKER_SECRET`, `VOICEGW_COLLECTOR_URL`, and
-`VOICEGW_API_KEY`. Keep credentials in the hosting platform, never this repository.
+`VOICEGW_API_KEY`. The roadside demo also reads `AIC_SDK_LICENSE` (ai-coustics);
+without it the dispatcher still runs but its audio-health meter stays off. Keep
+credentials in the hosting platform, never this repository.
 
 The site enforces the shared daily allowance, concurrency and monthly reservation
 budget. SDR uses GPT Live with GPT-5.6 Luna, a 120-second deadline, 600 output tokens

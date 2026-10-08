@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import hosted
+import hosted_roadside
 import hosted_water
 from trivia import HostedTriviaHost, initial_state
 
@@ -229,7 +230,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(hosted.claims)
 
     async def test_registry_admits_each_demo_and_nothing_else(self):
-        self.assertEqual(hosted.DEMOS, {"coffee", "trivia", "water", "sdr"})
+        self.assertEqual(hosted.DEMOS, {"coffee", "trivia", "water", "roadside", "sdr"})
         for demo in hosted.DEMOS:
             metadata = json.dumps({"agent": demo, "reservation": ID})
             self.assertEqual(hosted.parse_job(metadata, ROOM), ID)
@@ -255,6 +256,75 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second["glasses"], 0)
         props = publish.call_args.kwargs["props"]
         self.assertEqual((props["value"], props["of"]), (2, 6))
+
+    def roadside(self, room_name=ROOM):
+        hosted.claims[room_name] = {"id": ID}
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                },
+            ),
+            patch.object(
+                hosted,
+                "get_job_context",
+                return_value=SimpleNamespace(room=SimpleNamespace(name=room_name)),
+            ),
+        ):
+            return hosted.HostedRoadside()
+
+    async def test_roadside_calls_keep_separate_fields_and_health(self):
+        first, second = self.roadside(), self.roadside("playground-second")
+        self.assertIsNot(first.health, second.health)
+        bad = {"risk_score": 0.9, "packet_loss": 0.9}
+        first.health.update(bad)
+        with patch.object(hosted_roadside._module, "publish_ui_event"):
+            await first.set_plate(None, "BXRT 451")
+            await second.set_plate(None, "AAAA 111")
+        self.assertEqual(first.fields["plate"]["state"], "needs_confirmation")
+        self.assertEqual(second.fields["plate"]["state"], "clean")
+        await first.llm.aclose()
+        await second.llm.aclose()
+
+    async def test_roadside_dispatch_waits_for_rough_line_confirmation(self):
+        agent = self.roadside()
+        agent.health.update({"risk_score": 0.9, "noise": 0.9})
+        with patch.object(hosted_roadside._module, "publish_ui_event"):
+            await agent.set_location(None, "Highway 401 exit 365")
+            await agent.set_vehicle(None, "silver Honda Civic")
+            await agent.set_plate(None, "BXRT 451")
+            await agent.set_callback(None, "416 555 0199")
+            self.assertIn("confirm", await agent.dispatch(None))
+            self.assertFalse(agent.dispatched)
+            for name in ("location", "vehicle", "plate", "callback"):
+                await agent.confirm_field(None, name)
+            await agent.dispatch(None)
+        self.assertTrue(agent.dispatched)
+        await agent.llm.aclose()
+
+    async def test_roadside_without_licence_runs_without_scoring(self):
+        agent = self.roadside()
+        with (
+            patch.dict(hosted.os.environ, {"AIC_SDK_LICENSE": ""}),
+            patch.object(hosted_roadside._module, "publish_ui_event") as publish,
+        ):
+            await agent.start_scoring()
+        self.assertIsNone(agent._score_task)
+        self.assertEqual(publish.call_args.kwargs["props"]["body"], "audio scoring is off")
+        await agent.llm.aclose()
+
+    async def test_roadside_finish_cancels_scoring(self):
+        agent = self.roadside()
+        agent._score_task = asyncio.create_task(asyncio.sleep(60))
+        with patch.object(hosted.HostedGuard, "_finish", new_callable=AsyncMock) as finish:
+            await agent._finish()
+        await asyncio.sleep(0)
+        self.assertTrue(agent._score_task.cancelled())
+        finish.assert_awaited_once()
+        await agent.llm.aclose()
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()
