@@ -2,16 +2,18 @@
 
 import asyncio
 import json
+import os
 import sys
 import time
 import unittest
 from datetime import timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import hosted
 import hosted_claim
 import hosted_clinic
+import hosted_tenant
 import hosted_water
 from trivia import HostedTriviaHost, initial_state
 
@@ -233,7 +235,9 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(hosted.claims)
 
     async def test_registry_admits_each_demo_and_nothing_else(self):
-        self.assertEqual(hosted.DEMOS, {"coffee", "trivia", "water", "clinic", "claim", "sdr"})
+        self.assertEqual(
+            hosted.DEMOS, {"coffee", "trivia", "water", "clinic", "claim", "tenant", "sdr"}
+        )
         for demo in hosted.DEMOS:
             metadata = json.dumps({"agent": demo, "reservation": ID})
             self.assertEqual(hosted.parse_job(metadata, ROOM), ID)
@@ -259,6 +263,54 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second["glasses"], 0)
         props = publish.call_args.kwargs["props"]
         self.assertEqual((props["value"], props["of"]), (2, 6))
+
+    async def test_tenant_adapter_leaves_no_shared_modules(self):
+        self.assertNotIn("rag", sys.modules)
+        self.assertNotIn("livekit.plugins.nvidia", sys.modules)
+        self.assertNotIn("livekit.plugins.turn_detector.multilingual", sys.modules)
+        self.assertIs(hosted_tenant._module.embed_query, hosted_tenant.embed_query)
+
+    async def test_tenant_index_retries_after_failure(self):
+        hosted_tenant._index = None
+        failing = AsyncMock(side_effect=RuntimeError())
+        with patch.object(hosted_tenant, "embed", failing):
+            fallback = await hosted_tenant.tenant_index(None)
+        self.assertEqual(fallback["vectors"].shape[0], 0)
+        self.assertIn("Security deposits", "\n".join(fallback["texts"]))
+        self.assertIsNone(hosted_tenant._index)
+
+    async def test_tenant_turns_cite_matches_and_bill_the_call(self):
+        hosted_tenant._index = None
+        texts, _ = hosted_tenant._chunks()
+        vectors = [[1.0 if i == j else 0.0 for j in range(len(texts))] for i in range(len(texts))]
+        deposits = next(i for i, text in enumerate(texts) if text.startswith("Security deposits"))
+        builds = AsyncMock(return_value=(vectors, 2000))
+        with (
+            patch.dict(os.environ, {"OPENAI_API_KEY": "test"}),
+            patch.object(hosted_tenant, "embed", builds),
+        ):
+            agent = object.__new__(hosted.HostedTenant)
+            hosted_tenant.TenantGuide.__init__(agent, SimpleNamespace())
+            await agent.load_index()
+        self.assertEqual(agent._index["vectors"].shape, (len(texts), len(texts)))
+        agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+        turn = MagicMock()
+        cases = [(vectors[deposits], "deposit question"), ([0.0] * len(texts), "hello")]
+        with patch.object(hosted_tenant._module, "publish_ui_event") as publish:
+            for vector, text in cases:
+                with patch.object(hosted_tenant, "embed", AsyncMock(return_value=([vector], 7))):
+                    await agent.on_user_turn_completed(turn, SimpleNamespace(text_content=text))
+            await asyncio.sleep(0)
+        mounted, unmounted = publish.call_args_list
+        self.assertEqual(mounted.kwargs["props"]["title"], "Security deposits")
+        self.assertEqual(unmounted.args[2], "unmount")
+        self.assertIsNone(hosted_tenant.current_guide.get())
+        self.assertEqual(
+            sorted(agent.sink.records.values()),
+            [("openai", 7 * hosted_tenant.EMBED_USD_PER_TOKEN)] * 2,
+        )
+        self.assertEqual(agent.sink.report.await_count, 2)
+        hosted_tenant._index = None
 
     async def test_clinic_calls_start_with_fresh_slots_and_stay_isolated(self):
         agent = object.__new__(hosted.HostedClinic)

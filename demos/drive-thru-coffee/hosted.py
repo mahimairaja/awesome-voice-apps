@@ -16,6 +16,8 @@ from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
 from hosted_clinic import ClinicScheduler, publish_clinic
 from hosted_clinic import initial_state as clinic_state
+from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
+from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
 from hosted_water import initial_state as water_state
 from livekit.agents import (
@@ -220,12 +222,13 @@ class HostedGuard:
         self._deadline_task = spawn(self._watch_deadline())
         self.session.on("close", lambda _: spawn(self._finish()))
         # Each visitor gets their own state. Never put a cart in pool session_kwargs.
+        self.sink = PlaygroundSink(self.approval["id"])
         try:
             voicegateway.attach(
                 self.session,
                 project="mahimai-playground",
                 agent_id=self.demo,
-                sink=PlaygroundSink(self.approval["id"]),
+                sink=self.sink,
                 room=self.room.name,
                 transcript=False,
                 snapshots=False,
@@ -296,6 +299,27 @@ class HostedWater(HostedGuard, WaterCoach):
         publish_water(self.room, self.session.userdata)
 
 
+class HostedTenant(HostedGuard, TenantGuide):
+    demo = "tenant"
+    greeting = TENANT_GREETING
+
+    def initial_state(self) -> dict:
+        return {}
+
+    def publish_initial(self) -> None:
+        publish_tenant(self.room, self._index)
+
+    async def on_enter(self) -> None:
+        await self.load_index()
+        await super().on_enter()
+
+    def meter_embedding(self, tokens: int) -> None:
+        # VoiceGateway does not see direct embedding calls; bill them here.
+        cost = Decimal(max(0, tokens)) * EMBED_USD_PER_TOKEN
+        self.sink.records[f"tenant-embedding-{uuid.uuid4()}"] = ("openai", cost)
+        spawn(self.sink.report())
+
+
 class HostedClinic(HostedGuard, ClinicScheduler):
     demo = "clinic"
     greeting = (
@@ -337,6 +361,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "coffee": HostedCoffee,
     "trivia": HostedTrivia,
     "water": HostedWater,
+    "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
 }
