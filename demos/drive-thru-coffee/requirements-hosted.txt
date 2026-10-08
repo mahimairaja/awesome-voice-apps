@@ -3,3 +3,4 @@ livekit-agents[deepgram,openai,cartesia,silero]==1.8.5
 voicegateway[livekit]==0.27.0
 python-dotenv==1.2.2
 httpx==0.28.1
+aic-sdk==2.5.0
