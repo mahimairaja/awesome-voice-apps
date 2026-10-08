@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, patch
 
 import hosted
 import hosted_claim
+import hosted_clinic
 import hosted_water
 from trivia import HostedTriviaHost, initial_state
 
@@ -232,12 +233,12 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(hosted.claims)
 
     async def test_registry_admits_each_demo_and_nothing_else(self):
-        self.assertEqual(hosted.DEMOS, {"coffee", "trivia", "water", "claim", "sdr"})
+        self.assertEqual(hosted.DEMOS, {"coffee", "trivia", "water", "clinic", "claim", "sdr"})
         for demo in hosted.DEMOS:
             metadata = json.dumps({"agent": demo, "reservation": ID})
             self.assertEqual(hosted.parse_job(metadata, ROOM), ID)
         with self.assertRaises(ValueError):
-            hosted.parse_job(json.dumps({"agent": "clinic", "reservation": ID}), ROOM)
+            hosted.parse_job(json.dumps({"agent": "roadside", "reservation": ID}), ROOM)
         for demo, agent in hosted.CASCADE_AGENTS.items():
             self.assertEqual(agent.demo, demo)
             self.assertTrue(agent.greeting)
@@ -258,6 +259,35 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second["glasses"], 0)
         props = publish.call_args.kwargs["props"]
         self.assertEqual((props["value"], props["of"]), (2, 6))
+
+    async def test_clinic_calls_start_with_fresh_slots_and_stay_isolated(self):
+        agent = object.__new__(hosted.HostedClinic)
+        first, second = agent.initial_state(), agent.initial_state()
+        self.assertEqual(len(first["available_slots"]), 6)
+        self.assertIsNone(first["booking"])
+        self.assertIsNot(first["available_slots"], second["available_slots"])
+        self.assertIsNot(first["ui_mounted"], second["ui_mounted"])
+        scheduler = hosted_clinic.ClinicScheduler(SimpleNamespace())
+        context = SimpleNamespace(userdata=first)
+        with patch.object(hosted_clinic._module, "publish_ui_event") as publish:
+            hosted_clinic.publish_clinic(scheduler.room, first)
+            await scheduler.book_appointment(context, "s1", "Sam Rivera", "checkup")
+            await scheduler.reschedule(context, "s3")
+        self.assertEqual(first["booking"]["slot_id"], "s3")
+        self.assertEqual(
+            [s["id"] for s in first["available_slots"]], ["s1", "s2", "s4", "s5", "s6"]
+        )
+        self.assertEqual(len(second["available_slots"]), 6)
+        self.assertIsNone(second["booking"])
+        components = [(c.args[1], c.args[2]) for c in publish.call_args_list]
+        self.assertEqual(components[0], ("List", "mount"))
+        self.assertEqual(components[-1], ("Card", "update"))
+        self.assertEqual(publish.call_args.kwargs["props"]["footer"], "rescheduled")
+        with patch.object(hosted_clinic._module, "publish_ui_event") as publish:
+            await scheduler.cancel_appointment(context)
+        self.assertIsNone(first["booking"])
+        self.assertEqual(len(first["available_slots"]), 6)
+        self.assertEqual(publish.call_args.args[1:3], ("Card", "unmount"))
 
     async def test_claim_calls_start_empty_and_stay_isolated(self):
         agent = object.__new__(hosted.HostedClaim)

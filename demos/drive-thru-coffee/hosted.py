@@ -14,6 +14,8 @@ from agent import DriveThruAttendant, _publish_cart, _publish_menu
 from hosted_claim import ClaimIntake, publish_claim
 from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
+from hosted_clinic import ClinicScheduler, publish_clinic
+from hosted_clinic import initial_state as clinic_state
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
 from hosted_water import initial_state as water_state
 from livekit.agents import (
@@ -294,6 +296,20 @@ class HostedWater(HostedGuard, WaterCoach):
         publish_water(self.room, self.session.userdata)
 
 
+class HostedClinic(HostedGuard, ClinicScheduler):
+    demo = "clinic"
+    greeting = (
+        "Say this is a scheduling simulation for a demo clinic and no real appointment is made. "
+        "Say the open slots are on screen and ask who the appointment is for and why."
+    )
+
+    def initial_state(self) -> dict:
+        return clinic_state()
+
+    def publish_initial(self) -> None:
+        publish_clinic(self.room, self.session.userdata)
+
+
 class HostedClaim(HostedGuard, ClaimIntake):
     demo = "claim"
     # Eight fields, a read-back and filing: each answer is a tool call plus a reply.
@@ -321,6 +337,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "coffee": HostedCoffee,
     "trivia": HostedTrivia,
     "water": HostedWater,
+    "clinic": HostedClinic,
     "claim": HostedClaim,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
