@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import hosted
+import hosted_water
 from trivia import HostedTriviaHost, initial_state
 
 ID = "598cd768-86d4-42a1-bb44-adc44fba4207"
@@ -226,6 +227,34 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             await hosted.authorize(request)
         request.reject.assert_awaited_once()
         self.assertFalse(hosted.claims)
+
+    async def test_registry_admits_each_demo_and_nothing_else(self):
+        self.assertEqual(hosted.DEMOS, {"coffee", "trivia", "water", "sdr"})
+        for demo in hosted.DEMOS:
+            metadata = json.dumps({"agent": demo, "reservation": ID})
+            self.assertEqual(hosted.parse_job(metadata, ROOM), ID)
+        with self.assertRaises(ValueError):
+            hosted.parse_job(json.dumps({"agent": "clinic", "reservation": ID}), ROOM)
+        for demo, agent in hosted.CASCADE_AGENTS.items():
+            self.assertEqual(agent.demo, demo)
+            self.assertTrue(agent.greeting)
+
+    async def test_water_calls_start_empty_and_stay_isolated(self):
+        agent = object.__new__(hosted.HostedWater)
+        first, second = agent.initial_state(), agent.initial_state()
+        self.assertEqual(first, {"glasses": 0, "goal": hosted_water.DEFAULT_GOAL})
+        self.assertIsNot(first, second)
+        coach = hosted_water.WaterCoach(SimpleNamespace())
+        context = SimpleNamespace(userdata=first)
+        with patch.object(hosted_water._module, "publish_ui_event") as publish:
+            await coach.log_water(context, 3)
+            await coach.remove_water(context, 1)
+            await coach.set_goal(context, 6)
+        self.assertEqual(first["glasses"], 2)
+        self.assertEqual(first["goal"], 6)
+        self.assertEqual(second["glasses"], 0)
+        props = publish.call_args.kwargs["props"]
+        self.assertEqual((props["value"], props["of"]), (2, 6))
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()

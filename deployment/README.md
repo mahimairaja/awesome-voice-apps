@@ -3,8 +3,15 @@
 Maintainer-owned integration for mahimai.ca. Contributors only need a runnable demo.
 
 Build from the repository root with `deployment/playground.Dockerfile`. The single
-worker accepts server-approved coffee, trivia and SDR reservations. Keep the
+worker accepts server-approved coffee, trivia, water and SDR reservations. Keep the
 existing `mahimai-playground-coffee` dispatch name for compatibility.
+
+To host another STT, LLM and TTS demo: add a small adapter beside `hosted.py`
+that loads the contributed agent by path (see `hosted_water.py`), mix it with
+`HostedGuard` and register it in `CASCADE_AGENTS`, copy its files in the
+Dockerfile, and add its folder to the Railway watch paths. The site must list the
+same id before it can reserve a call. Provider keys and pricing must already be
+supported by `PlaygroundSink`; unknown pricing ends the call.
 
 Required environment: LiveKit credentials, OpenAI, Deepgram and Cartesia keys,
 `PLAYGROUND_ORIGIN`, `PLAYGROUND_WORKER_SECRET`, `VOICEGW_COLLECTOR_URL`, and

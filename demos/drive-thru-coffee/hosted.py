@@ -22,7 +22,10 @@ from livekit.agents import (
 )
 from livekit.agents.voice.agent_session import SessionConnectOptions
 from livekit.plugins import cartesia, deepgram, openai, silero
-from trivia import QUESTIONS, HostedTriviaHost, initial_state, publish_trivia
+from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
+from hosted_water import initial_state as water_state
+from trivia import QUESTIONS, HostedTriviaHost, publish_trivia
+from trivia import initial_state as trivia_state
 from voicegateway.services.inside_call import InsideCall
 from voicegateway.services.sinks import RemoteCollectorSink
 
@@ -57,7 +60,7 @@ def parse_job(metadata: str, room: str) -> str:
     reservation = data.get("reservation", "")
     if str(uuid.UUID(reservation, version=4)) != reservation:
         raise ValueError("Invalid reservation")
-    if data.get("agent") not in {"coffee", "trivia", "sdr"} or room != f"playground-{reservation}":
+    if data.get("agent") not in DEMOS or room != f"playground-{reservation}":
         raise ValueError("Unapproved demo or room")
     return reservation
 
@@ -145,7 +148,20 @@ class PlaygroundSink(RemoteCollectorSink):
 
 
 class HostedGuard:
+    """Call limits shared by every STT, LLM and TTS demo.
+
+    A demo mixes this in front of its contributed agent and supplies the
+    per-call state, the first UI events, and the opening instruction.
+    """
+
     demo = "coffee"
+    greeting = ""
+
+    def initial_state(self) -> dict:
+        raise NotImplementedError
+
+    def publish_initial(self) -> None:
+        raise NotImplementedError
 
     def __init__(self) -> None:
         ctx = get_job_context()
@@ -193,7 +209,7 @@ class HostedGuard:
 
     async def on_enter(self) -> None:
         self._active_session = self.session
-        self.session.userdata = {"cart": []} if self.demo == "coffee" else initial_state()
+        self.session.userdata = self.initial_state()
         self._deadline_task = spawn(self._watch_deadline())
         self.session.on("close", lambda _: spawn(self._finish()))
         # Each visitor gets their own state. Never put a cart in pool session_kwargs.
@@ -209,17 +225,8 @@ class HostedGuard:
                 turns=False,
                 dead_air=False,
             )
-            if self.demo == "coffee":
-                _publish_cart(self.room, self.session.userdata["cart"])
-                _publish_menu(self.room)
-                greeting = "Say this is a coffee-ordering simulation, no real order or payment. Ask what they would like."
-            else:
-                publish_trivia(self.room, self.session.userdata)
-                greeting = (
-                    "Welcome them to a three-question trivia game, then ask only: "
-                    + QUESTIONS[0][0]
-                )
-            await self.session.generate_reply(instructions=greeting)
+            self.publish_initial()
+            await self.session.generate_reply(instructions=self.greeting)
         except Exception:
             await self._finish()
             raise
@@ -244,11 +251,53 @@ class HostedGuard:
 
 
 class HostedCoffee(HostedGuard, DriveThruAttendant):
-    pass
+    greeting = (
+        "Say this is a coffee-ordering simulation, no real order or payment. "
+        "Ask what they would like."
+    )
+
+    def initial_state(self) -> dict:
+        return {"cart": []}
+
+    def publish_initial(self) -> None:
+        _publish_cart(self.room, self.session.userdata["cart"])
+        _publish_menu(self.room)
 
 
 class HostedTrivia(HostedGuard, HostedTriviaHost):
     demo = "trivia"
+    greeting = "Welcome them to a three-question trivia game, then ask only: " + QUESTIONS[0][0]
+
+    def initial_state(self) -> dict:
+        return trivia_state()
+
+    def publish_initial(self) -> None:
+        publish_trivia(self.room, self.session.userdata)
+
+
+class HostedWater(HostedGuard, WaterCoach):
+    demo = "water"
+    greeting = (
+        "Say this is a hydration-tracking simulation and nothing is saved after the call. "
+        f"Tell them the goal is {DEFAULT_GOAL} glasses today and ask how many they have had so far."
+    )
+
+    def initial_state(self) -> dict:
+        return water_state()
+
+    def publish_initial(self) -> None:
+        publish_water(self.room, self.session.userdata)
+
+
+# The playground registry: each STT, LLM and TTS demo the site can reserve.
+# GPT Live demos ("sdr") start their own session below. Adding a demo here also
+# needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
+CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
+    "coffee": HostedCoffee,
+    "trivia": HostedTrivia,
+    "water": HostedWater,
+}
+DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 
 
 def build_server() -> AgentServer:
@@ -357,14 +406,15 @@ def build_server() -> AgentServer:
                 llm_conn_options=APIConnectOptions(max_retry=0),
                 tts_conn_options=APIConnectOptions(max_retry=0),
             ),
-            userdata={"cart": []},
+            # Replaced per call in HostedGuard.on_enter; never share state between calls.
+            userdata={},
             vad=ctx.proc.userdata["vad"],
             max_tool_steps=3,
             turn_handling={"turn_detection": "vad", "interruption": {"mode": "vad"}},
         )
         await ctx.connect()
         approval = claims.get(ctx.room.name, {})
-        agent = HostedTrivia() if approval.get("demo") == "trivia" else HostedCoffee()
+        agent = CASCADE_AGENTS[approval.get("demo", "coffee")]()
         await session.start(agent=agent, room=ctx.room, record=False)
 
     return server
