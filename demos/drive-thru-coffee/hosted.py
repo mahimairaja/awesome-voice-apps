@@ -22,6 +22,8 @@ from livekit.agents import (
 )
 from livekit.agents.voice.agent_session import SessionConnectOptions
 from livekit.plugins import cartesia, deepgram, openai, silero
+from hosted_clinic import ClinicScheduler, publish_clinic
+from hosted_clinic import initial_state as clinic_state
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
 from hosted_water import initial_state as water_state
 from trivia import QUESTIONS, HostedTriviaHost, publish_trivia
@@ -289,6 +291,20 @@ class HostedWater(HostedGuard, WaterCoach):
         publish_water(self.room, self.session.userdata)
 
 
+class HostedClinic(HostedGuard, ClinicScheduler):
+    demo = "clinic"
+    greeting = (
+        "Say this is a scheduling simulation for a demo clinic and no real appointment is made. "
+        "Say the open slots are on screen and ask who the appointment is for and why."
+    )
+
+    def initial_state(self) -> dict:
+        return clinic_state()
+
+    def publish_initial(self) -> None:
+        publish_clinic(self.room, self.session.userdata)
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -296,6 +312,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "coffee": HostedCoffee,
     "trivia": HostedTrivia,
     "water": HostedWater,
+    "clinic": HostedClinic,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 

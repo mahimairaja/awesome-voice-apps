@@ -3,7 +3,7 @@
 Maintainer-owned integration for mahimai.ca. Contributors only need a runnable demo.
 
 Build from the repository root with `deployment/playground.Dockerfile`. The single
-worker accepts server-approved coffee, trivia, water and SDR reservations. Keep the
+worker accepts server-approved coffee, trivia, water, clinic and SDR reservations. Keep the
 existing `mahimai-playground-coffee` dispatch name for compatibility.
 
 To host another STT, LLM and TTS demo: add a small adapter beside `hosted.py`
