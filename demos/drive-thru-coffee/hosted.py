@@ -24,6 +24,8 @@ from livekit.agents.voice.agent_session import SessionConnectOptions
 from livekit.plugins import cartesia, deepgram, openai, silero
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
 from hosted_water import initial_state as water_state
+from hosted_roadside import RoadsideDispatcher
+from hosted_roadside import initial_state as roadside_state
 from trivia import QUESTIONS, HostedTriviaHost, publish_trivia
 from trivia import initial_state as trivia_state
 from voicegateway.services.inside_call import InsideCall
@@ -289,6 +291,26 @@ class HostedWater(HostedGuard, WaterCoach):
         publish_water(self.room, self.session.userdata)
 
 
+class HostedRoadside(HostedGuard, RoadsideDispatcher):
+    demo = "roadside"
+    greeting = (
+        "Say this is a roadside-assistance simulation and no real truck is sent. "
+        "Ask where they are and what happened."
+    )
+
+    def initial_state(self) -> dict:
+        return roadside_state()
+
+    def publish_initial(self) -> None:
+        self.publish_roadside()
+        self.watch_dispatch(self._finish)
+        spawn(self.start_scoring())
+
+    async def _finish(self) -> None:
+        self.stop_scoring()
+        await super()._finish()
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -296,6 +318,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "coffee": HostedCoffee,
     "trivia": HostedTrivia,
     "water": HostedWater,
+    "roadside": HostedRoadside,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 
