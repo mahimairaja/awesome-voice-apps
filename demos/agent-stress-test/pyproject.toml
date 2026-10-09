@@ -1,0 +1,9 @@
+[project]
+name = "agent-stress-test"
+version = "0.1.0"
+description = "Throw simulated callers at a voice agent and score every call before customers do."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero]>=1.8,<2.0",
+    "python-dotenv>=1.0",
+]

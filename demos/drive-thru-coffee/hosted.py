@@ -16,6 +16,9 @@ from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
 from hosted_clinic import ClinicScheduler, publish_clinic
 from hosted_clinic import initial_state as clinic_state
+from hosted_stresstest import GREETING as STRESSTEST_GREETING
+from hosted_stresstest import SIM_USD_CAP, StressTestLead, sim_cost
+from hosted_stresstest import initial_state as stresstest_state
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -354,6 +357,58 @@ class HostedClaim(HostedGuard, ClaimIntake):
         publish_claim(self.room, self.session.userdata)
 
 
+class HostedStressTest(HostedGuard, StressTestLead):
+    demo = "stresstest"
+    # The lead's own turns plus a live test call; simulations are metered below.
+    llm_budget = 24
+    greeting = STRESSTEST_GREETING
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.update_options(tts=cartesia.TTS(model="sonic-3"))
+        self._sim_usd = Decimal(0)
+        self._report_pending = False
+
+    def initial_state(self) -> dict:
+        return stresstest_state()
+
+    def publish_initial(self) -> None:
+        self.publish()
+
+    async def on_enter(self) -> None:
+        self.watch_live()
+        await super().on_enter()
+
+    def make_sim_llm(self):
+        # One client per suite: thread jobs run separate event loops.
+        model = openai.LLM(
+            model="gpt-4o-mini", max_completion_tokens=220, max_retries=0, store=False
+        )
+        model.on("metrics_collected", self.meter_simulation)
+        return model
+
+    def can_spend(self) -> bool:
+        return self._sim_usd < SIM_USD_CAP
+
+    def meter_simulation(self, metrics) -> None:
+        # VoiceGateway meters the voice session only; bill simulated calls here.
+        cost = sim_cost(metrics)
+        self._sim_usd += cost
+        self.sink.records[f"stresstest-sim-{uuid.uuid4()}"] = ("openai", cost)
+        if not self._report_pending:
+            # Dozens of requests finish together: one usage report per second.
+            self._report_pending = True
+            spawn(self._report_simulation())
+
+    async def _report_simulation(self) -> None:
+        await asyncio.sleep(1)
+        self._report_pending = False
+        try:
+            await self.sink.report()
+        except (httpx.HTTPError, ValueError):
+            logger.warning("Simulation usage report pending")
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -364,6 +419,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
+    "stresstest": HostedStressTest,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 

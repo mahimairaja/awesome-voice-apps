@@ -19,6 +19,7 @@ jobs:
           - tenant-rights
           - claim-intake
           - panel-scribe
+          - agent-stress-test
     steps:
       - uses: actions/checkout@v4
 
