@@ -16,6 +16,12 @@ from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
 from hosted_clinic import ClinicScheduler, publish_clinic
 from hosted_clinic import initial_state as clinic_state
+from hosted_postop import CheckInCall, publish_checkin
+from hosted_postop import greeting as postop_greeting
+from hosted_postop import initial_state as postop_state
+from hosted_postop import instructions as postop_instructions
+from hosted_postop import make_stt as postop_stt
+from hosted_postop import make_tts as postop_tts
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -354,6 +360,27 @@ class HostedClaim(HostedGuard, ClaimIntake):
         publish_claim(self.room, self.session.userdata)
 
 
+class HostedPostop(HostedGuard, CheckInCall):
+    demo = "postop"
+    # Five questions, each a record call plus a reply, then the outcome.
+    llm_budget = 26
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._instructions = postop_instructions()
+        self.update_options(stt=postop_stt(), tts=postop_tts())
+
+    @property
+    def greeting(self) -> str:
+        return postop_greeting(self.session.userdata)
+
+    def initial_state(self) -> dict:
+        return postop_state()
+
+    def publish_initial(self) -> None:
+        publish_checkin(self.room, self.session.userdata)
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -364,6 +391,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
+    "postop": HostedPostop,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 

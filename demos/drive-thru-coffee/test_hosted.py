@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import hosted
 import hosted_claim
 import hosted_clinic
+import hosted_postop
 import hosted_tenant
 import hosted_water
 from trivia import HostedTriviaHost, initial_state
@@ -236,7 +237,8 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
 
     async def test_registry_admits_each_demo_and_nothing_else(self):
         self.assertEqual(
-            hosted.DEMOS, {"coffee", "trivia", "water", "clinic", "claim", "tenant", "sdr"}
+            hosted.DEMOS,
+            {"coffee", "trivia", "water", "clinic", "claim", "tenant", "postop", "sdr"},
         )
         for demo in hosted.DEMOS:
             metadata = json.dumps({"agent": demo, "reservation": ID})
@@ -410,6 +412,70 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(type(agent.llm).__module__.startswith("livekit.plugins.openai"))
         await agent.llm.aclose()
         self.assertEqual(hosted.HostedGuard.llm_budget, 12)
+
+    async def test_postop_calls_get_their_own_protocol(self):
+        self.assertNotIn("protocol", sys.modules)
+        agent = object.__new__(hosted.HostedPostop)
+        first, second = agent.initial_state(), agent.initial_state()
+        self.assertIsNot(first["answers"], second["answers"])
+        call = hosted_postop.CheckInCall(SimpleNamespace())
+        context = SimpleNamespace(userdata=first)
+        with patch.object(hosted_postop._module, "publish_ui_event") as publish:
+            self.assertIn("refused", await call.finish_check_in(context))
+            await call.record_breathing(context, False, "breathing's fine")
+            await call.record_calf(context, False, "no")
+            fever = await call.record_temperature(context, 102.2, "F", False, "one oh two two")
+            self.assertIn("Rule N2 fired", fever)
+            await call.record_wound(context, False, "clear", False, "a bit of clear fluid")
+            await call.record_pain(context, 5, True, "five, the pills help")
+            said = await call.finish_check_in(context)
+        self.assertTrue(said.startswith("Outcome NURSE"))
+        self.assertIsNone(second["outcome"])
+        component, props = publish.call_args.args[1:3]
+        self.assertEqual(component, "PostOp")
+        self.assertEqual(props["tier"], "nurse")
+        self.assertRegex(props["outcome"]["ref"], r"^NL-\d{4}-[0-9A-F]{4}$")
+        self.assertEqual(len(props["handoff"]["assessment"]), 5)
+
+    async def test_postop_emergency_ends_the_protocol(self):
+        call = hosted_postop.CheckInCall(SimpleNamespace())
+        context = SimpleNamespace(userdata=hosted_postop.initial_state())
+        with patch.object(hosted_postop._module, "publish_ui_event"):
+            said = await call.record_breathing(context, True, "it's a little tight")
+            later = await call.record_calf(context, False, "no")
+        self.assertIn("911", said)
+        self.assertIn("911", later)
+        self.assertIsNone(context.userdata["answers"]["calf"])
+
+    async def test_postop_uses_sonic_3_and_a_per_call_greeting(self):
+        self.assertEqual(hosted.HostedPostop.llm_budget, 26)
+        hosted.claims[ROOM] = {"id": ID}
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                },
+            ),
+            patch.object(
+                hosted,
+                "get_job_context",
+                return_value=SimpleNamespace(room=SimpleNamespace(name=ROOM)),
+            ),
+        ):
+            agent = hosted.HostedPostop()
+        self.assertIn("two-minute limit", agent.instructions)
+        self.assertEqual(agent.tts.model, "sonic-3")
+        self.assertTrue(agent.stt._opts.smart_format)
+        state = agent.initial_state()
+        with patch.object(
+            type(agent), "session", property(lambda self: SimpleNamespace(userdata=state))
+        ):
+            self.assertIn(state["patient"]["name"], agent.greeting)
+        self.assertIn("made-up hospital", hosted_postop.greeting(state))
+        await agent.llm.aclose()
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()

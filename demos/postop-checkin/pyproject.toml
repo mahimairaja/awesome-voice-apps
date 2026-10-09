@@ -1,0 +1,9 @@
+[project]
+name = "postop-checkin"
+version = "0.1.0"
+description = "A post-surgery check-in call where a rule table, not the model, decides escalation."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero]>=1.8,<2.0",
+    "python-dotenv>=1.0",
+]
