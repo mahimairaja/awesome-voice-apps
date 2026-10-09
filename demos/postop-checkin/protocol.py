@@ -314,6 +314,11 @@ def _close(state: dict, final: Tier) -> None:
         state["handoff"] = handoff(state)
 
 
+def _assess(step: dict, answer: dict) -> str:
+    line = f"{step['label']}: {answer['summary']}"
+    return f"{line}, earlier {answer['was']}" if answer["was"] else line
+
+
 def handoff(state: dict) -> dict:
     """An SBAR note built from the answers, so the nurse never re-asks."""
     p = state["patient"]
@@ -322,10 +327,10 @@ def handoff(state: dict) -> dict:
     return {
         "situation": "; ".join(f"{r['why'].capitalize()} (rule {r['id']})" for r in fired),
         "background": (
-            f"{p['name']}, {p['procedure'].lower()} on {p['surgery_date']} with "
+            f"{p['name']}, {p['procedure'].lower()}, surgery {p['surgery_date']} with "
             f"{p['surgeon']}, post-op day {p['day']}."
         ),
-        "assessment": [f"{s['label']}: {state['answers'][s['id']]['summary']}" for s in answered],
+        "assessment": [_assess(s, state["answers"][s["id"]]) for s in answered],
         "recommendation": (
             "Patient told to call 911. Care team to follow up after the emergency visit."
             if tier(state) == "emergency"

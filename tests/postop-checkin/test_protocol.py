@@ -180,3 +180,13 @@ def test_snapshot_shape():
     fired = [r for r in snap["rules"] if r["fired"]]
     assert [(r["id"], r["observed"]) for r in fired] == [("N1", "Calf pain or swelling")]
     assert len(snap["rules"]) == len(protocol.RULES)
+
+
+def test_handoff_shows_the_earlier_answer():
+    s = state()
+    protocol.record(s, "temperature", {"reading": 102, "unit": "F", "chills_or_sweats": False}, "")
+    protocol.record(s, "temperature", {"reading": 99, "unit": "F", "chills_or_sweats": False}, "")
+    for step in ("breathing", "calf", "wound", "pain"):
+        protocol.record(s, step, CLEAR[step], "")
+    assert protocol.finish(s).startswith("Outcome NURSE")
+    assert "Temperature: 99°F (37.2°C), earlier 102°F (38.9°C)" in s["handoff"]["assessment"]
