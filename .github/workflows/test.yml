@@ -19,6 +19,7 @@ jobs:
           - tenant-rights
           - claim-intake
           - panel-scribe
+          - sales-copilot
     steps:
       - uses: actions/checkout@v4
 

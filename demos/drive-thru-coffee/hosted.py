@@ -16,6 +16,11 @@ from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
 from hosted_clinic import ClinicScheduler, publish_clinic
 from hosted_clinic import initial_state as clinic_state
+from hosted_copilot import GREETING as COPILOT_GREETING
+from hosted_copilot import Prospect
+from hosted_copilot import cost as copilot_cost
+from hosted_copilot import limits as copilot_limits
+from hosted_copilot import voice as copilot_voice
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -354,6 +359,29 @@ class HostedClaim(HostedGuard, ClaimIntake):
         publish_claim(self.room, self.session.userdata)
 
 
+class HostedCopilot(HostedGuard, Prospect):
+    """The prospect speaks through HostedGuard; the silent copilot bills to the same call."""
+
+    demo = "copilot"
+    greeting = COPILOT_GREETING
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.update_options(tts=copilot_voice())
+
+    def initial_state(self) -> dict:
+        return {}
+
+    def publish_initial(self) -> None:
+        self.start_copilot(meter=self.meter_copilot, **copilot_limits(self.approval["seconds"]))
+
+    def meter_copilot(self, model: str, input_tokens: int, output_tokens: int) -> None:
+        # VoiceGateway does not see the copilot's direct OpenAI calls; bill them here.
+        cost = copilot_cost(model, input_tokens, output_tokens)
+        self.sink.records[f"copilot-{uuid.uuid4()}"] = ("openai", cost)
+        spawn(self.sink.report())
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -364,6 +392,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
+    "copilot": HostedCopilot,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 
