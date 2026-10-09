@@ -27,6 +27,7 @@ jobs:
           - returning-caller
           - support-cost-router
           - payer-verification
+          - loan-callback
     steps:
       - uses: actions/checkout@v4
 

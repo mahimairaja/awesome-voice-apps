@@ -34,6 +34,7 @@ COPY demos/billing-deescalation/agent.py /app/demos/billing-deescalation/
 COPY demos/returning-caller/agent.py demos/returning-caller/memory.py /app/demos/returning-caller/
 COPY demos/support-cost-router/agent.py demos/support-cost-router/router.py /app/demos/support-cost-router/
 COPY demos/payer-verification/agent.py demos/payer-verification/payer.py /app/demos/payer-verification/
+COPY demos/loan-callback/agent.py demos/loan-callback/application.py /app/demos/loan-callback/
 RUN useradd --create-home worker
 USER worker
 RUN python -m livekit.agents download-files

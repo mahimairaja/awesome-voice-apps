@@ -31,6 +31,7 @@ import hosted_deescalate
 import hosted_recall
 import hosted_cost
 import hosted_payer
+import hosted_resume
 import hosted_tenant
 import hosted_water
 from livekit.agents.llm import ChatMessage
@@ -1802,6 +1803,78 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(agent.allow_side_call())
             spawn.assert_called_once()
             spawn.call_args.args[0].close()
+        await agent.llm.aclose()
+
+    def resume_agent(self):
+        hosted.claims[ROOM] = {"id": ID, "seconds": 75}
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                },
+            ),
+            patch.object(
+                hosted,
+                "get_job_context",
+                return_value=SimpleNamespace(room=SimpleNamespace(name=ROOM)),
+            ),
+        ):
+            return hosted.HostedResume()
+
+    async def test_resume_checkpoints_go_to_the_site_by_reservation(self):
+        self.assertNotIn("application", sys.modules)
+        agent = self.resume_agent()
+        self.assertEqual(agent.tts._opts.model, "sonic-3")
+        self.assertIn("about a minute", agent.instructions)
+        self.assertEqual(hosted.HostedResume.llm_budget, 24)
+        self.assertEqual(agent.store.reservation, ID)
+        control = AsyncMock(return_value={"recorded": True})
+        agent.store.control = control
+        agent.publish = MagicMock()
+        await agent.restore()
+        self.assertFalse(agent.resumed)
+        control.assert_awaited_once_with("resume", ID)
+        result = await agent.record_answer("owner_name", "Priya Shah", "Bakery owner.")
+        self.assertTrue(result.startswith("recorded owner"))
+        action, reservation = control.await_args.args
+        fields = control.await_args.kwargs
+        self.assertEqual((action, reservation, fields["version"]), ("checkpoint", ID, 1))
+        self.assertEqual(fields["state"]["answers"], {"owner_name": "Priya Shah"})
+        self.assertEqual(fields["view"]["questions"][1]["status"], "current")
+        self.assertTrue(agent.saved["ok"])
+        await agent.llm.aclose()
+
+    async def test_resume_callback_picks_up_at_the_same_question(self):
+        state = hosted_resume.application.new_application()
+        for field, value in [("owner_name", "Priya Shah"), ("business_name", "Shah Bakery")]:
+            hosted_resume.application.record(state, field, value)
+        state["version"] = 2
+        state["transcript_tokens"] = 640
+        agent = self.resume_agent()
+        agent.store.control = AsyncMock(return_value={"state": json.loads(json.dumps(state))})
+        await agent.restore()
+        self.assertTrue(agent.resumed)
+        self.assertEqual(agent.state["call"], 2)
+        self.assertEqual(agent.carried["prior"], 640)
+        self.assertIn("welcome Priya back", agent.opening())
+        self.assertIn("How many years", agent.opening())
+        # A failed save is reported, never fatal, and the call goes on.
+        agent.store.control = AsyncMock(side_effect=hosted.httpx.ConnectError("down"))
+        agent.publish = MagicMock()
+        result = await agent.record_answer("years_in_business", "6", "")
+        self.assertIn("did not save", result)
+        self.assertFalse(agent.saved["ok"])
+        await agent.llm.aclose()
+
+    async def test_resume_store_outage_starts_a_fresh_application(self):
+        agent = self.resume_agent()
+        agent.store.control = AsyncMock(side_effect=hosted.httpx.ConnectError("down"))
+        await agent.restore()
+        self.assertFalse(agent.resumed)
+        self.assertEqual(agent.state["answers"], {})
         await agent.llm.aclose()
 
     async def test_failed_accept_does_not_leak_claim(self):
