@@ -19,6 +19,7 @@ import hosted_pharmacy
 import hosted_furnace
 import hosted_fraud
 import hosted_interview
+import hosted_mortgage
 import hosted_tenant
 import hosted_water
 from livekit.agents.llm import ChatMessage
@@ -711,6 +712,100 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(detector._local_fallback)
         self.assertEqual(agent.timeline.model, "turn-detector-v1")
         await agent.llm.aclose()
+
+    async def test_mortgage_gate_tells_nods_from_barge_ins(self):
+        classify = hosted_mortgage._module.classify
+        for text in ("mm-hm", "Right.", "uh huh, okay", "got it", "yeah, makes sense", "Mhm"):
+            self.assertEqual(classify(text), "backchannel", text)
+        for text in ("wait", "stop", "hold on", "what about variable?", "no", "okay but why"):
+            self.assertEqual(classify(text), "barge-in", text)
+        self.assertEqual(classify(""), "noise")
+        self.assertEqual(classify(" ... "), "noise")
+
+    def mortgage_gate(self):
+        module = hosted_mortgage._module
+        published, pending, interrupts = [], [], []
+        gate = module.OverlapGate(
+            interrupt=lambda: interrupts.append(True),
+            publish=published.append,
+            later=lambda delay, callback: pending.append(callback),
+        )
+        return gate, published, pending, interrupts
+
+    async def test_mortgage_gate_keeps_talking_through_nods_and_noise(self):
+        gate, published, pending, interrupts = self.mortgage_gate()
+        gate.on_agent_state("speaking", 10.0)
+        gate.on_user_state("speaking", 11.0)
+        gate.on_transcript("mm", False, 11.2)
+        gate.on_transcript("mm-hm", True, 11.4)
+        gate.on_user_state("listening", 11.5)
+        self.assertTrue(gate.ignore_turn("mm-hm", 11.6))
+        pending.pop()()
+        gate.on_user_state("speaking", 12.0)
+        gate.on_user_state("listening", 12.4)
+        pending.pop()()
+        self.assertFalse(interrupts)
+        self.assertEqual([r["kind"] for r in published[-1]["overlaps"]], ["backchannel", "noise"])
+        self.assertEqual(published[-1]["counts"], {"barge-in": 0, "backchannel": 1, "noise": 1})
+        self.assertFalse(gate.ignore_turn("what does that cost", 12.5))
+
+    async def test_mortgage_gate_stops_on_a_real_word_and_records_the_cut(self):
+        gate, published, pending, interrupts = self.mortgage_gate()
+        gate.on_agent_state("speaking", 10.0)
+        gate.on_user_state("speaking", 11.0)
+        gate.on_transcript("uh", False, 11.1)
+        self.assertFalse(interrupts)
+        gate.on_transcript("uh wait", False, 11.35)
+        gate.on_transcript("uh wait stop", False, 11.5)
+        self.assertEqual(interrupts, [True])
+        gate.on_agent_state("listening", 11.42)
+        gate.on_cut("A fixed rate means", "A fixed rate means your payment never changes.")
+        gate.on_user_state("listening", 11.8)
+        pending.pop()()
+        record = published[-1]["overlaps"][-1]
+        self.assertEqual(record["kind"], "barge-in")
+        self.assertEqual((record["decide_ms"], record["stop_ms"]), (350, 420))
+        self.assertEqual(
+            record["cut"],
+            {"heard": "A fixed rate means", "unheard": "your payment never changes."},
+        )
+        # A late cut fills the newest barge-in that has none.
+        record_free = dict(record, cut=None)
+        gate.records[-1] = record_free
+        gate.on_cut("Variable follows prime", "Variable follows prime, so it moves.")
+        self.assertEqual(published[-1]["overlaps"][-1]["cut"]["unheard"], "so it moves.")
+
+    async def test_mortgage_resumed_speech_is_a_new_overlap(self):
+        gate, published, pending, _ = self.mortgage_gate()
+        gate.on_agent_state("speaking", 1.0)
+        gate.on_user_state("speaking", 2.0)
+        gate.on_user_state("listening", 2.3)
+        stale = pending.pop()
+        gate.on_user_state("speaking", 2.5)
+        stale()
+        self.assertIsNotNone(gate.current)
+        gate.on_user_state("listening", 2.9)
+        pending.pop()()
+        self.assertIsNone(gate.current)
+        self.assertEqual(len(published[-1]["overlaps"]), 1)
+
+    async def test_mortgage_turn_handling_and_payments(self):
+        self.assertEqual(
+            hosted.HostedMortgage.turn_handling["interruption"],
+            {"mode": "vad", "min_words": hosted_mortgage._module.GATE_MIN_WORDS},
+        )
+        self.assertNotIn("min_words", hosted.HostedGuard.turn_handling["interruption"])
+        payment = hosted_mortgage._module.monthly_payment
+        self.assertEqual(payment(1.89, 480_000, 25), 2007)
+        self.assertEqual(payment(4.19), 2464)
+        props = hosted_mortgage._module.renewal_props("3-year fixed")
+        self.assertEqual(props["selected"], "3-year fixed")
+        self.assertEqual(len(props["options"]), 3)
+        agent = hosted_mortgage.MortgageAdvisor(SimpleNamespace())
+        with patch.object(hosted_mortgage._module, "publish_ui_event") as publish:
+            result = await agent.compare_option(SimpleNamespace(), "5-year variable")
+        self.assertIn("$2,518 a month", result)
+        self.assertEqual(publish.call_args.args[1:3], ("Renewal", "update"))
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()

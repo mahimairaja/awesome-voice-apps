@@ -18,6 +18,7 @@ COPY demos/voice-checkout/agent.py /app/demos/voice-checkout/
 COPY demos/furnace-repair/agent.py demos/furnace-repair/turns.py /app/demos/furnace-repair/
 COPY demos/card-fraud-line/agent.py /app/demos/card-fraud-line/
 COPY demos/interview-coach/agent.py /app/demos/interview-coach/
+COPY demos/mortgage-renewal/agent.py /app/demos/mortgage-renewal/
 RUN useradd --create-home worker
 USER worker
 RUN python -m livekit.agents download-files
