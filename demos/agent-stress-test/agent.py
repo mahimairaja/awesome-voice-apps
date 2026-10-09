@@ -336,8 +336,8 @@ class StressTestLead(Agent):
         state = context.userdata
         if self._suite and not self._suite.done():
             return "A run is already in progress; wait for it to finish."
-        if state["live"] and state["live"]["row"]["status"] == "calling":
-            return "The visitor is on a live test call; end it first."
+        if state["live"] and state["live"]["row"]["status"] in ("calling", "judging"):
+            return "The live test call is still running or being scored; wait for it."
         if len(state["runs"]) >= MAX_RUNS or not self.can_spend():
             return "This demo allows two runs per session. Offer a live call instead."
         picked = [p for p in dict.fromkeys(personas) if p in PERSONAS] or list(PERSONAS)
@@ -399,6 +399,8 @@ class StressTestLead(Agent):
         state = context.userdata
         if self._suite and not self._suite.done():
             return "A run is in progress; wait for it to finish."
+        if state["live"] and state["live"]["row"]["status"] in ("calling", "judging"):
+            return "The last live call is still being scored; wait for its result."
         live = HaldenBilling(version)
         state["live"] = {"version": version, "row": stresstest.new_row("you")}
         state["live"]["row"]["status"] = "calling"
