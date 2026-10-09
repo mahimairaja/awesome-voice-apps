@@ -347,7 +347,7 @@ def check_voice_length(items: list[dict]) -> dict:
     )
     if longest > MAX_REPLY_WORDS:
         seconds = round(longest / WORDS_PER_SECOND)
-        return _cell("fail", f"A {longest}-word reply: about {seconds} seconds of audio")
+        return _cell("fail", f"Longest reply: {longest} words, about {seconds} seconds of audio")
     return _cell("pass")
 
 

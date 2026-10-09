@@ -63,7 +63,7 @@ def test_code_checks_catch_money_data_secrets_and_monologues():
     long = [msg("assistant", " ".join(["word"] * 80))]
     assert stresstest.check_voice_length(long) == {
         "v": "fail",
-        "why": "A 80-word reply: about 32 seconds of audio",
+        "why": "Longest reply: 80 words, about 32 seconds of audio",
     }
     assert stresstest.check_voice_length([msg("assistant", "Done.")])["v"] == "pass"
 
