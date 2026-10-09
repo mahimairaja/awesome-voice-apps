@@ -16,6 +16,7 @@ from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
 from hosted_clinic import ClinicScheduler, publish_clinic
 from hosted_clinic import initial_state as clinic_state
+from hosted_rebook import FlightRebooker, build_llm, build_tts
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -354,6 +355,38 @@ class HostedClaim(HostedGuard, ClaimIntake):
         publish_claim(self.room, self.session.userdata)
 
 
+class HostedRebook(HostedGuard, FlightRebooker):
+    demo = "rebook"
+    # A background search adds a reply for its update and one for its result.
+    llm_budget = 20
+    greeting = (
+        "Say this is a rebooking simulation for a made-up airline and nothing is booked. "
+        "Say their 18:05 flight to Vancouver is cancelled for weather and offer to rebook."
+    )
+
+    def __init__(self) -> None:
+        super().__init__()
+        # Primary plus fallback, both inside the providers the playground meters.
+        replaced = (self.llm, self.tts)
+        failover_llm = build_llm(self.outage, max_completion_tokens=180, max_retries=0, store=False)
+        failover_tts = build_tts(self.outage)
+        self.update_options(llm=failover_llm, tts=failover_tts)
+        self.watch(failover_llm, failover_tts)
+        for component in replaced:
+            spawn(component.aclose())
+
+    def initial_state(self) -> dict:
+        return self.state
+
+    def publish_initial(self) -> None:
+        self.publish()
+
+    async def on_enter(self) -> None:
+        await super().on_enter()
+        if not self._closing:
+            await self.start_background(self.session)
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -364,6 +397,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
+    "rebook": HostedRebook,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 

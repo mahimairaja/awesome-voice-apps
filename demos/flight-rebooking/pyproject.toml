@@ -1,0 +1,9 @@
+[project]
+name = "flight-rebooking"
+version = "0.1.0"
+description = "Rebooks a cancelled flight by voice, with background search and provider failover."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero]>=1.8.5,<2.0",
+    "python-dotenv>=1.0",
+]
