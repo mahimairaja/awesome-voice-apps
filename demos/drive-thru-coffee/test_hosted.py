@@ -13,8 +13,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import hosted
 import hosted_claim
 import hosted_clinic
+import hosted_deescalate
 import hosted_tenant
 import hosted_water
+from livekit.agents.llm import ChatContext
 from trivia import HostedTriviaHost, initial_state
 
 ID = "598cd768-86d4-42a1-bb44-adc44fba4207"
@@ -236,7 +238,8 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
 
     async def test_registry_admits_each_demo_and_nothing_else(self):
         self.assertEqual(
-            hosted.DEMOS, {"coffee", "trivia", "water", "clinic", "claim", "tenant", "sdr"}
+            hosted.DEMOS,
+            {"coffee", "trivia", "water", "clinic", "claim", "tenant", "deescalate", "sdr"},
         )
         for demo in hosted.DEMOS:
             metadata = json.dumps({"agent": demo, "reservation": ID})
@@ -410,6 +413,75 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(type(agent.llm).__module__.startswith("livekit.plugins.openai"))
         await agent.llm.aclose()
         self.assertEqual(hosted.HostedGuard.llm_budget, 12)
+
+    def deescalate_agents(self):
+        rooms = [SimpleNamespace(name=ROOM), SimpleNamespace(name="playground-second")]
+        hosted.claims.update(
+            {rooms[0].name: {"id": ID, "seconds": 120}, rooms[1].name: {"id": "second"}}
+        )
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                },
+            ),
+            patch.object(
+                hosted,
+                "get_job_context",
+                side_effect=[SimpleNamespace(room=room) for room in rooms],
+            ),
+        ):
+            return hosted.HostedDeescalate(), hosted.HostedDeescalate()
+
+    async def test_deescalate_calls_keep_their_own_voice_bill_and_meter(self):
+        first, second = self.deescalate_agents()
+        module = hosted_deescalate._module
+        self.assertIsNot(first.tts, second.tts)
+        self.assertEqual(first.tts.model, "sonic-3")
+        self.assertIsNot(first.bill, second.bill)
+        self.assertIsNot(first.meter, second.meter)
+        first._voice(module.VOICE_BY_BAND["heated"])
+        self.assertEqual((first.tts._opts.speed, first.tts._opts.emotion), (0.88, ["sympathetic"]))
+        self.assertEqual(second.tts._opts.speed, 0.95)
+        with patch.object(module, "publish_ui_event"):
+            await first.apply_credit(SimpleNamespace(), "protection")
+        self.assertEqual(second.bill["protection"].credited, 0)
+        self.assertEqual(first.llm_budget, 24)
+        await first.llm.aclose()
+        await second.llm.aclose()
+
+    async def test_deescalate_turn_picks_a_move_and_hands_off_in_code(self):
+        first, second = self.deescalate_agents()
+        module = hosted_deescalate._module
+        first._barged_in = True
+        first._spoke_for = 2.0
+        turn = ChatContext.empty()
+        message = SimpleNamespace(text_content="This is a scam and I'm cancelling, damn it")
+        with patch.object(module, "publish_ui_event") as publish:
+            await first.on_user_turn_completed(turn, message)
+            note = turn.items[-1].text_content
+            self.assertIn("Take ownership", note)
+            self.assertEqual(first.tts._opts.speed, 0.88)
+            self.assertFalse(first.handed_off)
+            await first.on_user_turn_completed(
+                ChatContext.empty(),
+                SimpleNamespace(text_content="Get me a supervisor, this is ridiculous garbage"),
+            )
+        self.assertTrue(first.handed_off)
+        components = [call.args[1] for call in publish.call_args_list]
+        self.assertEqual(components, ["Mood", "Mood", "Handoff"])
+        packet = publish.call_args.args[3]
+        self.assertTrue(packet["reason"].startswith("Frustration reached"))
+        self.assertEqual(len(packet["open"]), 3)
+        with patch.object(hosted, "spawn") as spawn:
+            first.end_call()
+        spawn.assert_called_once()
+        spawn.call_args.args[0].close()
+        await first.llm.aclose()
+        await second.llm.aclose()
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()

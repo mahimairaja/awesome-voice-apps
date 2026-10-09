@@ -29,6 +29,7 @@ README lists its requirements and any extra setup. Provider usage may cost money
 
 | Example | What it does |
 | --- | --- |
+| [Billing de-escalation](demos/billing-deescalation/) | Tracks an angry caller's frustration turn by turn, adapts its voice and tactics, and hands off to a person. |
 | [Claim intake](demos/claim-intake/) | Takes an auto insurance claim by voice, validates each field, and files it. |
 | [Clinic scheduler](demos/clinic-scheduler/) | Books a doctor appointment by voice, finds open slots, and handles reschedules. |
 | [Drive-thru coffee](demos/drive-thru-coffee/) | Takes a coffee order, modifies items mid-flow, totals the cart. |
