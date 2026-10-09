@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import hosted
 import hosted_claim
 import hosted_clinic
+import hosted_concierge
 import hosted_tenant
 import hosted_water
 from trivia import HostedTriviaHost, initial_state
@@ -236,7 +237,8 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
 
     async def test_registry_admits_each_demo_and_nothing_else(self):
         self.assertEqual(
-            hosted.DEMOS, {"coffee", "trivia", "water", "clinic", "claim", "tenant", "sdr"}
+            hosted.DEMOS,
+            {"coffee", "trivia", "water", "clinic", "claim", "tenant", "concierge", "sdr"},
         )
         for demo in hosted.DEMOS:
             metadata = json.dumps({"agent": demo, "reservation": ID})
@@ -425,6 +427,126 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         ):
             await hosted.authorize(request)
         self.assertFalse(hosted.claims)
+
+    async def test_concierge_calls_start_fresh_and_book_only_open_tables(self):
+        agent = object.__new__(hosted.HostedConcierge)
+        first, second = agent.initial_state(), agent.initial_state()
+        self.assertIsNot(first["restaurants"][0]["times"], second["restaurants"][0]["times"])
+        concierge = hosted_concierge.HotelConcierge(SimpleNamespace())
+        context = SimpleNamespace(userdata=first)
+        module = hosted_concierge._module
+        with patch.object(module, "publish_ui_event") as publish:
+            found = await concierge.recommend(context, "sushi")
+            self.assertIn("Kinjo", found)
+            self.assertEqual(publish.call_args.args[1:3], ("List", "mount"))
+            refused = await concierge.book_table(context, "r2", "7:00 PM", 2, "Sam")
+            self.assertIn("no table at 7:00 PM", refused)
+            self.assertIsNone(first["reservation"])
+            booked = await concierge.book_table(context, "r2", "8:30 pm", 2, "Sam")
+            self.assertIn("Booked Kinjo at 8:30 PM", booked)
+            self.assertNotIn("8:30 PM", first["restaurants"][1]["times"])
+            again = await concierge.book_table(context, "r1", "6:30 PM", 2, "Sam")
+            self.assertIn("already a table", again)
+            cards = [c for c in publish.call_args_list if c.args[1] == "Card"]
+            self.assertEqual(cards[-1].args[2], "mount")
+            self.assertEqual(cards[-1].kwargs["props"]["footer"], "confirmed")
+            await concierge.cancel_table(context)
+        self.assertIsNone(first["reservation"])
+        self.assertEqual(first["restaurants"][1]["times"], ["6:00 PM", "8:30 PM"])
+        self.assertEqual(publish.call_args_list[-2].args[1:3], ("Card", "unmount"))
+        self.assertIsNone(second["reservation"])
+        self.assertEqual(second["restaurants"][1]["times"], ["6:00 PM", "8:30 PM"])
+
+    async def test_concierge_sync_meter_counts_only_real_interruptions(self):
+        meter = hosted_concierge.SyncMeter(SimpleNamespace())
+
+        def state(old, new):
+            return SimpleNamespace(old_state=old, new_state=new)
+
+        with patch.object(hosted_concierge._module, "publish_ui_event") as publish:
+            meter._on_agent_state(state("thinking", "speaking"))
+            meter._on_user_state(state("listening", "speaking"))
+            meter._on_agent_state(state("speaking", "listening"))
+            self.assertEqual(meter.stats["interruptions"], 1)
+            self.assertLess(meter.stats["stop_ms"], 2500)
+            # The caller speaking while the agent is quiet is not an interruption.
+            meter._on_user_state(state("listening", "speaking"))
+            meter._on_agent_state(state("listening", "thinking"))
+            self.assertEqual(meter.stats["interruptions"], 1)
+            join = SimpleNamespace(
+                type="avatar_metrics",
+                session_started_time=10.0,
+                avatar_joined_time=11.25,
+                playback_latency=0,
+            )
+            meter._on_metrics(SimpleNamespace(metrics=join))
+            play = SimpleNamespace(
+                type="avatar_metrics",
+                session_started_time=None,
+                avatar_joined_time=None,
+                playback_latency=0.12,
+            )
+            meter._on_metrics(SimpleNamespace(metrics=play))
+            meter._on_metrics(SimpleNamespace(metrics=SimpleNamespace(type="tts_metrics")))
+        self.assertEqual(meter.stats["join_ms"], 1250)
+        self.assertEqual(meter.stats["playback_ms"], 120)
+        self.assertEqual(publish.call_count, 3)
+        self.assertEqual(publish.call_args.args[1:3], ("Sync", "update"))
+
+    async def test_concierge_avatar_is_billed_by_the_second_before_finish(self):
+        self.assertEqual(hosted_concierge.avatar_cost(0), 0)
+        self.assertEqual(
+            hosted_concierge.avatar_cost(0.2), hosted_concierge.AVATAR_USD_PER_MINUTE / 60
+        )
+        self.assertEqual(
+            hosted_concierge.avatar_cost(120), hosted_concierge.AVATAR_USD_PER_MINUTE * 2
+        )
+        with patch.dict(hosted_concierge.os.environ, {"ANAM_USD_PER_MINUTE": "nan"}):
+            self.assertEqual(hosted_concierge._rate(), hosted_concierge.DEFAULT_USD_PER_MINUTE)
+        with patch.dict(hosted_concierge.os.environ, {"ANAM_USD_PER_MINUTE": "-1"}):
+            self.assertEqual(hosted_concierge._rate(), hosted_concierge.DEFAULT_USD_PER_MINUTE)
+        agent = object.__new__(hosted.HostedConcierge)
+        agent._closing = False
+        agent._billing_task = None
+        agent._deadline_task = None
+        agent._avatar_started = time.monotonic() - 30
+        agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+        agent._active_session = MagicMock()
+        agent.approval = {"id": ID}
+        agent._room = SimpleNamespace(disconnect=AsyncMock())
+        with (
+            patch.object(hosted.HostedConcierge, "room", agent._room, create=True),
+            patch.object(hosted, "control", new_callable=AsyncMock) as control,
+        ):
+            await agent._finish()
+            await agent._finish()
+        provider, cost = agent.sink.records["concierge-avatar"]
+        self.assertEqual(provider, "anam")
+        self.assertGreaterEqual(cost, hosted_concierge.avatar_cost(30))
+        agent.sink.report.assert_awaited_once()
+        control.assert_awaited_once_with("finish", ID)
+
+    async def test_avatar_failure_reports_usage_and_frees_the_room(self):
+        agent = object.__new__(hosted.HostedConcierge)
+        agent._closing = False
+        agent._avatar_started = None
+        agent._meter = SimpleNamespace(attach=MagicMock())
+        agent.approval = {"id": ID}
+        room = SimpleNamespace(disconnect=AsyncMock())
+        failing = MagicMock()
+        failing.start = AsyncMock(side_effect=RuntimeError("no avatar"))
+        with (
+            patch.object(hosted.HostedConcierge, "room", room, create=True),
+            patch.object(hosted, "control", new_callable=AsyncMock) as control,
+            patch("livekit.plugins.anam.AvatarSession", return_value=failing),
+            self.assertRaises(RuntimeError),
+        ):
+            await agent.start_avatar(MagicMock())
+        self.assertTrue(agent._closing)
+        self.assertEqual(control.await_args_list[0].args[:2], ("usage", ID))
+        self.assertEqual(control.await_args_list[0].kwargs["service"], "anam")
+        control.assert_awaited_with("finish", ID)
+        room.disconnect.assert_awaited_once()
 
 
 if __name__ == "__main__":

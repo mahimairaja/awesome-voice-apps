@@ -16,6 +16,15 @@ from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
 from hosted_clinic import ClinicScheduler, publish_clinic
 from hosted_clinic import initial_state as clinic_state
+from hosted_concierge import (
+    CONCIERGE,
+    HOTEL,
+    HotelConcierge,
+    SyncMeter,
+    avatar_cost,
+    publish_concierge,
+)
+from hosted_concierge import initial_state as concierge_state
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -354,6 +363,106 @@ class HostedClaim(HostedGuard, ClaimIntake):
         publish_claim(self.room, self.session.userdata)
 
 
+class HostedConcierge(HostedGuard, HotelConcierge):
+    """A concierge with a face: an Anam avatar speaks the agent's audio on video.
+
+    The avatar is a third participant in the room. It is billed by the second
+    from the moment it is requested, and the call ends with the reservation.
+    """
+
+    demo = "concierge"
+    # Recommend, confirm, book, and maybe change the booking: each is a tool call plus a reply.
+    llm_budget = 16
+    greeting = (
+        f"Say you are {CONCIERGE}, the concierge at {HOTEL}, a fictional hotel, and this is a "
+        "simulation: no real table is booked. Ask what they feel like eating tonight."
+    )
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._avatar_started = None
+        self._billing_task = None
+        self._meter = SyncMeter(self.room)
+
+    def initial_state(self) -> dict:
+        return concierge_state()
+
+    def publish_initial(self) -> None:
+        publish_concierge(self.room, self.session.userdata)
+        self._meter.publish()
+
+    async def start_avatar(self, session: AgentSession) -> None:
+        """Bring the avatar into the room before the session says a word."""
+        from livekit.plugins import anam
+
+        self._meter.attach(session)
+        avatar = anam.AvatarSession(
+            persona_config=anam.PersonaConfig(
+                name=CONCIERGE, avatarId=os.environ.get("ANAM_AVATAR_ID", "")
+            ),
+            avatar_participant_name=CONCIERGE,
+            conn_options=APIConnectOptions(max_retry=0),
+        )
+        self._avatar_started = time.monotonic()
+        try:
+            await avatar.start(session, room=self.room)
+            await avatar.wait_for_join(timeout=15)
+        except Exception:
+            # No session is running yet, so close the call here rather than in _finish.
+            self._closing = True
+            logger.warning("Avatar did not join; ending the concierge call")
+            try:
+                await control("usage", self.approval["id"], **self._avatar_usage())
+                await control("finish", self.approval["id"])
+            except (httpx.HTTPError, ValueError):
+                logger.warning("Room cleanup pending server recovery")
+            finally:
+                await self.room.disconnect()
+            raise
+
+    def _avatar_usage(self) -> dict:
+        elapsed = time.monotonic() - (self._avatar_started or time.monotonic())
+        cost = avatar_cost(elapsed)
+        return {
+            "service": "anam",
+            "microusd": int((cost * 1_000_000).to_integral_value(rounding=ROUND_CEILING)),
+        }
+
+    def bill_avatar(self) -> None:
+        sink = getattr(self, "sink", None)
+        if sink is not None and self._avatar_started is not None:
+            sink.records["concierge-avatar"] = (
+                "anam",
+                avatar_cost(time.monotonic() - self._avatar_started),
+            )
+
+    async def on_enter(self) -> None:
+        await super().on_enter()
+        self._billing_task = spawn(self._bill_while_live())
+
+    async def _bill_while_live(self) -> None:
+        while not self._closing:
+            self.bill_avatar()
+            try:
+                await self.sink.report()
+            except (httpx.HTTPError, ValueError):
+                logger.warning("Avatar usage report pending")
+            await asyncio.sleep(5)
+
+    async def _finish(self) -> None:
+        if self._closing:
+            return
+        if self._billing_task and self._billing_task is not asyncio.current_task():
+            self._billing_task.cancel()
+        self.bill_avatar()
+        if getattr(self, "sink", None) is not None:
+            try:
+                await self.sink.report()
+            except (httpx.HTTPError, ValueError):
+                logger.warning("Final avatar usage report pending")
+        await super()._finish()
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -364,6 +473,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
+    "concierge": HostedConcierge,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 
@@ -483,6 +593,9 @@ def build_server() -> AgentServer:
         await ctx.connect()
         approval = claims.get(ctx.room.name, {})
         agent = CASCADE_AGENTS[approval.get("demo", "coffee")]()
+        # Avatar demos route the session's audio to a video participant first.
+        if hasattr(agent, "start_avatar"):
+            await agent.start_avatar(session)
         await session.start(agent=agent, room=ctx.room, record=False)
 
     return server

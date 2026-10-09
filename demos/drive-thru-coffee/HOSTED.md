@@ -18,6 +18,9 @@ Server secrets required:
 - PLAYGROUND_ORIGIN: approved site or preview HTTPS origin
 - PLAYGROUND_WORKER_SECRET: same random secret configured on the site
 - VOICEGW_COLLECTOR_URL, VOICEGW_API_KEY: private authenticated collector
+- ANAM_API_KEY, ANAM_AVATAR_ID: the concierge demo's video avatar. Optional
+  ANAM_USD_PER_MINUTE (default 0.20) sets the per-second avatar charge the
+  worker reports. Without the key, concierge calls end before any inference.
 
 Do not put secrets in this repository or browser storage. Do not run this worker
 against a public playground until infrastructure and provider spending have been
