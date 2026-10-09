@@ -19,6 +19,7 @@ jobs:
           - tenant-rights
           - claim-intake
           - panel-scribe
+          - fair-cancellation
     steps:
       - uses: actions/checkout@v4
 
