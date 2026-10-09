@@ -16,6 +16,8 @@ from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
 from hosted_clinic import ClinicScheduler, publish_clinic
 from hosted_clinic import initial_state as clinic_state
+from hosted_resume import LoanCallback, SiteStore
+from hosted_resume import instructions as resume_instructions
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -354,6 +356,35 @@ class HostedClaim(HostedGuard, ClaimIntake):
         publish_claim(self.room, self.session.userdata)
 
 
+class HostedResume(HostedGuard, LoanCallback):
+    demo = "resume"
+    # Replaced per call in on_enter: a fresh opening, or a welcome back.
+    greeting = "Ask the first question of the loan application."
+    # Seven answers over two or more short calls: each is a tool call and a reply.
+    llm_budget = 24
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._instructions = resume_instructions()
+        # Checkpoints go to the site, keyed by the account behind this reservation.
+        self.store = SiteStore(control, self.approval["id"])
+        # A fresh per-call client; sonic-3, since sonic-2 is being retired.
+        self.update_options(tts=cartesia.TTS(model="sonic-3"))
+
+    def initial_state(self) -> dict:
+        return self.state
+
+    def publish_initial(self) -> None:
+        self.publish()
+
+    async def on_enter(self) -> None:
+        # Load the checkpoint before the greeting, so the first words can resume.
+        await self.restore()
+        self.greeting = self.opening()
+        self.watch()
+        await super().on_enter()
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -364,6 +395,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
+    "resume": HostedResume,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 
