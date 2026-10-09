@@ -129,8 +129,10 @@ def test_screen_drops_unapproved_deals_and_pressure():
     policy.note_reason(s, "price")
     policy.make_offer(s)
     assert policy.screen(s, "That is half price for three months. ")
+    assert policy.screen(s, "That is 50% off for three months. ")
+    assert policy.screen(s, "Or 70 percent off for a year. ") == ""
     assert policy.screen(s, "You'll lose your watchlist. ") == ""
-    assert [e["rule"] for e in s["log"]].count("SPEECH.SCREEN") == 3
+    assert [e["rule"] for e in s["log"]].count("SPEECH.SCREEN") == 4
 
 
 def test_sentences_split_on_boundaries():

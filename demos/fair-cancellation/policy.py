@@ -77,6 +77,7 @@ _PRESSURE = re.compile(
     r"we'?d hate to|we would hate to|reconsider|last chance|miss out",
     re.IGNORECASE,
 )
+_PERCENT = re.compile(r"(\d+)\s?(?:%|percent)", re.IGNORECASE)
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 # Twelve letters and digits that do not sound alike on a phone line.
 _REF_ALPHABET = "3479ACFHKMRX"
@@ -311,6 +312,15 @@ def split_sentences(buffer: str) -> tuple[list[str], str]:
     return [p + " " for p in parts[:-1]], parts[-1]
 
 
+def _approved(state: dict, sentence: str) -> bool:
+    """A pitch is fine only while the approved offer is live, and only at its numbers."""
+    live = [o for o in state["offers"] if o["status"] in ("offered", "accepted")]
+    if not live:
+        return False
+    allowed = set(_PERCENT.findall(live[0]["label"]))
+    return set(_PERCENT.findall(sentence)) <= allowed
+
+
 def screen(state: dict, sentence: str) -> str:
     """Drop a sentence that pressures the caller or pitches a deal the policy did not
     approve. Returns the sentence to speak (empty when dropped)."""
@@ -319,9 +329,7 @@ def screen(state: dict, sentence: str) -> str:
     rule = None
     if state["intent_turn"] is not None and _PRESSURE.search(sentence):
         rule = "Dropped a pressure line"
-    elif _PITCH.search(sentence) and not any(
-        o["status"] in ("offered", "accepted") for o in state["offers"]
-    ):
+    elif _PITCH.search(sentence) and not _approved(state, sentence):
         rule = "Dropped an unapproved offer"
     if not rule:
         return sentence

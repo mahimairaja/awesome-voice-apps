@@ -483,8 +483,12 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             heard.clear()
             async for _ in line.tts_node(reply(), None):
                 pass
-        self.assertTrue("".join(heard).startswith(hosted_cancel.policy.DISCLOSURE))
-        self.assertEqual(state["log"][-1]["rule"], "OFFER.DISCLOSE")
+        spoken = "".join(heard)
+        self.assertTrue(spoken.startswith(hosted_cancel.policy.DISCLOSURE))
+        # The approved offer is half off; the model's 40% is still not spoken.
+        self.assertNotIn("40", spoken)
+        self.assertEqual(state["log"][-2]["rule"], "OFFER.DISCLOSE")
+        self.assertEqual(state["log"][-1]["rule"], "SPEECH.SCREEN")
 
     async def test_cancel_uses_sonic_3_and_a_bigger_budget(self):
         self.assertEqual(hosted.HostedCancel.llm_budget, 20)
