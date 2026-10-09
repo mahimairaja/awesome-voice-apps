@@ -76,6 +76,15 @@ def test_bad_cell_drops_audio_and_fixes_recover_most_of_it():
     assert fixed.stats.silent < broken.stats.silent / 4
 
 
+def test_toggling_fixes_drops_the_held_packet():
+    phone, _ = run("cell", True, seconds=1)
+    assert phone._held is not None
+    phone.set_line("cell", False)
+    assert phone._held is None
+    phone.set_line("cell", True)
+    assert phone._held is None
+
+
 def test_landline_loses_nothing():
     phone, _ = run("landline", False, seconds=2)
     assert phone.stats.lost == phone.stats.late == phone.stats.silent == 0

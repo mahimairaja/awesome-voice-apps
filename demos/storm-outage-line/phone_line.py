@@ -118,8 +118,11 @@ class PhoneLine:
         if line != self.line:
             # Start the codec path fresh so no audio from the old line leaks across.
             self._pending = np.zeros(0, dtype=np.int16)
-            self._held = None
             self._down = self._up = None
+        if line != self.line or fixes != self.fixes:
+            # A packet held for FEC under the old settings is stale now.
+            self._held = None
+            self._fade = 0
         self.line = line
         self.fixes = fixes
 
