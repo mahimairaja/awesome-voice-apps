@@ -41,9 +41,18 @@ This telemetry is separate from the site's conservative admission ledger. Provid
 billing, network costs and hosting charges still require reconciliation. A budget
 alert is not a guaranteed invoice cap.
 
+## Status heartbeat
+
+`hosted.py start` also runs `status.py` on a daemon thread. Once a minute it posts
+`{"action": "heartbeat"}` to the site's worker endpoint with the demo ids it has
+loaded and one probe per provider key: `GET /v1/models/gpt-4o-mini` on OpenAI,
+`GET /v1/projects` on Deepgram and `GET /voices?limit=1` on Cartesia. These are
+reads, not inference, so they are not billed. The site turns them into
+mahimai.ca/status; no new variables are needed.
+
 ## Offline verification
 
-Run `python -m unittest discover -s . -p test_hosted.py`. No provider requests are
+Run `python -m unittest discover -s . -p 'test_*.py'`. No provider requests are
 made. These checks cover admission, attribution, generation limits and deadline cleanup; real audio,
 concurrent carts, provider telemetry and container memory were also checked locally
 on 2026-10-04. Deployment-specific checks still precede launch.
