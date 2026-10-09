@@ -13,6 +13,8 @@ import voicegateway
 from agent import DriveThruAttendant, _publish_cart, _publish_menu
 from hosted_checkout import GREETING as CHECKOUT_GREETING
 from hosted_checkout import VoiceCheckout
+from hosted_builder import GREETING as BUILDER_GREETING
+from hosted_builder import VOICES, ConfigurableAgent, parse_config
 from hosted_claim import ClaimIntake, publish_claim
 from hosted_claim import initial_state as claim_state
 from hosted_city311 import GREETING as CITY311_GREETING
@@ -631,6 +633,42 @@ class HostedRouter(HostedGuard, RouterRescue):
         spawn(self.sink.report())
 
 
+class HostedBuilder(HostedGuard, ConfigurableAgent):
+    """The visitor's own agent: config from the site's dispatch, live updates over RPC."""
+
+    demo = "builder"
+    greeting = BUILDER_GREETING
+    # Visitors re-test after each change, so allow a few more turns than a fixed demo.
+    llm_budget = 16
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.update_options(tts=cartesia.TTS(model="sonic-2", voice=VOICES[self.config.voice]))
+
+    def initial_config(self):
+        # The site validated this config and signed it into the dispatch; check it again.
+        try:
+            raw = json.loads(get_job_context().job.metadata).get("config")
+            return parse_config(raw)
+        except (ValueError, TypeError, AttributeError):
+            logger.warning("Builder call without a valid config; using the default")
+            return super().initial_config()
+
+    def allowed_caller(self, identity: str) -> bool:
+        # Only this call's visitor may reconfigure this call's agent.
+        return identity == f"visitor-{self.approval['id']}"
+
+    def initial_state(self) -> dict:
+        return {}
+
+    def publish_initial(self) -> None:
+        self.publish_config()
+
+    async def on_enter(self) -> None:
+        self.listen()
+        await super().on_enter()
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT-Live demos (REALTIME_DEMOS) start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -650,6 +688,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "interview": HostedInterview,
     "mortgage": HostedMortgage,
     "router": HostedRouter,
+    "builder": HostedBuilder,
 }
 # GPT-Live speech-to-speech demos share the call plumbing in build_server.
 REALTIME_DEMOS = frozenset({"sdr", "interp"})
