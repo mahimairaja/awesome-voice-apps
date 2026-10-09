@@ -16,6 +16,10 @@ from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
 from hosted_clinic import ClinicScheduler, publish_clinic
 from hosted_clinic import initial_state as clinic_state
+from hosted_furnace import COMPANY as FURNACE_COMPANY
+from hosted_furnace import DETECTOR_OPTIONS as FURNACE_DETECTOR
+from hosted_furnace import FurnaceLine, publish_furnace
+from hosted_furnace import initial_state as furnace_state
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -354,6 +358,25 @@ class HostedClaim(HostedGuard, ClaimIntake):
         publish_claim(self.room, self.session.userdata)
 
 
+class HostedFurnace(HostedGuard, FurnaceLine):
+    demo = "furnace"
+    # Four details, two read-backs and a dispatch, often several per answer.
+    llm_budget = 20
+    detector_options = FURNACE_DETECTOR
+    greeting = (
+        f"Answer as the {FURNACE_COMPANY} after-hours line. Say this is a simulation: "
+        "no technician is sent, so use a made-up address and number. "
+        "Ask what is wrong with the heat."
+    )
+
+    def initial_state(self) -> dict:
+        return furnace_state()
+
+    def publish_initial(self) -> None:
+        publish_furnace(self.room, self.session.userdata)
+        self.watch_turns(self.session, self.session.vad)
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -364,6 +387,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
+    "furnace": HostedFurnace,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 
