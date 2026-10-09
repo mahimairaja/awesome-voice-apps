@@ -414,16 +414,13 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         await agent.llm.aclose()
         self.assertEqual(hosted.HostedGuard.llm_budget, 12)
 
-    def onprem_agent(self, **env):
+    def onprem_agent(self):
         hosted.claims[ROOM] = {"id": ID, "seconds": 120}
-        values = {
-            "ONPREM_BASE_URL": "https://models.example.ca/v1",
-            "ONPREM_API_KEY": "offline",
-            "ONPREM_GPU_USD_PER_HOUR": "0.80",
-            **env,
-        }
         with (
-            patch.dict(hosted.os.environ, values),
+            patch.dict(
+                hosted.os.environ,
+                {"OPENAI_API_KEY": "x", "DEEPGRAM_API_KEY": "x", "CARTESIA_API_KEY": "x"},
+            ),
             patch.object(
                 hosted,
                 "get_job_context",
@@ -432,35 +429,40 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         ):
             return hosted.HostedOnprem()
 
-    async def test_onprem_models_only_reach_the_private_server(self):
-        # No cloud keys in the environment: the onprem call never builds a cloud client.
-        with patch.dict(hosted.os.environ, {}, clear=False):
-            for key in ("DEEPGRAM_API_KEY", "OPENAI_API_KEY", "CARTESIA_API_KEY"):
-                hosted.os.environ.pop(key, None)
-            agent = self.onprem_agent()
-        for component in (agent.stt, agent.llm, agent.tts):
-            self.assertTrue(type(component).__module__.startswith("livekit.plugins.openai"))
-            self.assertEqual(component.provider, "models.example.ca")
+    async def test_onprem_keeps_its_counted_model_client(self):
+        agent = self.onprem_agent()
+        self.assertIs(agent.llm, agent.stack["llm"])
+        self.assertEqual(agent.tts.model, "sonic-3")
         self.assertIn("two-minute limit", agent.instructions)
         await agent.aclose_clients()
-        with self.assertRaises(RuntimeError):
-            self.onprem_agent(ONPREM_BASE_URL="http://models.example.ca/v1")
-        for rate in ("", "free", "-1", "NaN"):
-            with self.subTest(rate=rate), self.assertRaises(RuntimeError):
-                self.onprem_agent(ONPREM_GPU_USD_PER_HOUR=rate)
 
-    async def test_onprem_ledger_counts_bytes_and_anything_sent_elsewhere(self):
-        ledger = hosted_onprem._module.EgressLedger("models.example.ca")
+    async def test_onprem_participant_number_never_reaches_the_model(self):
+        agent = self.onprem_agent()
+        state = agent.initial_state()
+        stt = hosted_onprem._module.stt
+        heard = stt.SpeechEvent(
+            type=stt.SpeechEventType.FINAL_TRANSCRIPT,
+            alternatives=[stt.SpeechData(language="en", text="It's four one two seven.")],
+        )
+        agent.screen(heard)
+        self.assertEqual(heard.alternatives[0].text, "It's [participant number].")
+        self.assertEqual(state["participant"], "4127")
+        # The transport inspects what actually leaves for the model.
         inner = httpx.MockTransport(
             lambda request: httpx.Response(200, stream=httpx.ByteStream(b"x" * 300))
         )
-        transport = hosted_onprem._module.CountingTransport(ledger, "tts", inner)
+        transport = hosted_onprem._module.CountingTransport(agent.ledger, inner)
         async with httpx.AsyncClient(transport=transport) as client:
-            await client.post("https://models.example.ca/v1/audio/speech", content=b"y" * 40)
-            self.assertEqual(ledger.flows["tts"], {"sent": 40, "received": 300, "requests": 1})
-            self.assertEqual(ledger.elsewhere, 0)
-            await client.post("https://api.example.com/v1/audio/speech", content=b"z" * 10)
-        self.assertEqual(ledger.elsewhere, 310)
+            body = {"messages": [{"role": "user", "content": heard.alternatives[0].text}]}
+            await client.post("https://api.openai.com/v1/chat/completions", json=body)
+            self.assertEqual(agent.ledger.leaks, 0)
+            body = {"messages": [{"role": "user", "content": "my number is 4127"}]}
+            await client.post("https://api.openai.com/v1/chat/completions", json=body)
+        self.assertEqual(agent.ledger.leaks, 1)
+        self.assertEqual(agent.ledger.llm["requests"], 2)
+        self.assertEqual(agent.ledger.llm["received"], 600)
+        self.assertEqual(agent.snapshot()["form"][0]["value"], "••27")
+        await agent.aclose_clients()
 
     async def test_onprem_checkin_flags_adverse_events_and_stays_isolated(self):
         agent = self.onprem_agent()
@@ -470,9 +472,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         context = SimpleNamespace(userdata=first)
         with patch.object(hosted_onprem._module, "publish_ui_event") as publish:
             self.assertIn("rejected", await agent.record_answer(context, "doses", "nine"))
-            self.assertIn("missing", await agent.complete_checkin(context))
             answers = {
-                "participant": "KB-0412",
                 "doses": "one",
                 "symptoms": "a rash on my arms",
                 "severity": "mild, maybe moderate",
@@ -481,6 +481,8 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             }
             for field, value in answers.items():
                 self.assertIn(f"recorded {field}", await agent.record_answer(context, field, value))
+            self.assertIn("participant number", await agent.complete_checkin(context))
+            first["participant"] = "4127"
             outcome = await agent.complete_checkin(context)
         self.assertIn("study coordinator will call back", outcome)
         self.assertEqual(first["answers"]["severity"], "moderate")
@@ -489,19 +491,9 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertRegex(first["ref"], r"^KB-[0-9A-F]{6}$")
         props = publish.call_args.args[2]
         self.assertEqual(publish.call_args.args[1], "PrivateLine")
-        self.assertEqual([row["field"] for row in props["form"]], list(answers))
-        self.assertEqual(props["elsewhere"], 0)
+        self.assertEqual([row["field"] for row in props["form"]], ["participant", *answers])
+        self.assertEqual(props["leaks"], 0)
         self.assertLess(len(json.dumps(props)), 4000)
-        await agent.aclose_clients()
-
-    async def test_onprem_bills_gpu_seconds_not_tokens(self):
-        agent = self.onprem_agent()
-        agent.sink = SimpleNamespace(records={})
-        agent._gpu_started = time.monotonic() - 36
-        agent.bill_gpu()
-        service, cost = agent.sink.records["onprem-gpu"]
-        self.assertEqual(service, "gpu")
-        self.assertAlmostEqual(float(cost), 0.008, places=4)
         await agent.aclose_clients()
 
     async def test_failed_accept_does_not_leak_claim(self):

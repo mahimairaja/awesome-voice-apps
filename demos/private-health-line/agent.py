@@ -1,32 +1,34 @@
-"""private-health-line: a clinical trial check-in line that keeps every byte in-house.
+"""private-health-line: a clinical trial check-in where the model never hears who is calling.
 
-The research hospital's line calls a trial participant for their weekly symptom
-diary. The agent asks six questions, records each answer through a validated
-tool, and flags possible adverse events for the study coordinator.
+A fictional Canadian research hospital calls a trial participant for their
+weekly symptom diary. The agent asks six questions, records each answer through
+a validated tool, and flags possible adverse events for the study coordinator.
 
-What makes it different is where the call goes. Speech-to-text, the language
-model and the voice all run on one self-hosted GPU box behind an
-OpenAI-compatible API (speaches serves faster-whisper and Kokoro, vLLM serves
-Qwen3). Every model request goes through a counting transport, so the agent can
-show the bytes it sent, to which host, and how long each stage took. Bytes sent
-to any host other than your own model server are counted separately; the point
-of the demo is that the number stays at zero.
+The pattern is data minimisation. Three AI providers handle the call, and each
+one gets only what its job needs:
+
+- Deepgram (speech to text) hears the caller's voice. It has to.
+- Our worker replaces any spoken number of three or more digits with
+  "[participant number]" in the transcript, before anything else reads it, and
+  keeps the real participant number itself.
+- OpenAI (the language model) sees only that redacted transcript. Every request
+  to it goes through a counting transport that also checks the request body for
+  the participant number, so the screen can show how often it reached the model:
+  zero.
+- Cartesia (the voice) receives only the sentences the agent says.
 
 Run it:
-1. Start the model server on a GPU machine: `docker compose up -d` (compose.yaml).
-2. cp .env.example .env and fill it in.
-3. uv sync
-4. uv run python agent.py console
+1. cp .env.example .env and fill it in.
+2. uv sync
+3. uv run python agent.py console
 """
 
 import asyncio
 import json
 import logging
-import os
+import re
 import uuid
-from dataclasses import dataclass
 from typing import Literal
-from urllib.parse import urlparse
 
 import httpx
 import openai as openai_sdk
@@ -41,18 +43,24 @@ from livekit.agents import (
     RunContext,
     cli,
     function_tool,
+    stt,
 )
-from livekit.plugins import openai, silero
+from livekit.plugins import cartesia, deepgram, openai, silero
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 HOSPITAL = "Kestrel Bay Regional Health"
-STAGES = ("stt", "llm", "tts")
+TOKEN = "[participant number]"
+PROCESSORS = (
+    {"stage": "stt", "provider": "Deepgram", "model": "nova-3", "host": "api.deepgram.com"},
+    {"stage": "llm", "provider": "OpenAI", "model": "gpt-4o-mini", "host": "api.openai.com"},
+    {"stage": "tts", "provider": "Cartesia", "model": "sonic-3", "host": "api.cartesia.ai"},
+)
 
-FieldName = Literal["participant", "doses", "symptoms", "severity", "hospital", "medication"]
-FIELDS: tuple[str, ...] = FieldName.__args__
+FieldName = Literal["doses", "symptoms", "severity", "hospital", "medication"]
+FIELDS = ("participant", *FieldName.__args__)
 LABELS = {
     "participant": "participant",
     "doses": "doses missed",
@@ -64,8 +72,49 @@ LABELS = {
 SEVERITY = ("none", "mild", "moderate", "severe")
 _YES = {"yes", "y", "yeah", "yep", "true", "i did", "i have", "i am"}
 _NO = {"no", "n", "nope", "nah", "false", "i didn't", "i haven't", "not really", "none"}
-_NUMBERS = {"none": 0, "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5}
-_NUMBERS |= {"six": 6, "seven": 7}
+_DIGITS = {
+    "zero": "0",
+    "oh": "0",
+    "one": "1",
+    "two": "2",
+    "three": "3",
+    "four": "4",
+    "five": "5",
+    "six": "6",
+    "seven": "7",
+    "eight": "8",
+    "nine": "9",
+}
+_NUMBERS = {"none": 0, **{word: int(d) for word, d in _DIGITS.items() if word != "oh"}}
+_WORD = re.compile(r"[A-Za-z]+|\d+")
+_JOINER = re.compile(r"[\s,.-]*")
+
+
+def redact(text: str) -> tuple[str, list[str]]:
+    """Replace every spoken number of 3 to 8 digits with TOKEN.
+
+    Speech to text writes a participant number as "412", "4 1 2" or "four one
+    two"; all three become TOKEN. Single numbers ("two doses") are left alone.
+    Returns the redacted text and the digits it removed.
+    """
+    runs: list[list[re.Match]] = [[]]
+    for word in _WORD.finditer(text):
+        if not (word.group().isdigit() or word.group().lower() in _DIGITS):
+            runs.append([])
+        elif runs[-1] and _JOINER.fullmatch(text[runs[-1][-1].end() : word.start()]):
+            runs[-1].append(word)
+        else:
+            runs.append([word])
+    found, out, last = [], [], 0
+    for run in filter(None, runs):
+        digits = "".join(
+            w.group() if w.group().isdigit() else _DIGITS[w.group().lower()] for w in run
+        )
+        if 3 <= len(digits) <= 8:
+            out += [text[last : run[0].start()], TOKEN]
+            last = run[-1].end()
+            found.append(digits)
+    return "".join(out) + text[last:], found
 
 
 def _yes_no(value: str) -> bool | None:
@@ -78,8 +127,6 @@ def check_answer(field: str, value: str) -> tuple[bool, str, str | None]:
     v = value.strip()
     if not v:
         return False, "the answer came through empty; ask again", None
-    if field == "participant":
-        return True, v[:60], None
     if field == "symptoms":
         return True, ("none" if _yes_no(v) is False else v[:60]), None
     if field == "doses":
@@ -110,68 +157,39 @@ def check_answer(field: str, value: str) -> tuple[bool, str, str | None]:
 
 
 def initial_state() -> dict:
-    return {"answers": {}, "flags": {}, "outcome": None, "ref": None}
+    return {"participant": None, "answers": {}, "flags": {}, "outcome": None, "ref": None}
 
 
-@dataclass(frozen=True)
-class PrivateHost:
-    """Where the models run. Every value comes from the environment."""
+class DataLedger:
+    """What each provider received, measured where it leaves the worker."""
 
-    base_url: str
-    api_key: str
-    region: str
-    gpu: str
-    stt_model: str
-    llm_model: str
-    tts_model: str
-    tts_voice: str
-
-    @classmethod
-    def from_env(cls) -> "PrivateHost":
-        base_url = os.environ.get("ONPREM_BASE_URL", "").rstrip("/")
-        parsed = urlparse(base_url)
-        local = parsed.hostname in ("localhost", "127.0.0.1")
-        if not parsed.hostname or (parsed.scheme != "https" and not local):
-            raise RuntimeError("ONPREM_BASE_URL must be an https URL to your model server")
-        if not os.environ.get("ONPREM_API_KEY"):
-            raise RuntimeError("Missing ONPREM_API_KEY")
-        return cls(
-            base_url=base_url,
-            api_key=os.environ["ONPREM_API_KEY"],
-            region=os.environ.get("ONPREM_REGION", "your data centre"),
-            gpu=os.environ.get("ONPREM_GPU", "one GPU"),
-            stt_model=os.environ.get(
-                "ONPREM_STT_MODEL", "deepdml/faster-whisper-large-v3-turbo-ct2"
-            ),
-            llm_model=os.environ.get("ONPREM_LLM_MODEL", "Qwen/Qwen3-4B-Instruct-2507"),
-            tts_model=os.environ.get("ONPREM_TTS_MODEL", "speaches-ai/Kokoro-82M-v1.0-ONNX"),
-            tts_voice=os.environ.get("ONPREM_TTS_VOICE", "af_heart"),
-        )
-
-    @property
-    def host(self) -> str:
-        return urlparse(self.base_url).hostname or ""
-
-
-class EgressLedger:
-    """Payload bytes each model stage sent and received, and anything sent elsewhere."""
-
-    def __init__(self, private_host: str) -> None:
-        self.private_host = private_host
-        self.flows = {s: {"sent": 0, "received": 0, "requests": 0} for s in STAGES}
-        self.elsewhere = 0
+    def __init__(self) -> None:
+        self.audio_ms = 0
+        self.llm = {"sent": 0, "received": 0, "requests": 0}
+        self.tts_chars = 0
+        self.redacted = 0
+        # Requests to the language model whose body contained the participant number.
+        self.leaks = 0
+        self.seen = ""
+        self.secret: str | None = None
         self.on_change = None
 
-    def add(self, stage: str, host: str, *, sent: int = 0, received: int = 0) -> None:
-        flow = self.flows[stage]
-        flow["sent"] += sent
-        flow["received"] += received
-        if sent:
-            flow["requests"] += 1
-        if host != self.private_host:
-            self.elsewhere += sent + received
+    def changed(self) -> None:
         if self.on_change:
             self.on_change()
+
+    def model_request(self, body: bytes) -> None:
+        self.llm["sent"] += len(body)
+        self.llm["requests"] += 1
+        if self.secret and self.secret.encode() in body:
+            self.leaks += 1
+        try:
+            messages = json.loads(body).get("messages", [])
+            said = next(m["content"] for m in reversed(messages) if m.get("role") == "user")
+            self.seen = (said if isinstance(said, str) else json.dumps(said))[:200]
+        except (ValueError, AttributeError, KeyError, StopIteration, TypeError):
+            pass
+        self.changed()
 
 
 class _CountedStream(httpx.AsyncByteStream):
@@ -189,91 +207,41 @@ class _CountedStream(httpx.AsyncByteStream):
 
 
 class CountingTransport(httpx.AsyncBaseTransport):
-    """Count every request and response body one model client moves, by host."""
+    """Measure and inspect every request the language model client sends."""
 
-    def __init__(self, ledger: EgressLedger, stage: str, inner=None) -> None:
+    def __init__(self, ledger: DataLedger, inner=None) -> None:
         self._ledger = ledger
-        self._stage = stage
         self._inner = inner or httpx.AsyncHTTPTransport(retries=0)
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        # Model requests (a WAV clip, a chat history, a sentence) are small and buffered.
-        body = await request.aread()
-        host = request.url.host
-        self._ledger.add(self._stage, host, sent=max(1, len(body)))
+        self._ledger.model_request(await request.aread())
         response = await self._inner.handle_async_request(request)
-        response.stream = _CountedStream(
-            response.stream, lambda n: self._ledger.add(self._stage, host, received=n)
-        )
+
+        def received(n: int) -> None:
+            self._ledger.llm["received"] += n
+            self._ledger.changed()
+
+        response.stream = _CountedStream(response.stream, received)
         return response
 
     async def aclose(self) -> None:
         await self._inner.aclose()
 
 
-def private_stack(host: PrivateHost, ledger: EgressLedger) -> tuple[dict, list]:
-    """STT, LLM and TTS clients that can only reach the private model server."""
-    http_clients = []
-
-    def client(stage: str) -> openai_sdk.AsyncClient:
-        http = httpx.AsyncClient(
-            transport=CountingTransport(ledger, stage),
-            timeout=httpx.Timeout(30, connect=5),
-        )
-        http_clients.append(http)
-        return openai_sdk.AsyncClient(
-            base_url=host.base_url, api_key=host.api_key, max_retries=0, http_client=http
-        )
-
-    stack = {
-        # Whisper is not a streaming model: VAD cuts each utterance and sends one WAV clip.
-        "stt": openai.STT(
-            model=host.stt_model, language="en", use_realtime=False, client=client("stt")
-        ),
-        "llm": openai.LLM(
-            model=host.llm_model,
-            client=client("llm"),
-            max_completion_tokens=180,
-            temperature=0.3,
-            parallel_tool_calls=False,
-        ),
-        # Raw 24 kHz PCM: no decoder in the loop, and Kokoro speaks at 24 kHz.
-        "tts": openai.TTS(
-            model=host.tts_model,
-            voice=host.tts_voice,
-            response_format="pcm",
-            client=client("tts"),
-        ),
-    }
-    return stack, http_clients
-
-
-class StageClock:
-    """Per-turn server time: STT request, LLM first token, TTS first audio."""
-
-    def __init__(self, keep: int = 6) -> None:
-        self.turns: list[dict] = []
-        self.keep = keep
-
-    def _row(self, new: bool) -> dict:
-        if new or not self.turns:
-            self.turns.append({"stt": None, "llm": None, "tts": None})
-            del self.turns[: -self.keep]
-        return self.turns[-1]
-
-    def stt(self, seconds: float) -> None:
-        self._row(new=True)["stt"] = round(seconds * 1000)
-
-    def llm(self, seconds: float) -> None:
-        # A tool call makes a second LLM request in the same turn; the first one counts.
-        row = self._row(new=False)
-        if row["llm"] is None:
-            row["llm"] = round(seconds * 1000)
-
-    def tts(self, seconds: float) -> None:
-        row = self._row(new=False)
-        if row["tts"] is None:
-            row["tts"] = round(seconds * 1000)
+def counted_llm(ledger: DataLedger) -> tuple[openai.LLM, httpx.AsyncClient]:
+    http = httpx.AsyncClient(
+        transport=CountingTransport(ledger), timeout=httpx.Timeout(30, connect=5)
+    )
+    client = openai_sdk.AsyncClient(max_retries=0, http_client=http)
+    model = openai.LLM(
+        model="gpt-4o-mini",
+        client=client,
+        max_completion_tokens=180,
+        temperature=0.3,
+        parallel_tool_calls=False,
+        store=False,
+    )
+    return model, http
 
 
 def publish_ui_event(room: rtc.Room, component: str, props: dict) -> None:
@@ -296,74 +264,80 @@ def _ref() -> str:
     return f"KB-{uuid.uuid4().hex[:6].upper()}"
 
 
+def _masked(digits: str | None) -> str:
+    return "" if not digits else "•" * (len(digits) - 2) + digits[-2:]
+
+
 INSTRUCTIONS = (
     f"You are the clinical trial check-in line for {HOSPITAL}, a fictional Canadian "
-    "research hospital. You are calling a participant in a drug trial for their "
-    "weekly symptom diary. Ask these one at a time, in order: their participant "
-    "number or name, how many of this week's seven daily doses they missed, any new "
-    "or worse symptoms, how severe those are (none, mild, moderate or severe), "
-    "whether they went to an emergency room or stayed in hospital since the last "
-    "call, and whether they started any new medication. Call record_answer for each "
-    "answer with the exact field name; if it is rejected, give the reason in one "
-    "short sentence and ask again. If one answer covers several questions, record "
-    "each. Never invent an answer. When all six are recorded, call complete_checkin "
-    "and tell them the outcome and reference. Never give medical advice, never say "
-    "whether a symptom is caused by the study drug, and never tell them to stop or "
-    "change a dose. If they describe chest pain, trouble breathing or a severe "
-    "allergic reaction, tell them to call 911 now. If asked where their voice goes: "
-    "speech recognition, this model and this voice all run on the hospital's own "
-    "servers, and no outside AI company receives the call. Keep replies to one or "
-    "two short sentences, plain text, no lists."
+    "research hospital, calling a participant in a drug trial for their weekly "
+    "symptom diary. First ask for their participant number. You never hear it: "
+    f"our system replaces it with {TOKEN} and records it itself. When you see "
+    f"{TOKEN}, thank them and move on; never ask them to repeat it unless "
+    "complete_checkin says it is missing. Then ask these one at a time, in order: "
+    "how many of this week's seven daily doses they missed, any new or worse "
+    "symptoms, how severe those are (none, mild, moderate or severe), whether they "
+    "went to an emergency room or stayed in hospital since the last call, and "
+    "whether they started any new medication. Call record_answer for each answer "
+    "with the exact field name; if it is rejected, give the reason in one short "
+    "sentence and ask again. If one answer covers several questions, record each. "
+    "Never invent an answer. When all are recorded, call complete_checkin and tell "
+    "them the outcome and reference. Never give medical advice, never say whether a "
+    "symptom is caused by the study drug, and never tell them to stop or change a "
+    "dose. If they describe chest pain, trouble breathing or a severe allergic "
+    "reaction, tell them to call 911 now. If asked where their voice goes: a speech "
+    "recognition provider transcribes it, the participant number is removed before "
+    "the language model reads anything, and the voice provider only receives what "
+    "you say. Keep replies to one or two short sentences, plain text, no lists."
 )
 
 
 class PrivateHealthLine(Agent):
-    def __init__(self, room: rtc.Room, host: PrivateHost | None = None) -> None:
-        self.host = host or PrivateHost.from_env()
-        self.ledger = EgressLedger(self.host.host)
-        self.clock = StageClock()
-        self.stack, self._http_clients = private_stack(self.host, self.ledger)
+    def __init__(self, room: rtc.Room) -> None:
+        self.ledger = DataLedger()
+        llm, self._http = counted_llm(self.ledger)
+        self.stack = {
+            "stt": deepgram.STT(model="nova-3", language="en"),
+            "llm": llm,
+            "tts": cartesia.TTS(model="sonic-3"),
+        }
         super().__init__(instructions=INSTRUCTIONS, **self.stack)
         self.room = room
         self._state: dict | None = None
         self._publish_pending = False
         self.ledger.on_change = self.schedule_publish
-        self.stack["stt"].on("metrics_collected", lambda m: self._timed(self.clock.stt, m.duration))
-        self.stack["llm"].on("metrics_collected", lambda m: self._timed(self.clock.llm, m.ttft))
-        self.stack["tts"].on("metrics_collected", lambda m: self._timed(self.clock.tts, m.ttfb))
-
-    def _timed(self, record, seconds: float) -> None:
-        if seconds and seconds > 0:
-            record(seconds)
-            self.schedule_publish()
 
     def bind(self, state: dict) -> None:
         self._state = state
 
     def snapshot(self) -> dict:
         state = self._state or initial_state()
+        amounts = {
+            "stt": self.ledger.audio_ms,
+            "llm": self.ledger.llm["sent"],
+            "tts": self.ledger.tts_chars,
+        }
         return {
             "hospital": HOSPITAL,
-            "host": {"region": self.host.region[:60], "gpu": self.host.gpu[:60]},
-            "models": {
-                "stt": self.host.stt_model.split("/")[-1][:60],
-                "llm": self.host.llm_model.split("/")[-1][:60],
-                "tts": self.host.tts_model.split("/")[-1][:60],
-            },
+            "processors": [{**p, "amount": amounts[p["stage"]]} for p in PROCESSORS],
+            "requests": self.ledger.llm["requests"],
+            "received": self.ledger.llm["received"],
+            "redacted": self.ledger.redacted,
+            "leaks": self.ledger.leaks,
+            "seen": self.ledger.seen,
             "form": [
                 {
                     "field": f,
                     "label": LABELS[f],
-                    "value": state["answers"].get(f, ""),
+                    "value": _masked(state["participant"])
+                    if f == "participant"
+                    else state["answers"].get(f, ""),
                     "flag": state["flags"].get(f) or "",
                 }
                 for f in FIELDS
             ],
             "outcome": state["outcome"],
             "ref": state["ref"],
-            "flows": [{"stage": s, **self.ledger.flows[s]} for s in STAGES],
-            "elsewhere": self.ledger.elsewhere,
-            "turns": self.clock.turns,
         }
 
     def publish(self) -> None:
@@ -371,7 +345,7 @@ class PrivateHealthLine(Agent):
         publish_ui_event(self.room, "PrivateLine", self.snapshot())
 
     def schedule_publish(self) -> None:
-        # TTS audio arrives in many small chunks: send at most a few snapshots a second.
+        # Audio and model bytes change many times a second: send a few snapshots a second.
         if self._publish_pending:
             return
         try:
@@ -381,16 +355,47 @@ class PrivateHealthLine(Agent):
         self._publish_pending = True
 
     async def aclose_clients(self) -> None:
-        for http in self._http_clients:
-            await http.aclose()
+        await self._http.aclose()
+
+    def screen(self, event: stt.SpeechEvent) -> stt.SpeechEvent:
+        """Redact the transcript before the session, the model or the history see it."""
+        for alt in event.alternatives:
+            alt.text, found = redact(alt.text)
+            if found and event.type == stt.SpeechEventType.FINAL_TRANSCRIPT:
+                self.ledger.redacted += len(found)
+                state = self._state
+                if state is not None and not state["participant"]:
+                    state["participant"] = found[0]
+                    self.ledger.secret = found[0]
+                self.schedule_publish()
+        return event
+
+    async def stt_node(self, audio, model_settings):
+        async def counted():
+            async for frame in audio:
+                self.ledger.audio_ms += int(1000 * frame.samples_per_channel / frame.sample_rate)
+                yield frame
+
+        async for event in Agent.default.stt_node(self, counted(), model_settings):
+            yield self.screen(event) if isinstance(event, stt.SpeechEvent) else event
+
+    async def tts_node(self, text, model_settings):
+        async def counted():
+            async for chunk in text:
+                self.ledger.tts_chars += len(chunk)
+                self.schedule_publish()
+                yield chunk
+
+        async for frame in super().tts_node(counted(), model_settings):
+            yield frame
 
     @function_tool()
     async def record_answer(self, context: RunContext[dict], field: FieldName, value: str) -> str:
-        """Record one check-in answer.
+        """Record one diary answer.
 
-        Fields: participant (number or name), doses (missed this week, 0-7),
-        symptoms (new or worse, or none), severity (none, mild, moderate, severe),
-        hospital (ER visit or stay, yes or no), medication (new medication, yes or no).
+        Fields: doses (missed this week, 0-7), symptoms (new or worse, or none),
+        severity (none, mild, moderate, severe), hospital (ER visit or stay, yes or
+        no), medication (new medication, yes or no).
         """
         ok, result, flag = check_answer(field, value)
         if not ok:
@@ -412,7 +417,9 @@ class PrivateHealthLine(Agent):
     async def complete_checkin(self, context: RunContext[dict]) -> str:
         """Finish the check-in. Refuses until every answer is recorded."""
         state = context.userdata
-        missing = [LABELS[f] for f in FIELDS if f not in state["answers"]]
+        missing = [LABELS[f] for f in FieldName.__args__ if f not in state["answers"]]
+        if not state["participant"]:
+            missing.insert(0, "participant number (ask them to say it again)")
         if missing:
             return f"cannot complete yet, still missing: {', '.join(missing)}"
         state["ref"] = state["ref"] or _ref()
@@ -422,8 +429,7 @@ class PrivateHealthLine(Agent):
         if flags:
             return (
                 f"Outcome: the study coordinator will call back today about "
-                f"{', '.join(flags)}. "
-                f"Reference {state['ref']}."
+                f"{', '.join(flags)}. Reference {state['ref']}."
             )
         return f"Outcome: diary recorded, no callback needed. Reference {state['ref']}."
 
@@ -432,7 +438,6 @@ server = AgentServer()
 
 
 def prewarm(proc: JobProcess) -> None:
-    # Voice activity detection runs inside this worker, on CPU.
     proc.userdata["vad"] = silero.VAD.load()
 
 
@@ -457,7 +462,7 @@ async def entrypoint(ctx: JobContext) -> None:
     await session.generate_reply(
         instructions=(
             f"Say you are the {HOSPITAL} clinical trial check-in line, a simulation, "
-            "and ask for their participant number or name."
+            "and ask for their participant number."
         )
     )
 

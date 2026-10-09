@@ -18,7 +18,7 @@ from hosted_clinic import ClinicScheduler, publish_clinic
 from hosted_clinic import initial_state as clinic_state
 from hosted_onprem import GREETING as ONPREM_GREETING
 from hosted_onprem import INSTRUCTIONS as ONPREM_INSTRUCTIONS
-from hosted_onprem import PrivateHealthLine, gpu_usd_per_second
+from hosted_onprem import PrivateHealthLine
 from hosted_onprem import initial_state as onprem_state
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
@@ -177,7 +177,7 @@ class HostedGuard:
         raise NotImplementedError
 
     def voice_stack(self) -> dict:
-        """The metered cloud stack. A demo on its own models returns those instead."""
+        """The metered cloud stack. A demo that wraps its own clients returns those."""
         return {
             "stt": deepgram.STT(model="nova-3"),
             "llm": openai.LLM(
@@ -185,20 +185,6 @@ class HostedGuard:
             ),
             "tts": cartesia.TTS(model="sonic-2"),
         }
-
-    def attach_meter(self) -> None:
-        """Meter provider usage through VoiceGateway into this call's sink."""
-        voicegateway.attach(
-            self.session,
-            project="mahimai-playground",
-            agent_id=self.demo,
-            sink=self.sink,
-            room=self.room.name,
-            transcript=False,
-            snapshots=False,
-            turns=False,
-            dead_air=False,
-        )
 
     def __init__(self) -> None:
         ctx = get_job_context()
@@ -246,7 +232,17 @@ class HostedGuard:
         # Each visitor gets their own state. Never put a cart in pool session_kwargs.
         self.sink = PlaygroundSink(self.approval["id"])
         try:
-            self.attach_meter()
+            voicegateway.attach(
+                self.session,
+                project="mahimai-playground",
+                agent_id=self.demo,
+                sink=self.sink,
+                room=self.room.name,
+                transcript=False,
+                snapshots=False,
+                turns=False,
+                dead_air=False,
+            )
             self.publish_initial()
             await self.session.generate_reply(instructions=self.greeting)
         except Exception:
@@ -367,23 +363,19 @@ class HostedClaim(HostedGuard, ClaimIntake):
 
 
 class HostedOnprem(HostedGuard, PrivateHealthLine):
-    """A check-in line on self-hosted models: no provider API sees the call.
+    """A trial check-in where the language model never receives the participant number.
 
-    The model server is a rented GPU billed by the hour, not by the token, so
-    VoiceGateway has nothing to price. The call bills the seconds it holds the
-    GPU at the server's hourly rate instead, under its own "gpu" cost line.
+    The demo wraps its own OpenAI client to measure and inspect every model
+    request, so the hosted copy keeps the demo's stack instead of the default.
     """
 
     demo = "onprem"
-    # Six answers, each a tool call and a reply, plus the read-out at the end.
+    # Five answers, each a tool call and a reply, plus the read-out at the end.
     llm_budget = 20
     greeting = ONPREM_GREETING
 
     def __init__(self) -> None:
-        self._gpu_started = None
-        self._billing_task = None
         super().__init__()
-        self._gpu_rate = gpu_usd_per_second()
         self._instructions = ONPREM_INSTRUCTIONS
 
     def voice_stack(self) -> dict:
@@ -397,35 +389,7 @@ class HostedOnprem(HostedGuard, PrivateHealthLine):
     def publish_initial(self) -> None:
         self.publish()
 
-    def attach_meter(self) -> None:
-        self._gpu_started = time.monotonic()
-        self._billing_task = spawn(self._bill_while_live())
-
-    def bill_gpu(self) -> None:
-        if self._gpu_started is not None:
-            seconds = Decimal(str(time.monotonic() - self._gpu_started))
-            self.sink.records["onprem-gpu"] = ("gpu", seconds * self._gpu_rate)
-
-    async def _bill_while_live(self) -> None:
-        while not self._closing:
-            self.bill_gpu()
-            try:
-                await self.sink.report()
-            except (httpx.HTTPError, ValueError):
-                logger.warning("GPU usage report pending")
-            await asyncio.sleep(5)
-
     async def _finish(self) -> None:
-        if self._closing:
-            return
-        if self._billing_task and self._billing_task is not asyncio.current_task():
-            self._billing_task.cancel()
-        if getattr(self, "sink", None) is not None:
-            self.bill_gpu()
-            try:
-                await self.sink.report()
-            except (httpx.HTTPError, ValueError):
-                logger.warning("Final GPU usage report pending")
         try:
             await super()._finish()
         finally:

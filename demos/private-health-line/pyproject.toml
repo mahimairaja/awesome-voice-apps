@@ -1,9 +1,9 @@
 [project]
 name = "private-health-line"
 version = "0.1.0"
-description = "A clinical trial check-in line where speech, model and voice all run on your own GPU server."
+description = "A clinical trial check-in line where the language model never hears the participant number."
 requires-python = ">=3.11"
 dependencies = [
-    "livekit-agents[openai,silero]>=1.8.5,<2.0",
+    "livekit-agents[deepgram,openai,cartesia,silero]>=1.8.5,<2.0",
     "python-dotenv>=1.0",
 ]

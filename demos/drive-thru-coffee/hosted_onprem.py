@@ -1,13 +1,10 @@
 """Maintainer-owned adapter for the standalone private health line demo.
 
-The demo already talks only to a self-hosted model server, so the hosted copy
-keeps its stack and swaps nothing. It only adds the playground's time limit to
-the instructions and bills the call as GPU time instead of metered tokens.
+The demo already uses the playground's providers, so the hosted copy keeps its
+stack and only adds the playground's time limit to the instructions.
 """
 
 import importlib.util
-import os
-from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 # Load the contributed demo by path so its `agent` module never shadows the coffee demo's.
@@ -23,18 +20,6 @@ INSTRUCTIONS = _module.INSTRUCTIONS + (
     "answer covers several questions, record each before asking the next."
 )
 GREETING = (
-    f"Say you are the {_module.HOSPITAL} clinical trial check-in line, that this is "
-    "a simulation with made-up details, and that the call stays on the hospital's "
-    "own servers. Ask for their participant number or name."
+    f"Say you are the {_module.HOSPITAL} clinical trial check-in line and that this "
+    "is a simulation, so they should use a made-up participant number. Ask for it."
 )
-
-
-def gpu_usd_per_second() -> Decimal:
-    """The model server's hourly price, spread over the seconds a call holds it."""
-    try:
-        hourly = Decimal(os.environ.get("ONPREM_GPU_USD_PER_HOUR", ""))
-    except InvalidOperation:
-        hourly = Decimal(-1)
-    if not hourly.is_finite() or not 0 < hourly <= 20:
-        raise RuntimeError("Set ONPREM_GPU_USD_PER_HOUR to the model server's hourly price")
-    return hourly / 3600
