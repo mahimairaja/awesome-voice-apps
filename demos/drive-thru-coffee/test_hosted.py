@@ -7,12 +7,14 @@ import sys
 import time
 import unittest
 from datetime import timedelta
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import hosted
 import hosted_claim
 import hosted_clinic
+import hosted_ivr
 import hosted_tenant
 import hosted_water
 from trivia import HostedTriviaHost, initial_state
@@ -236,7 +238,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
 
     async def test_registry_admits_each_demo_and_nothing_else(self):
         self.assertEqual(
-            hosted.DEMOS, {"coffee", "trivia", "water", "clinic", "claim", "tenant", "sdr"}
+            hosted.DEMOS, {"coffee", "trivia", "water", "clinic", "claim", "tenant", "ivr", "sdr"}
         )
         for demo in hosted.DEMOS:
             metadata = json.dumps({"agent": demo, "reservation": ID})
@@ -410,6 +412,47 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(type(agent.llm).__module__.startswith("livekit.plugins.openai"))
         await agent.llm.aclose()
         self.assertEqual(hosted.HostedGuard.llm_budget, 12)
+
+    async def test_ivr_calls_race_from_their_own_clock_and_bill_the_router(self):
+        self.assertNotIn("routing", sys.modules)
+        agent = object.__new__(hosted.HostedIvr)
+        first, second = agent.initial_state(), agent.initial_state()
+        self.assertIsNot(first["lines"], second["lines"])
+        self.assertIsNot(first["history"], second["history"])
+        agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+        agent.meter_router(1000, 1)
+        await asyncio.sleep(0)
+        self.assertEqual(
+            list(agent.sink.records.values()),
+            [("openai", hosted_ivr.router_cost(1000, 1))],
+        )
+        self.assertEqual(hosted_ivr.router_cost(1000, 1), Decimal("0.0001506"))
+        agent.sink.report.assert_awaited_once()
+
+    async def test_ivr_uses_sonic_3_and_the_hosted_limits(self):
+        self.assertEqual(hosted.HostedIvr.llm_budget, 20)
+        hosted.claims[ROOM] = {"id": ID}
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                },
+            ),
+            patch.object(
+                hosted,
+                "get_job_context",
+                return_value=SimpleNamespace(room=SimpleNamespace(name=ROOM)),
+            ),
+        ):
+            agent = hosted.HostedIvr()
+        self.assertIn("two-minute limit", agent.instructions)
+        self.assertIn("router note", agent.instructions)
+        self.assertEqual(agent.tts.model, "sonic-3")
+        self.assertEqual([tool.info.name for tool in agent.tools], ["transfer"])
+        await agent.llm.aclose()
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()

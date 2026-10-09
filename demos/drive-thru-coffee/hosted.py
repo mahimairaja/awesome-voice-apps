@@ -16,6 +16,10 @@ from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
 from hosted_clinic import ClinicScheduler, publish_clinic
 from hosted_clinic import initial_state as clinic_state
+from hosted_ivr import GREETING as IVR_GREETING
+from hosted_ivr import PhoneTreeRouter, publish_router, router_cost
+from hosted_ivr import initial_state as ivr_state
+from hosted_ivr import instructions as ivr_instructions
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -354,6 +358,36 @@ class HostedClaim(HostedGuard, ClaimIntake):
         publish_claim(self.room, self.session.userdata)
 
 
+class HostedIvr(HostedGuard, PhoneTreeRouter):
+    demo = "ivr"
+    # A clear request is one reply plus the transfer; leave room for clarifying
+    # questions and a second or third request in the same call.
+    llm_budget = 20
+    greeting = IVR_GREETING
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._instructions = ivr_instructions()
+        self.update_options(tts=cartesia.TTS(model="sonic-3"))
+
+    def initial_state(self) -> dict:
+        # Both race clocks start here, when the call connects.
+        return ivr_state()
+
+    def publish_initial(self) -> None:
+        publish_router(self.room, self.session.userdata)
+
+    async def on_enter(self) -> None:
+        self.watch()
+        await super().on_enter()
+
+    def meter_router(self, prompt_tokens: int, completion_tokens: int) -> None:
+        # VoiceGateway does not see the direct router call; bill it here.
+        cost = router_cost(prompt_tokens, completion_tokens)
+        self.sink.records[f"ivr-router-{uuid.uuid4()}"] = ("openai", cost)
+        spawn(self.sink.report())
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -364,6 +398,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
+    "ivr": HostedIvr,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 
