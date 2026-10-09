@@ -16,6 +16,13 @@ providers keeps its own code: the adapter swaps the stack (see `hosted_claim.py`
 which stubs the unused plugin imports while loading). Raise `llm_budget` on the
 hosted class when a demo needs more than 12 model turns in two minutes.
 
+A demo on its own models overrides `voice_stack()` and `attach_meter()` instead
+(see `HostedOnprem`): the private health line sends STT, LLM and TTS only to a
+self-hosted GPU server and bills each call as GPU seconds under a `gpu` cost line.
+It needs `ONPREM_BASE_URL`, `ONPREM_API_KEY` and `ONPREM_GPU_USD_PER_HOUR`
+(optional: `ONPREM_REGION`, `ONPREM_GPU`); the model server itself is
+`demos/private-health-line/compose.yaml` on a GPU host, never this worker.
+
 Required environment: LiveKit credentials, OpenAI, Deepgram and Cartesia keys,
 `PLAYGROUND_ORIGIN`, `PLAYGROUND_WORKER_SECRET`, `VOICEGW_COLLECTOR_URL`, and
 `VOICEGW_API_KEY`. Keep credentials in the hosting platform, never this repository.

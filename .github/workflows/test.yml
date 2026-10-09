@@ -19,6 +19,7 @@ jobs:
           - tenant-rights
           - claim-intake
           - panel-scribe
+          - private-health-line
     steps:
       - uses: actions/checkout@v4
 

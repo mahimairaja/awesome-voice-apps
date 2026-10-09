@@ -13,6 +13,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import hosted
 import hosted_claim
 import hosted_clinic
+import hosted_onprem
+import httpx
 import hosted_tenant
 import hosted_water
 from trivia import HostedTriviaHost, initial_state
@@ -236,7 +238,8 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
 
     async def test_registry_admits_each_demo_and_nothing_else(self):
         self.assertEqual(
-            hosted.DEMOS, {"coffee", "trivia", "water", "clinic", "claim", "tenant", "sdr"}
+            hosted.DEMOS,
+            {"coffee", "trivia", "water", "clinic", "claim", "tenant", "onprem", "sdr"},
         )
         for demo in hosted.DEMOS:
             metadata = json.dumps({"agent": demo, "reservation": ID})
@@ -410,6 +413,95 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(type(agent.llm).__module__.startswith("livekit.plugins.openai"))
         await agent.llm.aclose()
         self.assertEqual(hosted.HostedGuard.llm_budget, 12)
+
+    def onprem_agent(self, **env):
+        hosted.claims[ROOM] = {"id": ID, "seconds": 120}
+        values = {
+            "ONPREM_BASE_URL": "https://models.example.ca/v1",
+            "ONPREM_API_KEY": "offline",
+            "ONPREM_GPU_USD_PER_HOUR": "0.80",
+            **env,
+        }
+        with (
+            patch.dict(hosted.os.environ, values),
+            patch.object(
+                hosted,
+                "get_job_context",
+                return_value=SimpleNamespace(room=SimpleNamespace(name=ROOM)),
+            ),
+        ):
+            return hosted.HostedOnprem()
+
+    async def test_onprem_models_only_reach_the_private_server(self):
+        # No cloud keys in the environment: the onprem call never builds a cloud client.
+        with patch.dict(hosted.os.environ, {}, clear=False):
+            for key in ("DEEPGRAM_API_KEY", "OPENAI_API_KEY", "CARTESIA_API_KEY"):
+                hosted.os.environ.pop(key, None)
+            agent = self.onprem_agent()
+        for component in (agent.stt, agent.llm, agent.tts):
+            self.assertTrue(type(component).__module__.startswith("livekit.plugins.openai"))
+            self.assertEqual(component.provider, "models.example.ca")
+        self.assertIn("two-minute limit", agent.instructions)
+        await agent.aclose_clients()
+        with self.assertRaises(RuntimeError):
+            self.onprem_agent(ONPREM_BASE_URL="http://models.example.ca/v1")
+        for rate in ("", "free", "-1", "NaN"):
+            with self.subTest(rate=rate), self.assertRaises(RuntimeError):
+                self.onprem_agent(ONPREM_GPU_USD_PER_HOUR=rate)
+
+    async def test_onprem_ledger_counts_bytes_and_anything_sent_elsewhere(self):
+        ledger = hosted_onprem._module.EgressLedger("models.example.ca")
+        inner = httpx.MockTransport(
+            lambda request: httpx.Response(200, stream=httpx.ByteStream(b"x" * 300))
+        )
+        transport = hosted_onprem._module.CountingTransport(ledger, "tts", inner)
+        async with httpx.AsyncClient(transport=transport) as client:
+            await client.post("https://models.example.ca/v1/audio/speech", content=b"y" * 40)
+            self.assertEqual(ledger.flows["tts"], {"sent": 40, "received": 300, "requests": 1})
+            self.assertEqual(ledger.elsewhere, 0)
+            await client.post("https://api.example.com/v1/audio/speech", content=b"z" * 10)
+        self.assertEqual(ledger.elsewhere, 310)
+
+    async def test_onprem_checkin_flags_warning_signs_and_stays_isolated(self):
+        agent = self.onprem_agent()
+        first, second = agent.initial_state(), agent.initial_state()
+        self.assertIsNot(first["answers"], second["answers"])
+        agent.bind(first)
+        context = SimpleNamespace(userdata=first)
+        with patch.object(hosted_onprem._module, "publish_ui_event") as publish:
+            self.assertIn("rejected", await agent.record_answer(context, "pain", "eleven"))
+            self.assertIn("missing", await agent.complete_checkin(context))
+            answers = {
+                "patient": "Sam Taylor",
+                "procedure": "knee arthroscopy",
+                "pain": "8",
+                "fever": "37.2",
+                "wound": "clean and dry, a bit red",
+                "medication": "yes",
+            }
+            for field, value in answers.items():
+                self.assertIn(f"recorded {field}", await agent.record_answer(context, field, value))
+            outcome = await agent.complete_checkin(context)
+        self.assertIn("nurse will call back", outcome)
+        self.assertEqual(first["flags"], {"pain": "pain 8/10", "wound": "wound red"})
+        self.assertEqual((first["outcome"], second["outcome"]), ("nurse", None))
+        self.assertRegex(first["ref"], r"^KB-[0-9A-F]{6}$")
+        props = publish.call_args.args[2]
+        self.assertEqual(publish.call_args.args[1], "PrivateLine")
+        self.assertEqual([row["field"] for row in props["form"]], list(answers))
+        self.assertEqual(props["elsewhere"], 0)
+        self.assertLess(len(json.dumps(props)), 4000)
+        await agent.aclose_clients()
+
+    async def test_onprem_bills_gpu_seconds_not_tokens(self):
+        agent = self.onprem_agent()
+        agent.sink = SimpleNamespace(records={})
+        agent._gpu_started = time.monotonic() - 36
+        agent.bill_gpu()
+        service, cost = agent.sink.records["onprem-gpu"]
+        self.assertEqual(service, "gpu")
+        self.assertAlmostEqual(float(cost), 0.008, places=4)
+        await agent.aclose_clients()
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()

@@ -16,6 +16,10 @@ from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
 from hosted_clinic import ClinicScheduler, publish_clinic
 from hosted_clinic import initial_state as clinic_state
+from hosted_onprem import GREETING as ONPREM_GREETING
+from hosted_onprem import INSTRUCTIONS as ONPREM_INSTRUCTIONS
+from hosted_onprem import PrivateHealthLine, gpu_usd_per_second
+from hosted_onprem import initial_state as onprem_state
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -172,6 +176,30 @@ class HostedGuard:
     def publish_initial(self) -> None:
         raise NotImplementedError
 
+    def voice_stack(self) -> dict:
+        """The metered cloud stack. A demo on its own models returns those instead."""
+        return {
+            "stt": deepgram.STT(model="nova-3"),
+            "llm": openai.LLM(
+                model="gpt-4o-mini", max_completion_tokens=180, max_retries=0, store=False
+            ),
+            "tts": cartesia.TTS(model="sonic-2"),
+        }
+
+    def attach_meter(self) -> None:
+        """Meter provider usage through VoiceGateway into this call's sink."""
+        voicegateway.attach(
+            self.session,
+            project="mahimai-playground",
+            agent_id=self.demo,
+            sink=self.sink,
+            room=self.room.name,
+            transcript=False,
+            snapshots=False,
+            turns=False,
+            dead_air=False,
+        )
+
     def __init__(self) -> None:
         ctx = get_job_context()
         self.approval = claims.pop(ctx.room.name, None)
@@ -179,13 +207,7 @@ class HostedGuard:
             raise RuntimeError("Call has no approved reservation")
         super().__init__(ctx.room)
         # Per-agent clients keep component metrics isolated between concurrent calls.
-        self.update_options(
-            stt=deepgram.STT(model="nova-3"),
-            llm=openai.LLM(
-                model="gpt-4o-mini", max_completion_tokens=180, max_retries=0, store=False
-            ),
-            tts=cartesia.TTS(model="sonic-2"),
-        )
+        self.update_options(**self.voice_stack())
         self._llm_requests = 0
         self._tts_bytes = 0
         self._closing = False
@@ -224,17 +246,7 @@ class HostedGuard:
         # Each visitor gets their own state. Never put a cart in pool session_kwargs.
         self.sink = PlaygroundSink(self.approval["id"])
         try:
-            voicegateway.attach(
-                self.session,
-                project="mahimai-playground",
-                agent_id=self.demo,
-                sink=self.sink,
-                room=self.room.name,
-                transcript=False,
-                snapshots=False,
-                turns=False,
-                dead_air=False,
-            )
+            self.attach_meter()
             self.publish_initial()
             await self.session.generate_reply(instructions=self.greeting)
         except Exception:
@@ -354,6 +366,72 @@ class HostedClaim(HostedGuard, ClaimIntake):
         publish_claim(self.room, self.session.userdata)
 
 
+class HostedOnprem(HostedGuard, PrivateHealthLine):
+    """A check-in line on self-hosted models: no provider API sees the call.
+
+    The model server is a rented GPU billed by the hour, not by the token, so
+    VoiceGateway has nothing to price. The call bills the seconds it holds the
+    GPU at the server's hourly rate instead, under its own "gpu" cost line.
+    """
+
+    demo = "onprem"
+    # Six answers, each a tool call and a reply, plus the read-out at the end.
+    llm_budget = 20
+    greeting = ONPREM_GREETING
+
+    def __init__(self) -> None:
+        self._gpu_started = None
+        self._billing_task = None
+        super().__init__()
+        self._gpu_rate = gpu_usd_per_second()
+        self._instructions = ONPREM_INSTRUCTIONS
+
+    def voice_stack(self) -> dict:
+        return self.stack
+
+    def initial_state(self) -> dict:
+        state = onprem_state()
+        self.bind(state)
+        return state
+
+    def publish_initial(self) -> None:
+        self.publish()
+
+    def attach_meter(self) -> None:
+        self._gpu_started = time.monotonic()
+        self._billing_task = spawn(self._bill_while_live())
+
+    def bill_gpu(self) -> None:
+        if self._gpu_started is not None:
+            seconds = Decimal(str(time.monotonic() - self._gpu_started))
+            self.sink.records["onprem-gpu"] = ("gpu", seconds * self._gpu_rate)
+
+    async def _bill_while_live(self) -> None:
+        while not self._closing:
+            self.bill_gpu()
+            try:
+                await self.sink.report()
+            except (httpx.HTTPError, ValueError):
+                logger.warning("GPU usage report pending")
+            await asyncio.sleep(5)
+
+    async def _finish(self) -> None:
+        if self._closing:
+            return
+        if self._billing_task and self._billing_task is not asyncio.current_task():
+            self._billing_task.cancel()
+        if getattr(self, "sink", None) is not None:
+            self.bill_gpu()
+            try:
+                await self.sink.report()
+            except (httpx.HTTPError, ValueError):
+                logger.warning("Final GPU usage report pending")
+        try:
+            await super()._finish()
+        finally:
+            await self.aclose_clients()
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -364,6 +442,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
+    "onprem": HostedOnprem,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 

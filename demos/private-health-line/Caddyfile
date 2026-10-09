@@ -1,0 +1,12 @@
+# One https endpoint for all three models. Anything else is a 404.
+{$ONPREM_DOMAIN} {
+	handle /v1/audio/* {
+		reverse_proxy speech:8000
+	}
+	handle /v1/chat/* {
+		reverse_proxy llm:8000
+	}
+	handle {
+		respond 404
+	}
+}
