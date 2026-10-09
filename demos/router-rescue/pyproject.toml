@@ -1,0 +1,9 @@
+[project]
+name = "router-rescue"
+version = "0.1.0"
+description = "ISP support agent that reads your router's lights through the camera, only when it needs to."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero,images]>=1.8,<2.0",
+    "python-dotenv>=1.0",
+]

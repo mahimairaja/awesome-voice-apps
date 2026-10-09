@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import hosted
 import hosted_claim
 import hosted_clinic
+import hosted_router
 import hosted_tenant
 import hosted_water
 from trivia import HostedTriviaHost, initial_state
@@ -236,7 +237,8 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
 
     async def test_registry_admits_each_demo_and_nothing_else(self):
         self.assertEqual(
-            hosted.DEMOS, {"coffee", "trivia", "water", "clinic", "claim", "tenant", "sdr"}
+            hosted.DEMOS,
+            {"coffee", "trivia", "water", "clinic", "claim", "tenant", "router", "sdr"},
         )
         for demo in hosted.DEMOS:
             metadata = json.dumps({"agent": demo, "reservation": ID})
@@ -410,6 +412,129 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(type(agent.llm).__module__.startswith("livekit.plugins.openai"))
         await agent.llm.aclose()
         self.assertEqual(hosted.HostedGuard.llm_budget, 12)
+
+    def router_agent(self):
+        """A hosted router agent for one call, with a fake room and vision client."""
+        hosted.claims[ROOM] = {"id": ID, "seconds": 120, "deadline": time.time() + 120}
+        room = SimpleNamespace(name=ROOM, remote_participants={})
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                    "VOICEGW_COLLECTOR_URL": "http://localhost:8080",
+                    "VOICEGW_API_KEY": "offline",
+                },
+            ),
+            patch.object(hosted, "get_job_context", return_value=SimpleNamespace(room=room)),
+        ):
+            agent = hosted.HostedRouter()
+            agent.sink = hosted.PlaygroundSink(ID)
+        return agent
+
+    def test_router_playbook_reads_lights_most_severe_first(self):
+        def reading(visible=True, **lights):
+            base = {"power": "solid_green", "internet": "solid_green", "wifi": "solid_green"}
+            return {"router_visible": visible, "lights": {**base, "lan": "off", **lights}}
+
+        cases = [
+            (reading(visible=False), "no_router"),
+            (reading(power="off", internet="off"), "no_power"),
+            (reading(power="solid_red"), "hardware_fault"),
+            (reading(power="blinking_white"), "booting"),
+            (reading(internet="off", wifi="off"), "no_line"),
+            (reading(internet="blinking_amber"), "no_sync"),
+            (reading(internet="solid_red"), "outage"),
+            (reading(wifi="off"), "wifi_off"),
+            (reading(internet="blinking_green"), "healthy"),
+            (reading(internet="not_visible"), "unclear"),
+        ]
+        for value, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(hosted_router.diagnose(value), expected)
+                self.assertIn(expected, hosted_router._module.DIAGNOSES)
+
+    def test_router_strip_puts_every_frame_in_one_image(self):
+        from io import BytesIO
+
+        from PIL import Image
+
+        frames = [Image.new("RGB", (640, 480), color) for color in ("red", "black", "red")]
+        strip = Image.open(BytesIO(hosted_router._module.contact_strip(frames, (160, 120), 70)))
+        self.assertEqual(strip.size, (480, 120))
+        self.assertGreater(strip.getpixel((80, 60))[0], 200)
+        self.assertLess(strip.getpixel((240, 60))[0], 60)
+
+    async def test_router_looks_only_when_asked_and_bills_the_call(self):
+        agent = self.router_agent()
+        module = hosted_router._module
+        context = MagicMock()
+        context.session.say.return_value = MagicMock(done=MagicMock(return_value=True))
+        with patch.object(module, "camera_track", return_value=None):
+            self.assertIn("camera is off", await agent.look_at_camera(context, "first look"))
+        self.assertFalse(agent._looks)
+
+        from PIL import Image
+
+        reading = {
+            "router_visible": True,
+            "lights": {
+                "power": "solid_green",
+                "internet": "blinking_amber",
+                "wifi": "solid_green",
+                "lan": "glowing",
+            },
+            "label": "Network: Northline-4F2A",
+            "note": "",
+        }
+        response = SimpleNamespace(
+            usage=SimpleNamespace(prompt_tokens=1000, completion_tokens=100),
+            choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(reading)))],
+        )
+        agent._vision = MagicMock()
+        agent._vision.chat.completions.create = AsyncMock(return_value=response)
+        frames = [Image.new("RGB", (64, 48))] * 3
+        with (
+            patch.object(module, "camera_track", return_value=object()),
+            patch.object(module, "sample_frames", new_callable=AsyncMock, return_value=frames),
+            patch.object(module, "publish_ui_event") as publish,
+            patch.object(agent, "_publish_look") as look_event,
+            patch.object(hosted, "control", new_callable=AsyncMock) as control,
+        ):
+            first = await agent.look_at_camera(context, "check the lights")
+            reused = await agent.look_at_camera(context, "check again")
+            await asyncio.sleep(0)
+        self.assertIn("No sync with the network", first)
+        self.assertIn("a moment ago", reused)
+        self.assertEqual(agent._vision.chat.completions.create.await_count, 1)
+        sent = agent._vision.chat.completions.create.await_args.kwargs
+        self.assertFalse(sent["store"])
+        self.assertEqual(sent["messages"][1]["content"][1]["image_url"]["detail"], "low")
+        look = look_event.call_args.args[0]
+        self.assertEqual((look["n"], look["diagnosis"], look["frames"]), (1, "no_sync", 3))
+        self.assertEqual(look["lights"]["lan"], "not_visible")
+        stats = publish.call_args.kwargs["props"]
+        self.assertEqual((stats["looks"], stats["ticket"]), (1, "open"))
+        # 1,000 input tokens at $0.40/M plus 100 output at $1.60/M is 560 micro-dollars.
+        control.assert_any_await("usage", ID, service="openai", microusd=560)
+        agent._looks = [dict(look, focus="label", n=i) for i in range(6)]
+        with patch.object(module, "camera_track", return_value=object()):
+            self.assertIn("limit", await agent.look_at_camera(context, "again"))
+        await agent.llm.aclose()
+
+    async def test_router_calls_keep_their_own_looks(self):
+        first = self.router_agent()
+        second = self.router_agent()
+        first._looks.append({"n": 1})
+        self.assertEqual(second._looks, [])
+        self.assertIsNot(first._vision, second._vision)
+        self.assertEqual(hosted.HostedRouter.llm_budget, 20)
+        self.assertGreater(hosted_router.vision_cost(None), 0)
+        for agent in (first, second):
+            await agent.llm.aclose()
+            await agent._vision.close()
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()
