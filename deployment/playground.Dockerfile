@@ -1,6 +1,10 @@
 FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
+# libopus: the concierge's Spatius avatar sends the agent's audio as Ogg Opus.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libopus0 \
+    && rm -rf /var/lib/apt/lists/*
 COPY demos/drive-thru-coffee/requirements-hosted.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY demos/drive-thru-coffee/*.py /app/demos/drive-thru-coffee/

@@ -501,9 +501,9 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             hosted_concierge.avatar_cost(120), hosted_concierge.AVATAR_USD_PER_MINUTE * 2
         )
-        with patch.dict(hosted_concierge.os.environ, {"ANAM_USD_PER_MINUTE": "nan"}):
+        with patch.dict(hosted_concierge.os.environ, {"SPATIUS_USD_PER_MINUTE": "nan"}):
             self.assertEqual(hosted_concierge._rate(), hosted_concierge.DEFAULT_USD_PER_MINUTE)
-        with patch.dict(hosted_concierge.os.environ, {"ANAM_USD_PER_MINUTE": "-1"}):
+        with patch.dict(hosted_concierge.os.environ, {"SPATIUS_USD_PER_MINUTE": "-1"}):
             self.assertEqual(hosted_concierge._rate(), hosted_concierge.DEFAULT_USD_PER_MINUTE)
         agent = object.__new__(hosted.HostedConcierge)
         agent._closing = False
@@ -521,7 +521,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             await agent._finish()
             await agent._finish()
         provider, cost = agent.sink.records["concierge-avatar"]
-        self.assertEqual(provider, "anam")
+        self.assertEqual(provider, "spatius")
         self.assertGreaterEqual(cost, hosted_concierge.avatar_cost(30))
         agent.sink.report.assert_awaited_once()
         control.assert_awaited_once_with("finish", ID)
@@ -538,13 +538,34 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(hosted.HostedConcierge, "room", room, create=True),
             patch.object(hosted, "control", new_callable=AsyncMock) as control,
-            patch("livekit.plugins.anam.AvatarSession", return_value=failing),
+            patch("livekit.plugins.spatius.AvatarSession", return_value=failing),
             self.assertRaises(RuntimeError),
         ):
             await agent.start_avatar(MagicMock())
         self.assertTrue(agent._closing)
         self.assertEqual(control.await_args_list[0].args[:2], ("usage", ID))
-        self.assertEqual(control.await_args_list[0].kwargs["service"], "anam")
+        self.assertEqual(control.await_args_list[0].kwargs["service"], "spatius")
+        control.assert_awaited_with("finish", ID)
+        room.disconnect.assert_awaited_once()
+
+    async def test_missing_avatar_keys_end_the_call_before_inference(self):
+        agent = object.__new__(hosted.HostedConcierge)
+        agent._closing = False
+        agent._avatar_started = None
+        agent._meter = SimpleNamespace(attach=MagicMock())
+        agent.approval = {"id": ID}
+        room = SimpleNamespace(disconnect=AsyncMock())
+        with (
+            patch.object(hosted.HostedConcierge, "room", room, create=True),
+            patch.object(hosted, "control", new_callable=AsyncMock) as control,
+            patch.dict(
+                hosted.os.environ,
+                {"SPATIUS_API_KEY": "", "SPATIUS_APP_ID": "", "SPATIUS_AVATAR_ID": ""},
+            ),
+            self.assertRaises(Exception),
+        ):
+            await agent.start_avatar(MagicMock())
+        self.assertTrue(agent._closing)
         control.assert_awaited_with("finish", ID)
         room.disconnect.assert_awaited_once()
 

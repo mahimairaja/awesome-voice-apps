@@ -1,22 +1,22 @@
 """Hotel lobby concierge with a face.
 
 A talking concierge on screen recommends a restaurant near the hotel and books
-a table. The voice runs as a normal STT, LLM and TTS agent; an Anam avatar
-joins the room as its own participant and turns the agent's audio into
-lip-synced video. The agent also reports how well speech, lips and
-interruptions stay in sync.
+a table. The voice runs as a normal STT, LLM and TTS agent; a Spatius avatar
+joins the room as its own participant, takes the agent's audio and publishes
+it with motion data that the browser renders as a lip-synced 3D face. The
+agent also reports how well speech, lips and interruptions stay in sync.
 
 Run it:
 1. cp .env.example .env and fill the keys.
 2. uv sync
-3. uv run python agent.py dev, then join the room from a LiveKit client
-   that shows video (the avatar needs a real room, so console mode is out).
+3. uv run python agent.py dev, then join the room from a frontend that uses
+   the Spatius web SDK. The face is drawn in the browser, so console mode and
+   plain video players show a black frame.
 """
 
 import asyncio
 import json
 import logging
-import os
 import random
 import time
 from typing import Literal
@@ -33,7 +33,7 @@ from livekit.agents import (
     cli,
     function_tool,
 )
-from livekit.plugins import anam, openai, silero
+from livekit.plugins import openai, silero, spatius
 
 load_dotenv()
 
@@ -199,7 +199,7 @@ def _match(restaurant: dict, words: str) -> bool:
 class SyncMeter:
     """Measures the avatar from the agent's side and puts it on screen.
 
-    - join: avatar session start to its video track arriving in the room
+    - join: avatar session start to its motion track arriving in the room
     - playback: first audio frame sent to the avatar to playback starting
     - interruptions: the caller talking over the concierge, and how long it
       took from the caller's voice to the concierge going quiet
@@ -389,11 +389,9 @@ class HotelConcierge(Agent):
         return f"Cancelled {booked['restaurant']} at {booked['time']}."
 
 
-def avatar_session() -> anam.AvatarSession:
-    return anam.AvatarSession(
-        persona_config=anam.PersonaConfig(name=CONCIERGE, avatarId=os.environ["ANAM_AVATAR_ID"]),
-        avatar_participant_name=CONCIERGE,
-    )
+def avatar_session() -> spatius.AvatarSession:
+    # Reads SPATIUS_API_KEY, SPATIUS_APP_ID and SPATIUS_AVATAR_ID from the environment.
+    return spatius.AvatarSession(avatar_participant_name=CONCIERGE)
 
 
 server = AgentServer()

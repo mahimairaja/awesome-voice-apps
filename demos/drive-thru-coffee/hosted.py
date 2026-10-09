@@ -364,7 +364,7 @@ class HostedClaim(HostedGuard, ClaimIntake):
 
 
 class HostedConcierge(HostedGuard, HotelConcierge):
-    """A concierge with a face: an Anam avatar speaks the agent's audio on video.
+    """A concierge with a face: a Spatius avatar speaks the agent's audio.
 
     The avatar is a third participant in the room. It is billed by the second
     from the moment it is requested, and the call ends with the reservation.
@@ -393,18 +393,14 @@ class HostedConcierge(HostedGuard, HotelConcierge):
 
     async def start_avatar(self, session: AgentSession) -> None:
         """Bring the avatar into the room before the session says a word."""
-        from livekit.plugins import anam
+        from livekit.plugins import spatius
 
         self._meter.attach(session)
-        avatar = anam.AvatarSession(
-            persona_config=anam.PersonaConfig(
-                name=CONCIERGE, avatarId=os.environ.get("ANAM_AVATAR_ID", "")
-            ),
-            avatar_participant_name=CONCIERGE,
-            conn_options=APIConnectOptions(max_retry=0),
-        )
         self._avatar_started = time.monotonic()
         try:
+            # Reads SPATIUS_API_KEY, SPATIUS_APP_ID and SPATIUS_AVATAR_ID; a missing
+            # key raises here and ends the call like a failed join.
+            avatar = spatius.AvatarSession(avatar_participant_name=CONCIERGE)
             await avatar.start(session, room=self.room)
             await avatar.wait_for_join(timeout=15)
         except Exception:
@@ -424,7 +420,7 @@ class HostedConcierge(HostedGuard, HotelConcierge):
         elapsed = time.monotonic() - (self._avatar_started or time.monotonic())
         cost = avatar_cost(elapsed)
         return {
-            "service": "anam",
+            "service": "spatius",
             "microusd": int((cost * 1_000_000).to_integral_value(rounding=ROUND_CEILING)),
         }
 
@@ -432,7 +428,7 @@ class HostedConcierge(HostedGuard, HotelConcierge):
         sink = getattr(self, "sink", None)
         if sink is not None and self._avatar_started is not None:
             sink.records["concierge-avatar"] = (
-                "anam",
+                "spatius",
                 avatar_cost(time.monotonic() - self._avatar_started),
             )
 

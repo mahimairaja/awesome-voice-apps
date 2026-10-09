@@ -16,14 +16,15 @@ initial_state = _module.initial_state
 CONCIERGE = _module.CONCIERGE
 HOTEL = _module.HOTEL
 
-# Anam bills per second of avatar session. Set ANAM_USD_PER_MINUTE to the rate
-# on the account; the default is deliberately on the high side.
-DEFAULT_USD_PER_MINUTE = Decimal("0.20")
+# Spatius bills avatar session time in credits (about $0.01 a minute on the
+# paid plans). Set SPATIUS_USD_PER_MINUTE to the account's rate; the default
+# rounds up.
+DEFAULT_USD_PER_MINUTE = Decimal("0.02")
 
 
 def _rate() -> Decimal:
     try:
-        rate = Decimal(os.environ.get("ANAM_USD_PER_MINUTE", DEFAULT_USD_PER_MINUTE))
+        rate = Decimal(os.environ.get("SPATIUS_USD_PER_MINUTE", DEFAULT_USD_PER_MINUTE))
     except ArithmeticError:
         return DEFAULT_USD_PER_MINUTE
     # A bad value must never under-bill or stop the other demos from loading.
