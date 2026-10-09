@@ -29,6 +29,7 @@ COPY demos/fair-cancellation/agent.py demos/fair-cancellation/policy.py /app/dem
 COPY demos/medical-bill-explainer/agent.py /app/demos/medical-bill-explainer/
 COPY demos/pronunciation-coach/agent.py demos/pronunciation-coach/coach.py /app/demos/pronunciation-coach/
 COPY demos/postop-checkin/agent.py demos/postop-checkin/protocol.py /app/demos/postop-checkin/
+COPY demos/manager-approval/agent.py /app/demos/manager-approval/
 RUN useradd --create-home worker
 USER worker
 RUN python -m livekit.agents download-files
