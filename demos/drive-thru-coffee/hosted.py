@@ -50,6 +50,9 @@ from hosted_rebook import FlightRebooker, build_llm, build_tts
 from hosted_returns import GRADE_BUDGET, ReturnsDesk, grade_cost, publish_returns
 from hosted_returns import GREETING as RETURNS_GREETING
 from hosted_returns import initial_state as returns_state
+from hosted_outage import GREETING as OUTAGE_GREETING
+from hosted_outage import OutageLine, outage_stt
+from hosted_outage import initial_state as outage_state
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -762,6 +765,25 @@ class HostedDelivery(HostedGuard, DeliveryCaller):
         await self._finish()
 
 
+class HostedOutage(HostedGuard, OutageLine):
+    demo = "outage"
+    # A ticket, two or three line changes, a reply after each reading and a playback.
+    llm_budget = 20
+    greeting = OUTAGE_GREETING
+
+    def __init__(self) -> None:
+        super().__init__()
+        # Formatted numbers keep readings comparable with the card on screen.
+        self.update_options(stt=outage_stt())
+
+    def initial_state(self) -> dict:
+        return outage_state()
+
+    def publish_initial(self) -> None:
+        self.install_line()
+        self.publish()
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT-Live demos (REALTIME_DEMOS) start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -785,6 +807,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "rebook": HostedRebook,
     "returns": HostedReturns,
     "delivery": HostedDelivery,
+    "outage": HostedOutage,
 }
 # GPT-Live speech-to-speech demos share the call plumbing in build_server.
 REALTIME_DEMOS = frozenset({"sdr", "interp"})
