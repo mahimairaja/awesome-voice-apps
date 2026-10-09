@@ -264,6 +264,10 @@ class PlaygroundSink(RemoteCollectorSink):
         await self.report()
 
 
+# Transcribed words a caller must say over the agent before it stops talking.
+INTERRUPT_MIN_WORDS = 2
+
+
 class HostedGuard:
     """Call limits shared by every STT, LLM and TTS demo.
 
@@ -275,8 +279,20 @@ class HostedGuard:
     greeting = ""
     # LLM requests allowed in a full two-minute call; shorter calls scale down.
     llm_budget = 12
-    # Session turn-taking; a demo about interruptions brings its own.
-    turn_handling = {"turn_detection": "vad", "interruption": {"mode": "vad"}}
+    # Session turn-taking; a demo about interruptions brings its own. Raw voice activity
+    # alone (a cough, a TV, the agent's own voice leaking back through laptop speakers)
+    # used to cut a reply after its first word. Now it takes two transcribed words to
+    # interrupt, and a stray sound that never becomes words lets the reply resume.
+    turn_handling = {
+        "turn_detection": "vad",
+        "interruption": {
+            "mode": "vad",
+            "min_duration": 0.6,
+            "min_words": INTERRUPT_MIN_WORDS,
+            "resume_false_interruption": True,
+            "false_interruption_timeout": 1.5,
+        },
+    }
 
     def initial_state(self) -> dict:
         raise NotImplementedError
