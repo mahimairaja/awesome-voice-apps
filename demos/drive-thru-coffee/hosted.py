@@ -11,6 +11,8 @@ from decimal import ROUND_CEILING, Decimal
 import httpx
 import voicegateway
 from agent import DriveThruAttendant, _publish_cart, _publish_menu
+from hosted_builder import GREETING as BUILDER_GREETING
+from hosted_builder import VOICES, ConfigurableAgent, parse_config
 from hosted_claim import ClaimIntake, publish_claim
 from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
@@ -354,6 +356,42 @@ class HostedClaim(HostedGuard, ClaimIntake):
         publish_claim(self.room, self.session.userdata)
 
 
+class HostedBuilder(HostedGuard, ConfigurableAgent):
+    """The visitor's own agent: config from the site's dispatch, live updates over RPC."""
+
+    demo = "builder"
+    greeting = BUILDER_GREETING
+    # Visitors re-test after each change, so allow a few more turns than a fixed demo.
+    llm_budget = 16
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.update_options(tts=cartesia.TTS(model="sonic-2", voice=VOICES[self.config.voice]))
+
+    def initial_config(self):
+        # The site validated this config and signed it into the dispatch; check it again.
+        try:
+            raw = json.loads(get_job_context().job.metadata).get("config")
+            return parse_config(raw)
+        except (ValueError, TypeError, AttributeError):
+            logger.warning("Builder call without a valid config; using the default")
+            return super().initial_config()
+
+    def allowed_caller(self, identity: str) -> bool:
+        # Only this call's visitor may reconfigure this call's agent.
+        return identity == f"visitor-{self.approval['id']}"
+
+    def initial_state(self) -> dict:
+        return {}
+
+    def publish_initial(self) -> None:
+        self.publish_config()
+
+    async def on_enter(self) -> None:
+        self.listen()
+        await super().on_enter()
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -364,6 +402,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
+    "builder": HostedBuilder,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 

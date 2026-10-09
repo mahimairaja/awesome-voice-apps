@@ -29,6 +29,7 @@ README lists its requirements and any extra setup. Provider usage may cost money
 
 | Example | What it does |
 | --- | --- |
+| [Build your own agent](demos/build-your-own-agent/) | One agent configured per tenant: change its brief, tools and voice mid-call over LiveKit RPC. |
 | [Claim intake](demos/claim-intake/) | Takes an auto insurance claim by voice, validates each field, and files it. |
 | [Clinic scheduler](demos/clinic-scheduler/) | Books a doctor appointment by voice, finds open slots, and handles reschedules. |
 | [Drive-thru coffee](demos/drive-thru-coffee/) | Takes a coffee order, modifies items mid-flow, totals the cart. |
