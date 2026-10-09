@@ -12,6 +12,7 @@ COPY demos/clinic-scheduler/agent.py /app/demos/clinic-scheduler/
 COPY demos/claim-intake/agent.py /app/demos/claim-intake/
 COPY demos/panel-scribe/agent.py /app/demos/panel-scribe/
 COPY demos/front-desk-interpreter/agent.py /app/demos/front-desk-interpreter/
+COPY demos/pharmacy-refill/agent.py demos/pharmacy-refill/refill.py /app/demos/pharmacy-refill/
 RUN useradd --create-home worker
 USER worker
 RUN python -m livekit.agents download-files

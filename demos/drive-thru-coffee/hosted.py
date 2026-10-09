@@ -18,6 +18,10 @@ from hosted_clinic import ClinicScheduler, publish_clinic
 from hosted_clinic import initial_state as clinic_state
 from hosted_panel import GREETING as PANEL_GREETING
 from hosted_panel import SoloPanelScribe, publish_panel
+from hosted_pharmacy import GREETING as PHARMACY_GREETING
+from hosted_pharmacy import RefillLine, make_stt, publish_refill
+from hosted_pharmacy import initial_state as pharmacy_state
+from hosted_pharmacy import instructions as pharmacy_instructions
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -376,6 +380,29 @@ class HostedPanel(HostedGuard, SoloPanelScribe):
         publish_panel(self.room)
 
 
+class HostedPharmacy(HostedGuard, RefillLine):
+    demo = "pharmacy"
+    # Five fields, each captured, read back and confirmed, then the refill.
+    llm_budget = 30
+    greeting = PHARMACY_GREETING
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._instructions = pharmacy_instructions()
+        # Nova-3 keyterms for the formulary; smart format writes dates as dates.
+        self.update_options(stt=make_stt())
+
+    def initial_state(self) -> dict:
+        return pharmacy_state()
+
+    def publish_initial(self) -> None:
+        publish_refill(self.room, self.session.userdata)
+
+    async def on_enter(self) -> None:
+        self.watch_transcript()
+        await super().on_enter()
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT-Live demos (REALTIME_DEMOS) start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -387,6 +414,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "clinic": HostedClinic,
     "claim": HostedClaim,
     "panel": HostedPanel,
+    "pharmacy": HostedPharmacy,
 }
 # GPT-Live speech-to-speech demos share the call plumbing in build_server.
 REALTIME_DEMOS = frozenset({"sdr", "interp"})
