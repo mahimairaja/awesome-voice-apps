@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import hosted
 import hosted_claim
 import hosted_clinic
+import hosted_pharmacy
 import hosted_tenant
 import hosted_water
 from trivia import HostedTriviaHost, initial_state
@@ -236,7 +237,8 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
 
     async def test_registry_admits_each_demo_and_nothing_else(self):
         self.assertEqual(
-            hosted.DEMOS, {"coffee", "trivia", "water", "clinic", "claim", "tenant", "sdr"}
+            hosted.DEMOS,
+            {"coffee", "trivia", "water", "clinic", "claim", "tenant", "pharmacy", "sdr"},
         )
         for demo in hosted.DEMOS:
             metadata = json.dumps({"agent": demo, "reservation": ID})
@@ -410,6 +412,79 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(type(agent.llm).__module__.startswith("livekit.plugins.openai"))
         await agent.llm.aclose()
         self.assertEqual(hosted.HostedGuard.llm_budget, 12)
+
+    async def test_pharmacy_calls_get_their_own_prescription(self):
+        self.assertNotIn("refill", sys.modules)
+        agent = object.__new__(hosted.HostedPharmacy)
+        first, second = agent.initial_state(), agent.initial_state()
+        self.assertIsNot(first["fields"], second["fields"])
+        line = hosted_pharmacy.RefillLine(SimpleNamespace())
+        context = SimpleNamespace(userdata=first)
+        rx = first["profile"]["rx_number"]
+        wrong = rx[:-1] + ("D" if rx[-1] != "D" else "B")
+        with patch.object(hosted_pharmacy._module, "publish_ui_event") as publish:
+            self.assertIn("unconfirmed", await line.place_refill(context))
+            await line.capture(context, "rx_number", wrong)
+            mismatch = await line.confirm(context, "rx_number")
+            self.assertTrue(mismatch.startswith("mismatch"))
+            self.assertNotIn(rx, mismatch)
+            answers = {
+                "drug": first["profile"]["drug"],
+                "rx_number": rx,
+                "date_of_birth": first["profile"]["date_of_birth"],
+                "postal_code": first["profile"]["postal_code"].lower(),
+                "pickup_store": "king street",
+            }
+            for field, value in answers.items():
+                self.assertNotIn("rejected", await line.capture(context, field, value))
+                self.assertTrue((await line.confirm(context, field)).startswith("confirmed"))
+            placed = await line.place_refill(context)
+            again = await line.place_refill(context)
+        self.assertEqual(placed, again)
+        self.assertRegex(first["ref"], r"^RF-\d{4}-[0-9A-F]{4}$")
+        self.assertIsNone(second["ref"])
+        props = publish.call_args.args[2]
+        self.assertEqual(publish.call_args.args[1], "Refill")
+        self.assertEqual(props["ref"], first["ref"])
+        self.assertTrue(all(f["status"] == "confirmed" for f in props["fields"]))
+
+    async def test_pharmacy_logs_redacted_lines_and_spells_codes(self):
+        line = hosted_pharmacy.RefillLine(SimpleNamespace())
+        state = hosted_pharmacy.initial_state()
+        line._activity = SimpleNamespace(session=SimpleNamespace(userdata=state))
+        with (
+            patch.object(type(line), "session", property(lambda self: self._activity.session)),
+            patch.object(hosted_pharmacy._module, "publish_ui_event"),
+        ):
+            line.log_line("caller", "I was born March 14th, 1982, call 416-555-0199")
+            spoken = line.speak("Your Rx is 4471-B. ")
+        self.assertNotRegex(state["log"][0]["text"], r"\d")
+        self.assertEqual(state["log"][0]["tags"], ["DOB", "PHONE"])
+        self.assertIn("B as in Bravo", spoken)
+        self.assertEqual(state["spoken"][0]["written"], "4471-B")
+
+    async def test_pharmacy_uses_keyterms_and_a_bigger_budget(self):
+        self.assertEqual(hosted.HostedPharmacy.llm_budget, 30)
+        hosted.claims[ROOM] = {"id": ID}
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                },
+            ),
+            patch.object(
+                hosted,
+                "get_job_context",
+                return_value=SimpleNamespace(room=SimpleNamespace(name=ROOM)),
+            ),
+        ):
+            agent = hosted.HostedPharmacy()
+        self.assertIn("two-minute limit", agent.instructions)
+        self.assertIn("metformin", agent.stt._opts.keyterm)
+        await agent.llm.aclose()
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()

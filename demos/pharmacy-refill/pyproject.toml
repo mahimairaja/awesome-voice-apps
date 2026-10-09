@@ -1,0 +1,9 @@
+[project]
+name = "pharmacy-refill"
+version = "0.1.0"
+description = "A prescription refill line that confirms every code and redacts the call log."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero]>=1.8,<2.0",
+    "python-dotenv>=1.0",
+]
