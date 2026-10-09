@@ -16,6 +16,11 @@ from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
 from hosted_clinic import ClinicScheduler, publish_clinic
 from hosted_clinic import initial_state as clinic_state
+from hosted_pronounce import GREETING as PRONOUNCE_GREETING
+from hosted_pronounce import PronunciationCoach, make_tts, publish_coach
+from hosted_pronounce import initial_state as pronounce_state
+from hosted_pronounce import instructions as pronounce_instructions
+from hosted_pronounce import make_stt as pronounce_stt
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -354,6 +359,25 @@ class HostedClaim(HostedGuard, ClaimIntake):
         publish_claim(self.room, self.session.userdata)
 
 
+class HostedPronounce(HostedGuard, PronunciationCoach):
+    demo = "pronounce"
+    # Every read is a scored turn plus a coaching reply: about ten reads a call.
+    llm_budget = 20
+    greeting = PRONOUNCE_GREETING
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._instructions = pronounce_instructions()
+        # Plain Nova-3 (no keyterms, so errors stay visible) and multilingual Sonic 3.
+        self.update_options(stt=pronounce_stt(), tts=make_tts())
+
+    def initial_state(self) -> dict:
+        return pronounce_state()
+
+    def publish_initial(self) -> None:
+        publish_coach(self.room, self.session.userdata)
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -364,6 +388,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
+    "pronounce": HostedPronounce,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 
