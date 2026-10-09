@@ -18,6 +18,11 @@ hosted class when a demo needs more than 12 model turns in two minutes. A demo
 that hands off to other agents must charge them to the same call caps (see
 `hosted_fraud.py`), or a handoff resets the limits.
 
+A demo that wraps its own provider clients overrides `voice_stack()` (see
+`HostedOnprem`): the private health line measures and inspects every language
+model request through its own OpenAI client, so it keeps that client instead of
+the default one. It uses the same Deepgram, OpenAI and Cartesia keys.
+
 Required environment: LiveKit credentials, OpenAI, Deepgram and Cartesia keys,
 `PLAYGROUND_ORIGIN`, `PLAYGROUND_WORKER_SECRET`, `VOICEGW_COLLECTOR_URL`, and
 `VOICEGW_API_KEY`. Keep credentials in the hosting platform, never this repository.

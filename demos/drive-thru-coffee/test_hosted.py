@@ -32,6 +32,8 @@ import hosted_recall
 import hosted_cost
 import hosted_payer
 import hosted_resume
+import hosted_onprem
+import httpx
 import hosted_tenant
 import hosted_water
 from livekit.agents.llm import ChatMessage
@@ -1876,6 +1878,88 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(agent.resumed)
         self.assertEqual(agent.state["answers"], {})
         await agent.llm.aclose()
+
+    def onprem_agent(self):
+        hosted.claims[ROOM] = {"id": ID, "seconds": 120}
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {"OPENAI_API_KEY": "x", "DEEPGRAM_API_KEY": "x", "CARTESIA_API_KEY": "x"},
+            ),
+            patch.object(
+                hosted,
+                "get_job_context",
+                return_value=SimpleNamespace(room=SimpleNamespace(name=ROOM)),
+            ),
+        ):
+            return hosted.HostedOnprem()
+
+    async def test_onprem_keeps_its_counted_model_client(self):
+        agent = self.onprem_agent()
+        self.assertIs(agent.llm, agent.stack["llm"])
+        self.assertEqual(agent.tts.model, "sonic-3")
+        self.assertIn("two-minute limit", agent.instructions)
+        await agent.aclose_clients()
+
+    async def test_onprem_participant_number_never_reaches_the_model(self):
+        agent = self.onprem_agent()
+        state = agent.initial_state()
+        stt = hosted_onprem._module.stt
+        heard = stt.SpeechEvent(
+            type=stt.SpeechEventType.FINAL_TRANSCRIPT,
+            alternatives=[stt.SpeechData(language="en", text="It's four one two seven.")],
+        )
+        agent.screen(heard)
+        self.assertEqual(heard.alternatives[0].text, "It's [participant number].")
+        self.assertEqual(state["participant"], "4127")
+        # The transport inspects what actually leaves for the model.
+        inner = httpx.MockTransport(
+            lambda request: httpx.Response(200, stream=httpx.ByteStream(b"x" * 300))
+        )
+        transport = hosted_onprem._module.CountingTransport(agent.ledger, inner)
+        async with httpx.AsyncClient(transport=transport) as client:
+            body = {"messages": [{"role": "user", "content": heard.alternatives[0].text}]}
+            await client.post("https://api.openai.com/v1/chat/completions", json=body)
+            self.assertEqual(agent.ledger.leaks, 0)
+            body = {"messages": [{"role": "user", "content": "my number is 4127"}]}
+            await client.post("https://api.openai.com/v1/chat/completions", json=body)
+        self.assertEqual(agent.ledger.leaks, 1)
+        self.assertEqual(agent.ledger.llm["requests"], 2)
+        self.assertEqual(agent.ledger.llm["received"], 600)
+        self.assertEqual(agent.snapshot()["form"][0]["value"], "••27")
+        await agent.aclose_clients()
+
+    async def test_onprem_checkin_flags_adverse_events_and_stays_isolated(self):
+        agent = self.onprem_agent()
+        first, second = agent.initial_state(), agent.initial_state()
+        self.assertIsNot(first["answers"], second["answers"])
+        agent.bind(first)
+        context = SimpleNamespace(userdata=first)
+        with patch.object(hosted_onprem._module, "publish_ui_event") as publish:
+            self.assertIn("rejected", await agent.record_answer(context, "doses", "nine"))
+            answers = {
+                "doses": "one",
+                "symptoms": "a rash on my arms",
+                "severity": "mild, maybe moderate",
+                "hospital": "yes",
+                "medication": "no",
+            }
+            for field, value in answers.items():
+                self.assertIn(f"recorded {field}", await agent.record_answer(context, field, value))
+            self.assertIn("participant number", await agent.complete_checkin(context))
+            first["participant"] = "4127"
+            outcome = await agent.complete_checkin(context)
+        self.assertIn("study coordinator will call back", outcome)
+        self.assertEqual(first["answers"]["severity"], "moderate")
+        self.assertEqual(first["flags"], {"hospital": "emergency or hospital visit"})
+        self.assertEqual((first["outcome"], second["outcome"]), ("coordinator", None))
+        self.assertRegex(first["ref"], r"^KB-[0-9A-F]{6}$")
+        props = publish.call_args.args[2]
+        self.assertEqual(publish.call_args.args[1], "PrivateLine")
+        self.assertEqual([row["field"] for row in props["form"]], ["participant", *answers])
+        self.assertEqual(props["leaks"], 0)
+        self.assertLess(len(json.dumps(props)), 4000)
+        await agent.aclose_clients()
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()

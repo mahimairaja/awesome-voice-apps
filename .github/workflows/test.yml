@@ -28,6 +28,7 @@ jobs:
           - support-cost-router
           - payer-verification
           - loan-callback
+          - private-health-line
     steps:
       - uses: actions/checkout@v4
 

@@ -92,6 +92,10 @@ from hosted_payer import initial_state as payer_state
 from hosted_payer import instructions as payer_instructions
 from hosted_resume import LoanCallback, SiteStore
 from hosted_resume import instructions as resume_instructions
+from hosted_onprem import GREETING as ONPREM_GREETING
+from hosted_onprem import INSTRUCTIONS as ONPREM_INSTRUCTIONS
+from hosted_onprem import PrivateHealthLine
+from hosted_onprem import initial_state as onprem_state
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -251,6 +255,16 @@ class HostedGuard:
     def publish_initial(self) -> None:
         raise NotImplementedError
 
+    def voice_stack(self) -> dict:
+        """The metered cloud stack. A demo that wraps its own clients returns those."""
+        return {
+            "stt": deepgram.STT(model="nova-3"),
+            "llm": openai.LLM(
+                model="gpt-4o-mini", max_completion_tokens=180, max_retries=0, store=False
+            ),
+            "tts": cartesia.TTS(model="sonic-2"),
+        }
+
     def __init__(self) -> None:
         ctx = get_job_context()
         self.approval = claims.pop(ctx.room.name, None)
@@ -258,13 +272,7 @@ class HostedGuard:
             raise RuntimeError("Call has no approved reservation")
         super().__init__(ctx.room)
         # Per-agent clients keep component metrics isolated between concurrent calls.
-        self.update_options(
-            stt=deepgram.STT(model="nova-3"),
-            llm=openai.LLM(
-                model="gpt-4o-mini", max_completion_tokens=180, max_retries=0, store=False
-            ),
-            tts=cartesia.TTS(model="sonic-2"),
-        )
+        self.update_options(**self.voice_stack())
         self._llm_requests = 0
         self._tts_bytes = 0
         self._closing = False
@@ -1139,6 +1147,40 @@ class HostedResume(HostedGuard, LoanCallback):
         await super().on_enter()
 
 
+class HostedOnprem(HostedGuard, PrivateHealthLine):
+    """A trial check-in where the language model never receives the participant number.
+
+    The demo wraps its own OpenAI client to measure and inspect every model
+    request, so the hosted copy keeps the demo's stack instead of the default.
+    """
+
+    demo = "onprem"
+    # Five answers, each a tool call and a reply, plus the read-out at the end.
+    llm_budget = 20
+    greeting = ONPREM_GREETING
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._instructions = ONPREM_INSTRUCTIONS
+
+    def voice_stack(self) -> dict:
+        return self.stack
+
+    def initial_state(self) -> dict:
+        state = onprem_state()
+        self.bind(state)
+        return state
+
+    def publish_initial(self) -> None:
+        self.publish()
+
+    async def _finish(self) -> None:
+        try:
+            await super()._finish()
+        finally:
+            await self.aclose_clients()
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT-Live demos (REALTIME_DEMOS) start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -1173,6 +1215,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "cost": HostedCost,
     "payer": HostedPayer,
     "resume": HostedResume,
+    "onprem": HostedOnprem,
 }
 # GPT-Live speech-to-speech demos share the call plumbing in build_server.
 REALTIME_DEMOS = frozenset({"sdr", "interp"})
