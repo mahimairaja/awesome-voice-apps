@@ -1,0 +1,9 @@
+[project]
+name = "city-311"
+version = "0.1.0"
+description = "A bilingual city 311 line: report a pothole or ask about garbage day in English or French, and switch mid-call."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero,turn-detector]>=1.8.5,<2.0",
+    "python-dotenv>=1.0",
+]
