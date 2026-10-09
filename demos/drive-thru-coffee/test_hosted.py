@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import hosted
 import hosted_claim
 import hosted_clinic
+import hosted_recall
 import hosted_tenant
 import hosted_water
 from trivia import HostedTriviaHost, initial_state
@@ -236,7 +237,8 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
 
     async def test_registry_admits_each_demo_and_nothing_else(self):
         self.assertEqual(
-            hosted.DEMOS, {"coffee", "trivia", "water", "clinic", "claim", "tenant", "sdr"}
+            hosted.DEMOS,
+            {"coffee", "trivia", "water", "clinic", "claim", "tenant", "recall", "sdr"},
         )
         for demo in hosted.DEMOS:
             metadata = json.dumps({"agent": demo, "reservation": ID})
@@ -340,6 +342,116 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(first["booking"])
         self.assertEqual(len(first["available_slots"]), 6)
         self.assertEqual(publish.call_args.args[1:3], ("Card", "unmount"))
+
+    def site(self):
+        """A stand-in for the site's recall action, using the demo's own policy."""
+        memory = hosted_recall.memory
+        files: dict[str, list] = {}
+
+        async def control(action, reservation, op, **fields):
+            self.assertEqual(action, "recall")
+            entries, now = files.get(reservation, []), time.time()
+            try:
+                if op == "save":
+                    entries = memory.add(
+                        entries, fields["kind"], fields["text"], fields["why"], now
+                    )
+                elif op == "forget":
+                    entries = memory.forget(entries, fields["memory"], now, "caller")
+                elif op == "forget_all":
+                    entries = memory.forget_all(entries, now, "caller")
+            except ValueError as problem:
+                return {"refused": str(problem)}
+            files[reservation] = entries
+            return {"entries": entries}
+
+        return control, files
+
+    async def test_recall_file_is_keyed_by_reservation_on_the_site(self):
+        control, files = self.site()
+        store = hosted_recall.SiteStore(control, ID)
+        concierge = hosted_recall.Concierge(SimpleNamespace(), store)
+        context = SimpleNamespace(userdata=hosted_recall.initial_state())
+        with patch.object(hosted_recall._module, "publish_ui_event") as publish:
+            self.assertIn(
+                "no consent", await concierge.remember(context, "task", "Owed a call.", "x")
+            )
+            await concierge.record_consent(context, True)
+            kept = await concierge.remember(context, "task", "Owed a call about the wire.", "x")
+            self.assertTrue(kept.startswith("kept as m"))
+            self.assertIn("deleted", await concierge.forget(context, files[ID][-1]["id"]))
+        self.assertEqual([e["kind"] for e in files[ID]], ["consent", "task"])
+        self.assertIsNone(files[ID][-1]["text"])
+        self.assertEqual(publish.call_args.args[1], "Recall")
+        # Another visitor's reservation sees an empty file.
+        self.assertEqual(await hosted_recall.SiteStore(control, "other").load(), [])
+
+    async def test_recall_adapter_leaves_no_shared_memory_module(self):
+        self.assertNotIn("memory", sys.modules)
+        self.assertIn("two-minute limit", hosted.HostedRecall.base_instructions)
+        self.assertIn("record_consent", hosted.HostedRecall.base_instructions)
+
+    async def test_recall_summarises_before_finish_and_bills_it(self):
+        control, files = self.site()
+        agent = object.__new__(hosted.HostedRecall)
+        hosted_recall.Concierge.__init__(
+            agent, SimpleNamespace(), hosted_recall.SiteStore(control, ID)
+        )
+        agent.approval = {"id": ID}
+        agent._closing = False
+        agent._deadline_task = None
+        agent._active_session = MagicMock()
+        agent.room = SimpleNamespace(disconnect=AsyncMock())
+        agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+        state = hosted_recall.initial_state()
+        agent._state = state
+        context = SimpleNamespace(userdata=state)
+        with patch.object(hosted_recall._module, "publish_ui_event"):
+            await agent.record_consent(context, True)
+        state["lines"] = ["Client: hi", "Concierge: hello", "Client: is my wire done?"]
+        order = []
+        finish = AsyncMock(side_effect=lambda *a, **k: order.append("finish") or {})
+
+        async def summary(lines):
+            order.append("summary")
+            return "Asked whether the tuition wire went out.", 400, 30
+
+        with (
+            patch.object(hosted_recall._module, "summarize", summary),
+            patch.object(hosted, "control", finish),
+        ):
+            await agent._finish()
+            await agent._finish()
+        self.assertEqual(order, ["summary", "finish"])
+        self.assertEqual(files[ID][-1]["kind"], "summary")
+        ((provider, cost),) = agent.sink.records.values()
+        self.assertEqual(provider, "openai")
+        self.assertEqual(cost, hosted_recall.summary_cost(400, 30))
+        agent.sink.report.assert_awaited()
+        agent._active_session.shutdown.assert_called_with(drain=False)
+
+    async def test_recall_uses_sonic_3_and_a_bigger_budget(self):
+        self.assertEqual(hosted.HostedRecall.llm_budget, 20)
+        hosted.claims[ROOM] = {"id": ID}
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                },
+            ),
+            patch.object(
+                hosted,
+                "get_job_context",
+                return_value=SimpleNamespace(room=SimpleNamespace(name=ROOM)),
+            ),
+        ):
+            agent = hosted.HostedRecall()
+        self.assertEqual(agent.tts._opts.model, "sonic-3")
+        self.assertEqual(agent.store.reservation, ID)
+        await agent.llm.aclose()
 
     async def test_claim_calls_start_empty_and_stay_isolated(self):
         agent = object.__new__(hosted.HostedClaim)

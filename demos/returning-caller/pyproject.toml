@@ -1,0 +1,9 @@
+[project]
+name = "returning-caller"
+version = "0.1.0"
+description = "A private bank concierge line that remembers callers across calls, with consent, expiry and forget."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero]>=1.8,<2.0",
+    "python-dotenv>=1.0",
+]

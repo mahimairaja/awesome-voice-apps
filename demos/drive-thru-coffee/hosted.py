@@ -16,6 +16,10 @@ from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
 from hosted_clinic import ClinicScheduler, publish_clinic
 from hosted_clinic import initial_state as clinic_state
+from hosted_recall import HOSTED_INSTRUCTIONS as RECALL_INSTRUCTIONS
+from hosted_recall import Concierge, SiteStore, publish_recall, summary_cost
+from hosted_recall import greeting as recall_greeting
+from hosted_recall import initial_state as recall_state
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -354,6 +358,57 @@ class HostedClaim(HostedGuard, ClaimIntake):
         publish_claim(self.room, self.session.userdata)
 
 
+class HostedRecall(HostedGuard, Concierge):
+    demo = "recall"
+    # Consent, a few notes and a forget: each one is a tool call plus a reply.
+    llm_budget = 20
+    # First-call greeting; on_enter swaps in a welcome back when the file has notes.
+    greeting = recall_greeting([], 0)
+    base_instructions = Concierge.base_instructions + RECALL_INSTRUCTIONS
+
+    def __init__(self) -> None:
+        super().__init__()
+        # The client file lives on the site, keyed by the reservation's account.
+        self.store = SiteStore(control, self.approval["id"])
+        self.update_options(tts=cartesia.TTS(model="sonic-3"))
+        self._entries: list[dict] = []
+
+    def initial_state(self) -> dict:
+        return recall_state(self._entries)
+
+    def publish_initial(self) -> None:
+        self.watch_transcript()
+        publish_recall(self.room, self.session.userdata)
+
+    async def on_enter(self) -> None:
+        try:
+            self._entries = await self.load_file()
+        except (httpx.HTTPError, ValueError, KeyError):
+            logger.warning("Client file unavailable; starting with no memory")
+        self.greeting = recall_greeting(self._entries, time.time())
+        get_job_context().add_shutdown_callback(self._wrap_up)
+        await super().on_enter()
+
+    async def _wrap_up(self, _reason: str = "") -> None:
+        await self.write_summary()
+
+    def meter_summary(self, prompt_tokens: int, completion_tokens: int) -> None:
+        # VoiceGateway does not see the post-call summary request; bill it here.
+        cost = summary_cost(prompt_tokens, completion_tokens)
+        self.sink.records[f"recall-summary-{uuid.uuid4()}"] = ("openai", cost)
+
+    async def _finish(self) -> None:
+        if not self._closing:
+            # Stop speaking, then summarise while the reservation still accepts writes.
+            self._active_session.shutdown(drain=False)
+            await self.write_summary()
+            try:
+                await self.sink.report()
+            except (httpx.HTTPError, ValueError):
+                logger.warning("Summary cost report pending")
+        await super()._finish()
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -364,6 +419,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
+    "recall": HostedRecall,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 
