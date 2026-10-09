@@ -17,8 +17,8 @@ import unicodedata
 
 APP = "Parlo"
 
-# Word scores are recogniser confidences in [0, 1]. Calibrated by ear against
-# Deepgram Nova-3 on read speech; retune them for another model.
+# Word scores are recogniser confidences in [0, 1]. These are starting points
+# for Deepgram Nova-3 on read speech: tune them on recordings of real learners.
 CLEAR = 0.85
 PASS = 0.70
 # A first read at or above this moves the learner up a level; below DOWN, down.
