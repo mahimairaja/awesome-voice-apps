@@ -16,6 +16,9 @@ from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
 from hosted_clinic import ClinicScheduler, publish_clinic
 from hosted_clinic import initial_state as clinic_state
+from hosted_mortgage import GREETING as MORTGAGE_GREETING
+from hosted_mortgage import TURN_HANDLING as MORTGAGE_TURN_HANDLING
+from hosted_mortgage import MortgageAdvisor
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -165,6 +168,8 @@ class HostedGuard:
     greeting = ""
     # LLM requests allowed in a full two-minute call; shorter calls scale down.
     llm_budget = 12
+    # Session turn-taking; a demo about interruptions brings its own.
+    turn_handling = {"turn_detection": "vad", "interruption": {"mode": "vad"}}
 
     def initial_state(self) -> dict:
         raise NotImplementedError
@@ -354,6 +359,22 @@ class HostedClaim(HostedGuard, ClaimIntake):
         publish_claim(self.room, self.session.userdata)
 
 
+class HostedMortgage(HostedGuard, MortgageAdvisor):
+    demo = "mortgage"
+    # The advisor talks in paragraphs and every barge-in is a new reply.
+    llm_budget = 16
+    greeting = MORTGAGE_GREETING
+    # VAD never pauses the agent here; the demo's backchannel gate decides.
+    turn_handling = MORTGAGE_TURN_HANDLING
+
+    def initial_state(self) -> dict:
+        return {}
+
+    def publish_initial(self) -> None:
+        self.watch(self.session)
+        MortgageAdvisor.publish_initial(self)
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -364,6 +385,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
+    "mortgage": HostedMortgage,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 
@@ -468,6 +490,7 @@ def build_server() -> AgentServer:
                 await cleanup()
                 raise
             return
+        demo = CASCADE_AGENTS[claims.get(ctx.room.name, {}).get("demo", "coffee")]
         session = AgentSession(
             conn_options=SessionConnectOptions(
                 stt_conn_options=APIConnectOptions(max_retry=0),
@@ -478,11 +501,10 @@ def build_server() -> AgentServer:
             userdata={},
             vad=ctx.proc.userdata["vad"],
             max_tool_steps=3,
-            turn_handling={"turn_detection": "vad", "interruption": {"mode": "vad"}},
+            turn_handling=demo.turn_handling,
         )
         await ctx.connect()
-        approval = claims.get(ctx.room.name, {})
-        agent = CASCADE_AGENTS[approval.get("demo", "coffee")]()
+        agent = demo()
         await session.start(agent=agent, room=ctx.room, record=False)
 
     return server
