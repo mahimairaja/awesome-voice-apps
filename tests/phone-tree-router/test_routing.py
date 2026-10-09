@@ -13,10 +13,9 @@ def probs(**values: float) -> dict[str, float]:
     return base | values
 
 
-def test_every_department_has_a_menu_path_and_letters_are_unique():
-    letters = [d["letter"] for d in routing.DEPARTMENTS.values()]
-    assert len(set(letters)) == len(letters)
-    assert routing.UNCLEAR_LETTER not in letters
+def test_every_department_has_a_menu_path_and_a_router_score():
+    assert routing.QUEUES[-1] == routing.UNCLEAR
+    assert routing.ROUTER_SCHEMA["required"] == routing.QUEUES
     for key in routing.DEPARTMENTS:
         path = routing.menu_path(key)
         assert path["department"] == key
@@ -57,13 +56,13 @@ def test_main_menu_before_routing_has_no_total():
         routing.menu_path("tv")
 
 
-def test_logprobs_merge_token_variants_and_keep_unassigned_mass():
-    top = [("A", math.log(0.6)), (" A", math.log(0.1)), ("b", math.log(0.1)), ("The", -1.0)]
-    result = routing.read_logprobs(top)
-    assert result["billing"] == pytest.approx(0.7)
-    assert result["internet"] == pytest.approx(0.1)
-    assert sum(result.values()) < 1
-    assert routing.read_logprobs([("AB", 0.0), ("X", float("-inf"))])["billing"] == 0
+def test_scores_normalise_and_ignore_junk():
+    result = routing.read_scores({"internet": 50, "visit": 40, "unclear": 10, "tv": 99})
+    assert result["internet"] == pytest.approx(0.5) and result["visit"] == pytest.approx(0.4)
+    assert sum(result.values()) == pytest.approx(1)
+    junk = routing.read_scores({"billing": -5, "mobile": "90", "cancel": True, "moving": math.nan})
+    assert junk[routing.UNCLEAR] == 1 and junk["billing"] == 0
+    assert routing.read_scores({"billing": 30, "mobile": 30})["billing"] == pytest.approx(0.5)
 
 
 def test_policy_routes_clarifies_listens_and_stops_asking():
@@ -72,6 +71,9 @@ def test_policy_routes_clarifies_listens_and_stops_asking():
     assert clarify["action"] == "clarify"
     assert clarify["between"] == ["internet", "visit"]
     assert routing.decide(probs(unclear=0.8, billing=0.1), 0)["action"] == "listen"
+    confirm = routing.decide(probs(mobile=0.5, unclear=0.5), 0)
+    assert confirm["action"] == "clarify" and confirm["between"] == ["mobile"]
+    assert "confirms" in routing.instruction(confirm)
     forced = routing.decide(probs(internet=0.5, visit=0.4), routing.MAX_CLARIFY)
     assert forced == {
         "action": "route",
@@ -183,21 +185,13 @@ async def test_agent_turn_classifies_publishes_and_injects_the_router_note():
         assert "unavailable" in notes[-1]["content"]
 
 
-async def test_classify_reads_top_logprobs_and_meters_tokens():
+async def test_classify_requests_strict_scores_and_meters_tokens():
     router = agent.PhoneTreeRouter(SimpleNamespace())
     metered = []
     router.meter_router = lambda prompt, completion: metered.append((prompt, completion))
-    tokens = [
-        SimpleNamespace(token="D", logprob=math.log(0.8)),
-        SimpleNamespace(token="B", logprob=math.log(0.15)),
-    ]
     response = SimpleNamespace(
-        usage=SimpleNamespace(prompt_tokens=240, completion_tokens=1),
-        choices=[
-            SimpleNamespace(
-                logprobs=SimpleNamespace(content=[SimpleNamespace(top_logprobs=tokens)])
-            )
-        ],
+        usage=SimpleNamespace(prompt_tokens=307, completion_tokens=30),
+        choices=[SimpleNamespace(message=SimpleNamespace(content='{"visit": 80, "unclear": 20}'))],
     )
     calls = []
 
@@ -210,5 +204,7 @@ async def test_classify_reads_top_logprobs_and_meters_tokens():
     )
     result = await router.classify("Caller: when is my technician coming")
     assert result["visit"] == pytest.approx(0.8)
-    assert metered == [(240, 1)]
-    assert calls[0]["max_tokens"] == 1 and calls[0]["logprobs"] and calls[0]["top_logprobs"] == 10
+    assert metered == [(307, 30)]
+    schema = calls[0]["response_format"]["json_schema"]
+    assert schema["strict"] and schema["schema"] is routing.ROUTER_SCHEMA
+    assert calls[0]["temperature"] == 0 and calls[0]["store"] is False

@@ -1,9 +1,8 @@
 """phone-tree-router: say what you need instead of pressing 1.
 
 A caller to Northvale, a fictional telecom, says what they need in their own
-words and lands in the right queue. A router scores every queue on each caller
-turn with a one-token classification and its logprobs. Code, not the model,
-decides: route at 75% or above, otherwise ask one clarifying question, and
+words and lands in the right queue. A router call scores every queue on each
+caller turn. Code, not the model, decides: route at 75% or above, otherwise ask one clarifying question, and
 never more than two. The agent hands over a one-line summary so the caller does
 not repeat themselves, and the screen races a classic press-1 menu to the same
 queue.
@@ -96,25 +95,28 @@ class PhoneTreeRouter(Agent):
         return self._router
 
     async def classify(self, conversation: str) -> dict[str, float]:
-        """Score every queue with one token and its top logprobs."""
+        """Score every queue in one small structured-output call."""
         result = await self.router_client().chat.completions.create(
             model=ROUTER_MODEL,
             messages=[
                 {"role": "system", "content": routing.router_prompt()},
                 {"role": "user", "content": conversation},
             ],
-            max_tokens=1,
+            max_tokens=80,
             temperature=0,
-            logprobs=True,
-            top_logprobs=10,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "queue_scores",
+                    "strict": True,
+                    "schema": routing.ROUTER_SCHEMA,
+                },
+            },
             store=False,
         )
         if result.usage:
             self.meter_router(result.usage.prompt_tokens, result.usage.completion_tokens)
-        content = result.choices[0].logprobs.content if result.choices[0].logprobs else None
-        if not content:
-            raise ValueError("Router returned no logprobs")
-        return routing.read_logprobs([(t.token, t.logprob) for t in content[0].top_logprobs])
+        return routing.read_scores(json.loads(result.choices[0].message.content or "{}"))
 
     async def on_user_turn_completed(self, turn_ctx: ChatContext, new_message: ChatMessage) -> None:
         state = self.session.userdata

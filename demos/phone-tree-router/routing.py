@@ -9,8 +9,8 @@ Three pieces live here so they can be tested on their own:
   twice;
 - the per-call state and the snapshot the agent publishes to the screen.
 
-The model never picks the queue. It reports probabilities through a one-token
-classification (see agent.py), and `decide` turns them into an action.
+The model never picks the queue. A separate router call scores every queue
+(see agent.py), and `decide` turns the scores into an action.
 """
 
 import math
@@ -19,48 +19,42 @@ from dataclasses import dataclass, field
 
 BRAND = "Northvale"
 
-# One letter per queue so the classifier answers in a single token.
 DEPARTMENTS: dict[str, dict[str, str]] = {
     "billing": {
-        "letter": "A",
         "label": "Billing and payments",
         "covers": "charges, double charges, refunds, payment arrangements, autopay, "
         "late fees, explaining a bill",
     },
     "internet": {
-        "letter": "B",
         "label": "Internet support",
         "covers": "home internet down or slow, Wi-Fi, modem or router problems",
     },
     "mobile": {
-        "letter": "C",
         "label": "Mobile and SIM",
         "covers": "mobile plans and data, roaming, SIM or eSIM, a lost or stolen "
         "phone, porting a number",
     },
     "visit": {
-        "letter": "D",
         "label": "Technician visits",
         "covers": "booking, checking, rescheduling or a missed technician or "
         "installation appointment",
     },
     "moving": {
-        "letter": "E",
         "label": "Moving and new service",
         "covers": "moving service to a new address, adding a service, upgrading a plan",
     },
     "cancel": {
-        "letter": "F",
         "label": "Cancellations",
         "covers": "cancelling a service or the whole account, a better offer elsewhere",
     },
 }
 UNCLEAR = "unclear"
-UNCLEAR_LETTER = "X"
-LETTERS = {d["letter"]: key for key, d in DEPARTMENTS.items()} | {UNCLEAR_LETTER: UNCLEAR}
+QUEUES = [*DEPARTMENTS, UNCLEAR]
 
-# Route when the top department reaches this probability. Below it, ask.
+# Route when the top department scores this much. Below it, ask.
 ROUTE_AT = 0.75
+# A runner-up below this is noise: confirm the top queue instead of offering two.
+RUNNER_UP_AT = 0.15
 # After this many clarifying questions, route to the best guess and flag it.
 MAX_CLARIFY = 2
 
@@ -201,38 +195,50 @@ def menu_path(department: str | None) -> dict:
 
 
 def router_prompt() -> str:
-    lines = "\n".join(f"{d['letter']}) {d['label']}: {d['covers']}" for d in DEPARTMENTS.values())
+    lines = "\n".join(f"{key}: {d['label']}: {d['covers']}" for key, d in DEPARTMENTS.items())
     return (
-        f"You route phone calls for {BRAND}, a telecom company. Read the call so far "
-        "and answer with the single letter of the queue the caller needs.\n"
-        f"{lines}\n"
-        f"{UNCLEAR_LETTER}) Unclear: no request yet, a greeting, asking for a person "
-        "without saying why, or nothing to do with these queues.\n"
-        "Answer with one letter only."
+        f"You route phone calls for {BRAND}, a telecom company. Queues:\n{lines}\n"
+        f"{UNCLEAR}: no request yet, a greeting, asking for a person without saying why, "
+        "or nothing to do with these queues.\n"
+        "Read the call so far. Give each queue the percent chance it is the one the caller "
+        "needs; the numbers add to 100. When the words fit two queues, split the chance "
+        "between them instead of guessing. When the caller has answered the agent's "
+        "question, their answer decides between the queues it asked about."
     )
 
 
-def read_logprobs(top_logprobs: list[tuple[str, float]]) -> dict[str, float]:
-    """Turn the first token's top logprobs into a probability per queue.
+# Strict structured output: one integer per queue, nothing else.
+ROUTER_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": QUEUES,
+    "properties": {key: {"type": "integer"} for key in QUEUES},
+}
 
-    Tokens like "A", " A" and "a" count for the same queue. Probability left on
-    tokens that are not a queue letter is not redistributed, so a confused
-    model shows up as low confidence instead of false certainty.
+
+def read_scores(raw: dict) -> dict[str, float]:
+    """Normalise the router's percentages to shares that add to 1.
+
+    Anything missing, negative or not a number counts as 0. If nothing is left,
+    the call is unclear.
     """
-    probs = {key: 0.0 for key in [*DEPARTMENTS, UNCLEAR]}
-    for token, logprob in top_logprobs:
-        letter = token.strip().upper()
-        if len(letter) == 1 and letter in LETTERS and math.isfinite(logprob):
-            probs[LETTERS[letter]] += math.exp(logprob)
-    return {key: min(1.0, value) for key, value in probs.items()}
+    scores = {}
+    for key in QUEUES:
+        value = raw.get(key, 0)
+        ok = isinstance(value, int | float) and not isinstance(value, bool)
+        scores[key] = float(value) if ok and math.isfinite(value) and value > 0 else 0.0
+    total = sum(scores.values())
+    if total <= 0:
+        return {key: float(key == UNCLEAR) for key in QUEUES}
+    return {key: value / total for key, value in scores.items()}
 
 
-def decide(probs: dict[str, float], clarified: int) -> dict:
+def decide(scores: dict[str, float], clarified: int) -> dict:
     """Route, clarify, or keep listening. Pure policy: no model involved."""
-    ranked = sorted(DEPARTMENTS, key=lambda key: probs.get(key, 0.0), reverse=True)
+    ranked = sorted(DEPARTMENTS, key=lambda key: scores.get(key, 0.0), reverse=True)
     top, second = ranked[0], ranked[1]
-    confidence = probs.get(top, 0.0)
-    if probs.get(UNCLEAR, 0.0) > confidence:
+    confidence = scores.get(top, 0.0)
+    if scores.get(UNCLEAR, 0.0) > confidence:
         return {"action": "listen", "target": None, "between": None, "confidence": confidence}
     if confidence >= ROUTE_AT:
         return {"action": "route", "target": top, "between": None, "confidence": confidence}
@@ -245,7 +251,8 @@ def decide(probs: dict[str, float], clarified: int) -> dict:
             "confidence": confidence,
             "forced": True,
         }
-    return {"action": "clarify", "target": None, "between": [top, second], "confidence": confidence}
+    between = [top, second] if scores.get(second, 0.0) >= RUNNER_UP_AT else [top]
+    return {"action": "clarify", "target": None, "between": between, "confidence": confidence}
 
 
 def instruction(decision: dict) -> str:
@@ -261,6 +268,11 @@ def instruction(decision: dict) -> str:
         return (
             f"Router: send this caller to {label(decision['target'])} ({pct}%).{note} "
             "Call transfer now with a one-sentence summary of what they need."
+        )
+    if decision["action"] == "clarify" and len(decision["between"]) == 1:
+        return (
+            f"Router: probably {label(decision['between'][0])} ({pct}%), but not sure. Ask "
+            "one short question that confirms what they need. Do not call transfer."
         )
     if decision["action"] == "clarify":
         a, b = decision["between"]
@@ -397,9 +409,7 @@ def snapshot(state: dict, now: float | None = None) -> dict:
         "elapsedMs": max(0, int((now - state["started"]) * 1000)),
         "routeAt": round(ROUTE_AT * 100),
         "departments": [{"id": key, "label": d["label"]} for key, d in DEPARTMENTS.items()],
-        "scores": [
-            {"id": key, "p": round(probs.get(key, 0.0) * 100)} for key in [*DEPARTMENTS, UNCLEAR]
-        ]
+        "scores": [{"id": key, "p": round(probs.get(key, 0.0) * 100)} for key in QUEUES]
         if state["probs"]
         else [],
         "decision": None

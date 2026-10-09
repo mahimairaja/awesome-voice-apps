@@ -29,8 +29,8 @@ LiveKit client. Provider usage may cost money.
 
 ## Where the patterns live
 
-- `agent.py` `PhoneTreeRouter.classify`: a one-token classification with
-  `logprobs`, so every queue gets a probability from a single short call.
+- `agent.py` `PhoneTreeRouter.classify`: one small structured-output call
+  that scores every queue and splits the score when two queues fit.
 - `routing.py` `decide`: the policy. Route at 75%, otherwise clarify between
   the top two, and route to the best guess after two questions.
 - `agent.py` `on_user_turn_completed`: the router runs before the reply and
