@@ -11,6 +11,8 @@ from decimal import ROUND_CEILING, Decimal
 import httpx
 import voicegateway
 from agent import DriveThruAttendant, _publish_cart, _publish_menu
+from hosted_checkout import GREETING as CHECKOUT_GREETING
+from hosted_checkout import VoiceCheckout
 from hosted_claim import ClaimIntake, publish_claim
 from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
@@ -30,6 +32,7 @@ from livekit.agents import (
     get_job_context,
 )
 from livekit.agents.voice.agent_session import SessionConnectOptions
+from livekit.agents.voice.room_io import RoomOptions
 from livekit.plugins import cartesia, deepgram, openai, silero
 from trivia import QUESTIONS, HostedTriviaHost, publish_trivia
 from trivia import initial_state as trivia_state
@@ -354,6 +357,20 @@ class HostedClaim(HostedGuard, ClaimIntake):
         publish_claim(self.room, self.session.userdata)
 
 
+class HostedCheckout(HostedGuard, VoiceCheckout):
+    demo = "checkout"
+    # Eleven fields, a read-back and the order: most answers are a tool call plus a reply.
+    llm_budget = 24
+    greeting = CHECKOUT_GREETING
+
+    def initial_state(self) -> dict:
+        return {}
+
+    def publish_initial(self) -> None:
+        # The checkout page owns the form; the agent only reaches it over RPC.
+        pass
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -364,6 +381,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
+    "checkout": HostedCheckout,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 
@@ -483,7 +501,11 @@ def build_server() -> AgentServer:
         await ctx.connect()
         approval = claims.get(ctx.room.name, {})
         agent = CASCADE_AGENTS[approval.get("demo", "coffee")]()
-        await session.start(agent=agent, room=ctx.room, record=False)
+        # Checkout visitors may publish data so the page can answer RPC. Never
+        # let that channel feed typed chat to the model past the speech path.
+        await session.start(
+            agent=agent, room=ctx.room, record=False, room_options=RoomOptions(text_input=False)
+        )
 
     return server
 
