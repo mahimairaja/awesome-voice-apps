@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import hosted
 import hosted_claim
 import hosted_clinic
+import hosted_outage
 import hosted_tenant
 import hosted_water
 from trivia import HostedTriviaHost, initial_state
@@ -236,7 +237,8 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
 
     async def test_registry_admits_each_demo_and_nothing_else(self):
         self.assertEqual(
-            hosted.DEMOS, {"coffee", "trivia", "water", "clinic", "claim", "tenant", "sdr"}
+            hosted.DEMOS,
+            {"coffee", "trivia", "water", "clinic", "claim", "tenant", "outage", "sdr"},
         )
         for demo in hosted.DEMOS:
             metadata = json.dumps({"agent": demo, "reservation": ID})
@@ -410,6 +412,77 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(type(agent.llm).__module__.startswith("livekit.plugins.openai"))
         await agent.llm.aclose()
         self.assertEqual(hosted.HostedGuard.llm_budget, 12)
+
+    async def test_outage_calls_get_their_own_card_line_and_stt(self):
+        first, second = hosted_outage.initial_state(), hosted_outage.initial_state()
+        self.assertEqual(first["readings"], [])
+        self.assertIsNone(first["ticket"])
+        self.assertIsNot(first["readings"], second["readings"])
+        for name in hosted_outage._HELPERS:
+            self.assertNotIn(name, sys.modules)
+        self.assertEqual(hosted.HostedOutage.llm_budget, 20)
+        rooms = [SimpleNamespace(name=ROOM), SimpleNamespace(name="playground-second")]
+        hosted.claims.update({ROOM: {"id": ID}, "playground-second": {"id": "second"}})
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                },
+            ),
+            patch.object(
+                hosted,
+                "get_job_context",
+                side_effect=[SimpleNamespace(room=room) for room in rooms],
+            ),
+        ):
+            a, b = hosted.HostedOutage(), hosted.HostedOutage()
+        self.assertIsNot(a.line, b.line)
+        self.assertIsNot(a.stt, b.stt)
+        # The outage STT formats numbers so readings compare with the card.
+        self.assertTrue(a.stt._opts.smart_format)
+        await a.llm.aclose()
+        await b.llm.aclose()
+
+    async def test_outage_line_sits_between_the_room_and_the_agent(self):
+        from livekit import rtc
+        from livekit.agents.voice.io import AudioInput
+
+        class Mic(AudioInput):
+            def __init__(self):
+                super().__init__(label="mic")
+                self.sent = 0
+
+            async def __anext__(self):
+                self.sent += 1
+                return rtc.AudioFrame(bytes(480), 24000, 1, 240)
+
+        agent = object.__new__(hosted.HostedOutage)
+        agent.room = MagicMock()
+        agent.line = hosted_outage._module.PhoneLine(seed=1)
+        mic = Mic()
+        session = SimpleNamespace(
+            input=SimpleNamespace(audio=mic),
+            userdata=hosted_outage.initial_state(),
+            on=MagicMock(),
+        )
+        with (
+            patch.object(hosted.HostedOutage, "session", session),
+            patch.object(hosted_outage._module, "publish_ui_event") as publish,
+        ):
+            agent.publish_initial()
+            agent.publish_initial()
+        wrapped = session.input.audio
+        self.assertIsNot(wrapped, mic)
+        self.assertIs(wrapped.source, mic)
+        self.assertEqual(len(session.userdata["readings"]), 1)
+        self.assertEqual(publish.call_args.args[1], "OutageLine")
+        agent.line.set_line("landline", False)
+        frame = await wrapped.__anext__()
+        self.assertEqual(frame.sample_rate, 24000)
+        self.assertGreater(agent.line.stats.packets, 0)
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()
