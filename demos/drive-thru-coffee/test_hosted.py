@@ -23,6 +23,7 @@ import hosted_interview
 import hosted_mortgage
 import hosted_router
 import hosted_rebook
+import hosted_returns
 import hosted_tenant
 import hosted_water
 from livekit.agents.llm import ChatMessage
@@ -1049,6 +1050,117 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             cartesia_voice.stream()
         await adapter.aclose()
         await voice.aclose()
+
+    def returns_desk(self):
+        desk = hosted_returns.ReturnsDesk(SimpleNamespace())
+        state = hosted_returns.initial_state()
+        context = SimpleNamespace(userdata=state)
+        return desk, state, context
+
+    async def test_returns_tools_enforce_verification_and_policy(self):
+        first, second = hosted_returns.initial_state(), hosted_returns.initial_state()
+        self.assertIsNot(first["verified"], second["verified"])
+        desk, state, context = self.returns_desk()
+        with patch.object(hosted_returns._module, "publish_ui_event") as publish:
+            self.assertIn("refused", await desk.process_return(context, "FW4821", "refund"))
+            self.assertIn("not verified", await desk.verify_order(context, "FW4821", "90210"))
+            self.assertIn("verified FW4821", await desk.verify_order(context, "4 8 2 1", "60614"))
+            self.assertIn("refused", await desk.process_return(context, "FW4821", "refund"))
+            self.assertIn("refund", await desk.check_return_options(context, "fw-4821", False))
+            issued = await desk.process_return(context, "FW4821", "refund")
+            again = await desk.process_return(context, "FW4821", "refund")
+            await desk.verify_order(context, "FW6017", "60614")
+            self.assertIn("final sale", await desk.check_return_options(context, "FW6017", False))
+            self.assertIn("refused", await desk.process_return(context, "FW6017", "refund"))
+            self.assertIn("replacement", await desk.check_return_options(context, "FW6017", True))
+        rma = state["returns"]["FW4821"]["rma"]
+        self.assertRegex(rma, r"^RMA-[0-9A-F]{6}$")
+        self.assertIn(rma, issued)
+        self.assertEqual(issued, again)
+        self.assertEqual(second, hosted_returns.initial_state())
+        self.assertIsNotNone(desk.qa.items["verified"])
+        self.assertIsNotNone(desk.qa.items["resolution"])
+        self.assertEqual([f["kind"] for f in desk.qa.flags], ["guard"] * 3)
+        boards = [c.kwargs["props"] for c in publish.call_args_list if c.args[1] == "QaBoard"]
+        self.assertEqual(boards[-1]["score"], 33)
+
+    async def test_returns_policy_windows(self):
+        options = hosted_returns._module.return_options
+        lamp = {"days": 41, "final_sale": False}
+        self.assertEqual(options(lamp, False)[0], ["store_credit"])
+        self.assertEqual(options(lamp, True)[0], ["store_credit"])
+        self.assertEqual(options({"days": 75, "final_sale": False}, False)[0], [])
+        self.assertEqual(options({"days": 30, "final_sale": False}, False)[0][0], "refund")
+
+    async def test_returns_grader_ticks_flags_and_whispers_once(self):
+        usage = []
+        qa = hosted_returns._module.QaSupervisor(
+            SimpleNamespace(), lambda: "{}", lambda i, o: usage.append((i, o)), max_grades=2
+        )
+        grade = {
+            "evidence": ["disclosure", "empathy", "made_up"],
+            "sentiment": -3,
+            "violation": "off_policy_promise",
+            "quote": "I can refund the throw as an exception",
+            "coaching": "Final sale cannot be refunded; correct yourself.",
+        }
+        reply = SimpleNamespace(
+            usage=SimpleNamespace(prompt_tokens=500, completion_tokens=60),
+            choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(grade)))],
+        )
+        qa._client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=AsyncMock(return_value=reply))),
+            close=AsyncMock(),
+        )
+        line = lambda role, text: SimpleNamespace(role=role, text_content=text)  # noqa: E731
+        with patch.object(hosted_returns._module, "publish_ui_event"):
+            qa.observe(line("user", "Just refund the throw, it's garbage."))
+            qa.observe(line("assistant", "I can refund the throw as an exception."))
+            await qa._running
+            for _ in range(3):
+                qa.observe(line("assistant", "Anything else?"))
+                await qa._running
+            self.assertEqual(qa.grades, 2)
+            self.assertEqual(qa.take_whisper(), grade["coaching"])
+            self.assertIsNone(qa.take_whisper())
+        self.assertIsNotNone(qa.items["disclosure"])
+        self.assertIsNone(qa.items["policy"])
+        self.assertEqual([point["score"] for point in qa.sentiment], [-1.0])
+        self.assertTrue(qa.flags[-1]["whispered"])
+        self.assertEqual(qa.score(), max(0, round(100 * 2 / 6) - 30))
+        self.assertEqual(usage, [(500, 60), (500, 60)])
+        await qa.aclose()
+        self.assertEqual(
+            hosted_returns.grade_cost(1_000_000, 1_000_000), hosted_returns.Decimal("2.00")
+        )
+
+    async def test_returns_grades_are_capped_and_billed_to_the_call(self):
+        hosted.claims[ROOM] = {"id": ID, "seconds": 60}
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                },
+            ),
+            patch.object(
+                hosted,
+                "get_job_context",
+                return_value=SimpleNamespace(room=SimpleNamespace(name=ROOM)),
+            ),
+        ):
+            agent = hosted.HostedReturns()
+        self.assertEqual(agent.qa.max_grades, 7)
+        agent.record_qa_usage(1000, 100)  # before the sink exists: ignored, not raised
+        agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+        agent.record_qa_usage(1000, 100)
+        await asyncio.sleep(0)
+        ((provider, cost),) = agent.sink.records.values()
+        self.assertEqual((provider, cost), ("openai", hosted_returns.Decimal("0.00056")))
+        agent.sink.report.assert_awaited_once()
+        await agent.llm.aclose()
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()

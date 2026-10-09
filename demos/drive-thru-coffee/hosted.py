@@ -45,6 +45,9 @@ from hosted_mortgage import MortgageAdvisor
 from hosted_router import GREETING as ROUTER_GREETING
 from hosted_router import RouterRescue, vision_cost
 from hosted_rebook import FlightRebooker, build_llm, build_tts
+from hosted_returns import GRADE_BUDGET, ReturnsDesk, grade_cost, publish_returns
+from hosted_returns import GREETING as RETURNS_GREETING
+from hosted_returns import initial_state as returns_state
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -702,6 +705,37 @@ class HostedRebook(HostedGuard, FlightRebooker):
             await self.start_background(self.session)
 
 
+class HostedReturns(HostedGuard, ReturnsDesk):
+    demo = "returns"
+    # Verify, check options and issue: each is a tool call plus a reply.
+    llm_budget = 20
+    greeting = RETURNS_GREETING
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.qa.max_grades = max(1, int(GRADE_BUDGET * self.approval["seconds"] / 120))
+
+    def initial_state(self) -> dict:
+        return returns_state()
+
+    def publish_initial(self) -> None:
+        publish_returns(self.room, self.session.userdata, self.qa)
+
+    async def on_enter(self) -> None:
+        # Grade from the greeting on; the guard then starts the call as usual.
+        self.qa.attach(self.session)
+        await super().on_enter()
+
+    def record_qa_usage(self, prompt_tokens: int, completion_tokens: int) -> None:
+        # VoiceGateway does not see the grader's direct OpenAI calls; bill them here.
+        sink = getattr(self, "sink", None)
+        if sink is None:
+            return
+        cost = grade_cost(prompt_tokens, completion_tokens)
+        sink.records[f"returns-qa-{uuid.uuid4()}"] = ("openai", cost)
+        spawn(sink.report())
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT-Live demos (REALTIME_DEMOS) start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -723,6 +757,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "router": HostedRouter,
     "builder": HostedBuilder,
     "rebook": HostedRebook,
+    "returns": HostedReturns,
 }
 # GPT-Live speech-to-speech demos share the call plumbing in build_server.
 REALTIME_DEMOS = frozenset({"sdr", "interp"})
