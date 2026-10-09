@@ -7,6 +7,7 @@ import os
 import time
 import uuid
 from decimal import ROUND_CEILING, Decimal
+from typing import ClassVar
 
 import httpx
 import voicegateway
@@ -82,6 +83,9 @@ from hosted_recall import HOSTED_INSTRUCTIONS as RECALL_INSTRUCTIONS
 from hosted_recall import Concierge, SiteStore, publish_recall, summary_cost
 from hosted_recall import greeting as recall_greeting
 from hosted_recall import initial_state as recall_state
+from hosted_cost import GREETING as COST_GREETING
+from hosted_cost import CostRouter
+from hosted_cost import router as cost_router
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -1025,6 +1029,43 @@ class HostedRecall(HostedGuard, Concierge):
         await super()._finish()
 
 
+class HostedCost(HostedGuard, CostRouter):
+    demo = "cost"
+    # Cache hits and tool steps also count as requests here, so the cap is
+    # higher than a plain demo's; each tier's own client carries the token caps.
+    llm_budget = 30
+    greeting = COST_GREETING
+    llm_options: ClassVar[dict] = {"max_completion_tokens": 180, "max_retries": 0, "store": False}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.update_options(tts=cartesia.TTS(model="sonic-3"))
+        self._unbilled_tokens = 0
+
+    def initial_state(self) -> dict:
+        return {}
+
+    def publish_initial(self) -> None:
+        self.publish()
+
+    async def on_enter(self) -> None:
+        await self.load_index()
+        await super().on_enter()
+        self.meter_embedding(0)
+
+    def meter_embedding(self, tokens: int) -> None:
+        # VoiceGateway does not see direct embedding calls; bill them here.
+        # The index is built before the sink exists, so hold those tokens.
+        sink = getattr(self, "sink", None)
+        self._unbilled_tokens += max(0, tokens)
+        if sink is None or not self._unbilled_tokens:
+            return
+        cost = Decimal(self._unbilled_tokens) * cost_router.EMBED_PRICE / 1_000_000
+        self._unbilled_tokens = 0
+        sink.records[f"cost-embedding-{uuid.uuid4()}"] = ("openai", cost)
+        spawn(sink.report())
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT-Live demos (REALTIME_DEMOS) start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -1056,6 +1097,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "approval": HostedApproval,
     "deescalate": HostedDeescalate,
     "recall": HostedRecall,
+    "cost": HostedCost,
 }
 # GPT-Live speech-to-speech demos share the call plumbing in build_server.
 REALTIME_DEMOS = frozenset({"sdr", "interp"})

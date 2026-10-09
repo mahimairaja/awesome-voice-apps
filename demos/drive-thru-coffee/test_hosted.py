@@ -29,6 +29,7 @@ import hosted_outage
 import hosted_postop
 import hosted_deescalate
 import hosted_recall
+import hosted_cost
 import hosted_tenant
 import hosted_water
 from livekit.agents.llm import ChatMessage
@@ -1584,6 +1585,97 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         spawn.call_args.args[0].close()
         await first.llm.aclose()
         await second.llm.aclose()
+
+    def cost_agents(self, count=1):
+        rooms = [SimpleNamespace(name=f"playground-cost-{n}") for n in range(count)]
+        hosted.claims.update({room.name: {"id": ID, "seconds": 120} for room in rooms})
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                },
+            ),
+            patch.object(
+                hosted,
+                "get_job_context",
+                side_effect=[SimpleNamespace(room=room) for room in rooms],
+            ),
+        ):
+            return [hosted.HostedCost() for _ in rooms]
+
+    async def close_cost(self, *agents):
+        for agent in agents:
+            await agent.llm.aclose()
+            await agent.on_exit()
+
+    async def test_cost_adapter_leaves_no_shared_modules(self):
+        self.assertNotIn("router", sys.modules)
+        self.assertIs(hosted_cost._module.router, hosted_cost.router)
+
+    async def test_cost_calls_get_capped_clients_and_their_own_ledger(self):
+        first, second = self.cost_agents(2)
+        for tier, model in hosted_cost.router.MODELS.items():
+            self.assertIsNot(first._models[tier], second._models[tier])
+            self.assertEqual(first._models[tier].model, model)
+            self.assertEqual(first._models[tier]._opts.max_completion_tokens, 180)
+        self.assertEqual(first.tts.model, "sonic-3")
+        self.assertIsNot(first.ledger, second.ledger)
+        self.assertIsNot(first.learned, second.learned)
+        self.assertIsNot(first.state, second.state)
+        await self.close_cost(first, second)
+
+    async def test_cost_prices_match_the_meter(self):
+        from voicegateway.inference.pricing.llm import calculate_llm_cost_detail
+
+        for model in hosted_cost.router.PRICES:
+            for prompt, completion, cached in ((1000, 200, 0), (1500, 80, 1024)):
+                metered, unrated = calculate_llm_cost_detail(
+                    f"openai/{model}", prompt, completion, cached
+                )
+                self.assertEqual(unrated, ())
+                self.assertEqual(
+                    hosted_cost.router.llm_cost(model, prompt, completion, cached), metered
+                )
+        embedding, _ = calculate_llm_cost_detail("openai/text-embedding-3-small", 1_000_000, 0)
+        self.assertEqual(hosted_cost.router.EMBED_PRICE, embedding)
+
+    async def test_cost_cache_hits_skip_the_model_and_bill_the_embedding(self):
+        from livekit.agents import ChatContext
+
+        (agent,) = self.cost_agents()
+        texts, labels = hosted_cost.router.index_texts()
+        vectors = [[1.0 if i == n else 0.0 for i in range(len(texts))] for n in range(len(texts))]
+        agent._index = {"vectors": vectors, "labels": labels}
+        agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+        roaming = labels.index(("faq", "roaming"))
+        agent.embed = AsyncMock(return_value=(vectors[roaming], 9))
+        ctx = ChatContext.empty()
+        ctx.add_message(role="user", content="is roaming free in mexico")
+        with patch.object(hosted_cost._module, "publish_ui_event") as publish:
+            spoken = [chunk async for chunk in agent.llm_node(ctx, [], None)]
+            await asyncio.sleep(0)
+        self.assertEqual(spoken, [hosted_cost.router.faq_answer("roaming")])
+        (cost,) = agent.sink.records.values()
+        self.assertEqual(cost, ("openai", 9 * hosted_cost.router.EMBED_PRICE / 1_000_000))
+        props = publish.call_args.args[2]
+        self.assertEqual(publish.call_args.args[1], "CostLedger")
+        self.assertEqual(props["turns"][-1]["tier"], "cache")
+        self.assertGreater(props["baselineUsd"], props["actualUsd"])
+        await self.close_cost(agent)
+
+    async def test_cost_index_tokens_wait_for_the_sink(self):
+        (agent,) = self.cost_agents()
+        agent.meter_embedding(600)
+        self.assertEqual(agent._unbilled_tokens, 600)
+        agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+        agent.meter_embedding(0)
+        await asyncio.sleep(0)
+        self.assertEqual(len(agent.sink.records), 1)
+        self.assertEqual(agent._unbilled_tokens, 0)
+        await self.close_cost(agent)
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()

@@ -25,6 +25,7 @@ jobs:
           - pronunciation-coach
           - postop-checkin
           - returning-caller
+          - support-cost-router
     steps:
       - uses: actions/checkout@v4
 

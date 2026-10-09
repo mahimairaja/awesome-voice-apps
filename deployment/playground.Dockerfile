@@ -32,6 +32,7 @@ COPY demos/postop-checkin/agent.py demos/postop-checkin/protocol.py /app/demos/p
 COPY demos/manager-approval/agent.py /app/demos/manager-approval/
 COPY demos/billing-deescalation/agent.py /app/demos/billing-deescalation/
 COPY demos/returning-caller/agent.py demos/returning-caller/memory.py /app/demos/returning-caller/
+COPY demos/support-cost-router/agent.py demos/support-cost-router/router.py /app/demos/support-cost-router/
 RUN useradd --create-home worker
 USER worker
 RUN python -m livekit.agents download-files

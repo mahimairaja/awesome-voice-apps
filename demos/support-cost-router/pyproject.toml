@@ -1,0 +1,10 @@
+[project]
+name = "support-cost-router"
+version = "0.1.0"
+description = "A support line that routes each turn to the cheapest model that can handle it, with a semantic answer cache."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero]>=1.8,<2.0",
+    "numpy>=1.26",
+    "python-dotenv>=1.0",
+]
