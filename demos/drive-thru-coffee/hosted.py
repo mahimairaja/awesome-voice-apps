@@ -96,6 +96,10 @@ from hosted_onprem import GREETING as ONPREM_GREETING
 from hosted_onprem import INSTRUCTIONS as ONPREM_INSTRUCTIONS
 from hosted_onprem import PrivateHealthLine
 from hosted_onprem import initial_state as onprem_state
+from hosted_ivr import GREETING as IVR_GREETING
+from hosted_ivr import PhoneTreeRouter, publish_router, router_cost
+from hosted_ivr import initial_state as ivr_state
+from hosted_ivr import instructions as ivr_instructions
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -1181,6 +1185,36 @@ class HostedOnprem(HostedGuard, PrivateHealthLine):
             await self.aclose_clients()
 
 
+class HostedIvr(HostedGuard, PhoneTreeRouter):
+    demo = "ivr"
+    # A clear request is one reply plus the transfer; leave room for clarifying
+    # questions and a second or third request in the same call.
+    llm_budget = 20
+    greeting = IVR_GREETING
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._instructions = ivr_instructions()
+        self.update_options(tts=cartesia.TTS(model="sonic-3"))
+
+    def initial_state(self) -> dict:
+        # Both race clocks start here, when the call connects.
+        return ivr_state()
+
+    def publish_initial(self) -> None:
+        publish_router(self.room, self.session.userdata)
+
+    async def on_enter(self) -> None:
+        self.watch()
+        await super().on_enter()
+
+    def meter_router(self, prompt_tokens: int, completion_tokens: int) -> None:
+        # VoiceGateway does not see the direct router call; bill it here.
+        cost = router_cost(prompt_tokens, completion_tokens)
+        self.sink.records[f"ivr-router-{uuid.uuid4()}"] = ("openai", cost)
+        spawn(self.sink.report())
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT-Live demos (REALTIME_DEMOS) start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -1216,6 +1250,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "payer": HostedPayer,
     "resume": HostedResume,
     "onprem": HostedOnprem,
+    "ivr": HostedIvr,
 }
 # GPT-Live speech-to-speech demos share the call plumbing in build_server.
 REALTIME_DEMOS = frozenset({"sdr", "interp"})
