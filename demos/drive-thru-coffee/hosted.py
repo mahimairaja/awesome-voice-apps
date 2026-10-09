@@ -16,6 +16,10 @@ from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
 from hosted_clinic import ClinicScheduler, publish_clinic
 from hosted_clinic import initial_state as clinic_state
+from hosted_payer import AGENT_VOICE as PAYER_VOICE
+from hosted_payer import PayerCaller, publish_payer
+from hosted_payer import initial_state as payer_state
+from hosted_payer import instructions as payer_instructions
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -236,7 +240,9 @@ class HostedGuard:
                 dead_air=False,
             )
             self.publish_initial()
-            await self.session.generate_reply(instructions=self.greeting)
+            # Outbound demos wait for the callee to speak first.
+            if self.greeting:
+                await self.session.generate_reply(instructions=self.greeting)
         except Exception:
             await self._finish()
             raise
@@ -354,6 +360,44 @@ class HostedClaim(HostedGuard, ClaimIntake):
         publish_claim(self.room, self.session.userdata)
 
 
+class HostedPayer(HostedGuard, PayerCaller):
+    demo = "payer"
+    # No greeting: the agent places the call, works the menu, and waits on hold.
+    greeting = ""
+    # Three menu choices, a few hold checks, then a tool call and a reply per answer.
+    llm_budget = 36
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._instructions = payer_instructions()
+        # sonic-3: Cartesia retires sonic-2. The phone tree switches voices per prompt.
+        self.update_options(tts=cartesia.TTS(model="sonic-3", voice=PAYER_VOICE))
+
+    def initial_state(self) -> dict:
+        return payer_state()
+
+    def publish_initial(self) -> None:
+        publish_payer(self.room, self.session.userdata)
+
+    async def on_enter(self) -> None:
+        await super().on_enter()
+        self._call = spawn(self.run_call())
+
+    def allow_side_call(self) -> bool:
+        # Menu choices and hold checks bypass llm_node, so count them here.
+        self._llm_requests += 1
+        if self._llm_requests > max(1, int(self.llm_budget * self.approval["seconds"] / 120)):
+            spawn(self._finish())
+            return False
+        return True
+
+    async def hang_up(self) -> None:
+        if self._hung_up:
+            return
+        self._hung_up = True
+        await self._finish()
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -364,6 +408,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
+    "payer": HostedPayer,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 

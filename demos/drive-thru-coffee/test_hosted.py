@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import hosted
 import hosted_claim
 import hosted_clinic
+import hosted_payer
 import hosted_tenant
 import hosted_water
 from trivia import HostedTriviaHost, initial_state
@@ -236,7 +237,8 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
 
     async def test_registry_admits_each_demo_and_nothing_else(self):
         self.assertEqual(
-            hosted.DEMOS, {"coffee", "trivia", "water", "clinic", "claim", "tenant", "sdr"}
+            hosted.DEMOS,
+            {"coffee", "trivia", "water", "clinic", "claim", "tenant", "payer", "sdr"},
         )
         for demo in hosted.DEMOS:
             metadata = json.dumps({"agent": demo, "reservation": ID})
@@ -245,7 +247,8 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             hosted.parse_job(json.dumps({"agent": "roadside", "reservation": ID}), ROOM)
         for demo, agent in hosted.CASCADE_AGENTS.items():
             self.assertEqual(agent.demo, demo)
-            self.assertTrue(agent.greeting)
+            # Outbound calls listen first; every inbound demo opens with a greeting.
+            self.assertTrue(agent.greeting or agent is hosted.HostedPayer)
 
     async def test_water_calls_start_empty_and_stay_isolated(self):
         agent = object.__new__(hosted.HostedWater)
@@ -410,6 +413,133 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(type(agent.llm).__module__.startswith("livekit.plugins.openai"))
         await agent.llm.aclose()
         self.assertEqual(hosted.HostedGuard.llm_budget, 12)
+
+    def payer_agent(self):
+        room = SimpleNamespace(
+            name=ROOM,
+            local_participant=SimpleNamespace(publish_dtmf=AsyncMock(), publish_data=AsyncMock()),
+        )
+        with patch.dict(hosted.os.environ, {"CARTESIA_API_KEY": "offline"}):
+            agent = hosted_payer.PayerCaller(room)
+        handle = MagicMock()
+        handle.wait_for_playout = AsyncMock()
+        handle.done.return_value = False
+        session = SimpleNamespace(
+            userdata=hosted_payer.initial_state(), say=MagicMock(return_value=handle)
+        )
+        agent._activity = SimpleNamespace(session=session)
+        return agent, session, room
+
+    async def test_payer_adapter_leaves_no_shared_modules(self):
+        self.assertNotIn("payer", sys.modules)
+        first, second = hosted_payer.initial_state(), hosted_payer.initial_state()
+        self.assertIsNot(first["record"], second["record"])
+
+    async def test_payer_call_works_the_menu_then_waits_for_a_person(self):
+        agent, session, room = self.payer_agent()
+        line = hosted_payer.payer
+        answers = []
+
+        async def ask(system, text, tool):
+            if tool is hosted_payer._module.press_keys:
+                return {"keys": agent.line.expected(), "reason": "goal option"}
+            return answers.pop(0)
+
+        with (
+            patch.object(type(agent), "session", property(lambda self: self._activity.session)),
+            patch.object(hosted_payer._module, "publish"),
+            patch.object(agent, "ask", side_effect=ask),
+            patch.object(agent, "hold", new_callable=AsyncMock),
+            patch.object(hosted_payer._module.asyncio, "sleep", new_callable=AsyncMock),
+        ):
+            await agent.run_call()
+            data = session.userdata
+            self.assertEqual(data["stage"], "hold")
+            self.assertEqual([step["result"] for step in data["ivr"]], ["ok"] * 3)
+            self.assertEqual(data["ivr"][1]["keys"], line.NPI + "#")
+            digits = [
+                c.kwargs["digit"] for c in room.local_participant.publish_dtmf.await_args_list
+            ]
+            self.assertIn("#", digits)
+            self.assertEqual(
+                room.local_participant.publish_dtmf.await_args_list[-1].kwargs["code"],
+                int(data["ivr"][2]["keys"]),
+            )
+            # The phone tree never enters the conversation the model reads.
+            self.assertTrue(
+                all(
+                    c.kwargs["add_to_chat_ctx"] is False for c in session.say.mock_calls if c.kwargs
+                )
+            )
+
+            message = SimpleNamespace(text_content="Your call is important to us. Please hold.")
+            answers.append({"speaker": "recording", "reason": "scripted"})
+            with self.assertRaises(hosted_payer._module.StopResponse):
+                await agent.on_user_turn_completed(None, message)
+            self.assertEqual(data["stage"], "hold")
+            message = SimpleNamespace(text_content="Provider services, this is Dana.")
+            answers.append({"speaker": "human", "reason": "greets by name"})
+            await agent.on_user_turn_completed(None, message)
+            self.assertEqual(data["stage"], "human")
+            self.assertEqual([c["verdict"] for c in data["hold"]], ["recording", "human"])
+            self.assertEqual(agent.tts._opts.voice, hosted_payer.AGENT_VOICE)
+
+            context = SimpleNamespace(userdata=data)
+            note = await agent.record_benefits(
+                context,
+                coverage="active",
+                specialist_copay_usd=50,
+                deductible_usd=1500,
+                deductible_met_usd=420,
+                coinsurance_percent=20,
+            )
+            self.assertIn("Still needed", note)
+            self.assertIn("Not done", await agent.finish_verification(context))
+            await agent.record_benefits(
+                context, prior_auth_required=True, reference_number="HB42K118"
+            )
+            done = await agent.finish_verification(context)
+        self.assertIn("H B 4 2 K 1 1 8", done)
+        self.assertEqual(data["outcome"], "verified")
+        self.assertEqual(data["record"]["copay"]["source"], "Provider services, this is Dana.")
+        props = hosted_payer._module.snapshot(data)
+        self.assertEqual(props["result"]["reference"], "HB42K118")
+        self.assertLess(len(json.dumps(props)), 12000)
+
+    async def test_payer_menu_falls_back_when_the_model_fails(self):
+        agent, _, _ = self.payer_agent()
+        with patch.object(agent, "ask", side_effect=RuntimeError()):
+            keys, _, how = await agent.choose_keys(agent.line.prompt())
+        self.assertEqual((keys, how), (agent.line.expected(), "fallback"))
+
+    async def test_payer_counts_side_calls_and_uses_sonic_3(self):
+        self.assertEqual(hosted.HostedPayer.llm_budget, 36)
+        hosted.claims[ROOM] = {"id": ID, "seconds": 120}
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                },
+            ),
+            patch.object(
+                hosted,
+                "get_job_context",
+                return_value=SimpleNamespace(room=SimpleNamespace(name=ROOM)),
+            ),
+        ):
+            agent = hosted.HostedPayer()
+        self.assertIn("two-minute limit", agent.instructions)
+        self.assertEqual(agent.tts._opts.model, "sonic-3")
+        with patch.object(hosted, "spawn") as spawn:
+            agent._llm_requests = 35
+            self.assertTrue(agent.allow_side_call())
+            self.assertFalse(agent.allow_side_call())
+            spawn.assert_called_once()
+            spawn.call_args.args[0].close()
+        await agent.llm.aclose()
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()

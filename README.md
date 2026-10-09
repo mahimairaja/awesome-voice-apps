@@ -34,6 +34,7 @@ README lists its requirements and any extra setup. Provider usage may cost money
 | [Drive-thru coffee](demos/drive-thru-coffee/) | Takes a coffee order, modifies items mid-flow, totals the cart. |
 | [Front desk interpreter](demos/front-desk-interpreter/) | Two languages, one front desk. Real-time, both directions. |
 | [Panel scribe](demos/panel-scribe/) | Labels each interviewer's voice live in a candidate debrief and turns it into an attributed scorecard. |
+| [Payer verification call](demos/payer-verification/) | Calls an insurer for a clinic: presses through the phone tree, waits on hold, and captures benefits from the rep. |
 | [Quick trivia](demos/quick-trivia/) | Shows three trivia questions the caller can edit, then quizzes them one at a time and keeps score. |
 | [Roadside dispatch](demos/roadside-dispatch/) | Roadside dispatcher: scores caller audio with Tyto, adapts when the line degrades, and re-confirms details captured over a bad line. |
 | [Talk to our team](demos/talk-to-our-team/) | GPT-Live sales conversation with request corrections and a guarded simulated calendar. |
