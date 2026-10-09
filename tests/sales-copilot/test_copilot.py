@@ -99,6 +99,18 @@ async def test_small_talk_gets_no_card_but_moves_discovery():
     assert cue["ask"] == DISCOVERY[0][2]
 
 
+async def test_the_line_shows_at_once_and_every_card_is_scored():
+    pilot, snapshots, _ = make(FakeClient())
+    pilot.heard_prospect("[security] Our CISO will want a review.")
+    # Published before retrieval returns, so the panel can react the moment she stops.
+    heard = snapshots[0]["cues"][0]
+    assert heard["heard"].startswith("[security]") and heard["scores"] is None
+    await settle(pilot)
+    cue = snapshots[-1]["cues"][0]
+    assert set(cue["scores"]) == set(IDS)
+    assert cue["scores"]["security"] == cue["score"] == max(cue["scores"].values())
+
+
 async def test_discovery_notes_fill_and_the_next_question_advances():
     client = FakeClient(reply={"say": "Dig in.", "pain": "lost email approvals", "impact": "$48k"})
     pilot, snapshots, _ = make(client)

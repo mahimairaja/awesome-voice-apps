@@ -337,16 +337,20 @@ async def playbook_index(client) -> dict | None:
     return _index
 
 
-def best_card(index: dict, vector: list[float]) -> tuple[Card | None, float]:
+def card_scores(index: dict, vector: list[float]) -> dict[str, float]:
+    """Every card's score for one line: the cosine of its closest trigger phrase."""
     query = np.asarray(vector, dtype=np.float32)
     query /= np.linalg.norm(query) or 1.0
     scores = index["vectors"] @ query
-    # Score a card by its closest trigger phrase.
     best: dict[str, float] = {}
     for card_id, score in zip(index["ids"], scores.tolist()):
         best[card_id] = max(score, best.get(card_id, -1.0))
-    card_id, score = max(best.items(), key=lambda item: item[1])
-    return (CARDS[card_id] if score >= FLOOR else None), round(float(score), 3)
+    return {card_id: round(float(score), 3) for card_id, score in best.items()}
+
+
+def best_card(index: dict, vector: list[float]) -> tuple[Card | None, float]:
+    card_id, score = max(card_scores(index, vector).items(), key=lambda item: item[1])
+    return (CARDS[card_id] if score >= FLOOR else None), score
 
 
 @dataclass
@@ -355,6 +359,8 @@ class Cue:
     heard: str
     card: Card | None = None
     score: float | None = None
+    # Every card's score, so the panel can show the whole retrieval, not just the winner.
+    scores: dict[str, float] | None = None
     retrieval_ms: int | None = None
     line: str | None = None
     line_ms: int | None = None
@@ -367,6 +373,7 @@ class Cue:
             "heard": self.heard,
             "card": self.card.public() if self.card else None,
             "score": self.score,
+            "scores": self.scores,
             "retrieval_ms": self.retrieval_ms,
             "line": self.line,
             "line_ms": self.line_ms,
@@ -425,6 +432,8 @@ class Copilot:
         task = asyncio.create_task(self._cue(cue, text, start))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
+        # Show the line as heard straight away; the card follows when retrieval returns.
+        self.emit()
         return cue
 
     # Working -------------------------------------------------------------
@@ -455,7 +464,9 @@ class Copilot:
             self.client.embeddings.create(model=EMBED_MODEL, input=[text]), timeout=3
         )
         self.meter(EMBED_MODEL, getattr(resp.usage, "total_tokens", 0), 0)
-        cue.card, cue.score = best_card(index, resp.data[0].embedding)
+        cue.scores = card_scores(index, resp.data[0].embedding)
+        card_id, cue.score = max(cue.scores.items(), key=lambda item: item[1])
+        cue.card = CARDS[card_id] if cue.score >= FLOOR else None
         cue.retrieval_ms = ms_since(start, self.clock)
         self.card_times.append(cue.retrieval_ms)
 
