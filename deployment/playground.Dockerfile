@@ -28,6 +28,7 @@ COPY demos/storm-outage-line/agent.py demos/storm-outage-line/phone_line.py demo
 COPY demos/fair-cancellation/agent.py demos/fair-cancellation/policy.py /app/demos/fair-cancellation/
 COPY demos/medical-bill-explainer/agent.py /app/demos/medical-bill-explainer/
 COPY demos/pronunciation-coach/agent.py demos/pronunciation-coach/coach.py /app/demos/pronunciation-coach/
+COPY demos/postop-checkin/agent.py demos/postop-checkin/protocol.py /app/demos/postop-checkin/
 RUN useradd --create-home worker
 USER worker
 RUN python -m livekit.agents download-files

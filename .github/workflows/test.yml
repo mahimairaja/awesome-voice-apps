@@ -23,6 +23,7 @@ jobs:
           - furnace-repair
           - fair-cancellation
           - pronunciation-coach
+          - postop-checkin
     steps:
       - uses: actions/checkout@v4
 
