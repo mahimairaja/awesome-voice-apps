@@ -40,6 +40,8 @@ from hosted_interview import InterviewDesk, Lobby, bounded_builder, order_for, r
 from hosted_mortgage import GREETING as MORTGAGE_GREETING
 from hosted_mortgage import TURN_HANDLING as MORTGAGE_TURN_HANDLING
 from hosted_mortgage import MortgageAdvisor
+from hosted_router import GREETING as ROUTER_GREETING
+from hosted_router import RouterRescue, vision_cost
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -611,6 +613,24 @@ class HostedMortgage(HostedGuard, MortgageAdvisor):
         MortgageAdvisor.publish_initial(self)
 
 
+class HostedRouter(HostedGuard, RouterRescue):
+    demo = "router"
+    # Each look is a tool call plus a reply, on top of the usual turns.
+    llm_budget = 20
+    greeting = ROUTER_GREETING
+
+    def initial_state(self) -> dict:
+        return {}
+
+    def publish_initial(self) -> None:
+        RouterRescue.publish_initial(self)
+
+    def meter_vision(self, usage) -> None:
+        # Direct vision requests bypass VoiceGateway; bill each look to this call.
+        self.sink.records[f"router-vision-{uuid.uuid4()}"] = ("openai", vision_cost(usage))
+        spawn(self.sink.report())
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT-Live demos (REALTIME_DEMOS) start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -629,6 +649,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "fraud": HostedFraud,
     "interview": HostedInterview,
     "mortgage": HostedMortgage,
+    "router": HostedRouter,
 }
 # GPT-Live speech-to-speech demos share the call plumbing in build_server.
 REALTIME_DEMOS = frozenset({"sdr", "interp"})
