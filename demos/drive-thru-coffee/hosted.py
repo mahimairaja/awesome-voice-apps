@@ -75,6 +75,9 @@ from hosted_postop import initial_state as postop_state
 from hosted_postop import instructions as postop_instructions
 from hosted_postop import make_stt as postop_stt
 from hosted_postop import make_tts as postop_tts
+from hosted_deescalate import GREETING as DEESCALATE_GREETING
+from hosted_deescalate import BillingDesk
+from hosted_deescalate import voice as deescalate_voice
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -945,6 +948,28 @@ class HostedApproval(HostedGuard, RefundDesk):
             yield chunk
 
 
+class HostedDeescalate(HostedGuard, BillingDesk):
+    demo = "deescalate"
+    # Every caller turn is a reply, and explaining or crediting a charge adds a tool call.
+    llm_budget = 24
+    greeting = DEESCALATE_GREETING
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.update_options(tts=deescalate_voice())
+
+    def initial_state(self) -> dict:
+        return {}
+
+    def publish_initial(self) -> None:
+        self.watch(self.session)
+        BillingDesk.publish_initial(self)
+
+    def end_call(self) -> None:
+        # The transfer ends the reservation, not just the session.
+        spawn(self._finish())
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT-Live demos (REALTIME_DEMOS) start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -974,6 +999,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "pronounce": HostedPronounce,
     "postop": HostedPostop,
     "approval": HostedApproval,
+    "deescalate": HostedDeescalate,
 }
 # GPT-Live speech-to-speech demos share the call plumbing in build_server.
 REALTIME_DEMOS = frozenset({"sdr", "interp"})

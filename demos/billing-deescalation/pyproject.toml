@@ -1,0 +1,9 @@
+[project]
+name = "billing-deescalation"
+version = "0.1.0"
+description = "A billing line that tracks caller frustration turn by turn, adapts its voice, and hands off to a person."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero]>=1.8.5,<2.0",
+    "python-dotenv>=1.0",
+]

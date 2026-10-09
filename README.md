@@ -31,6 +31,7 @@ README lists its requirements and any extra setup. Provider usage may cost money
 | --- | --- |
 | [Card fraud line](demos/card-fraud-line/) | Verifies a caller about a flagged charge, hands off to a fraud specialist, and flags social engineering live. |
 | [Build your own agent](demos/build-your-own-agent/) | One agent configured per tenant: change its brief, tools and voice mid-call over LiveKit RPC. |
+| [Billing de-escalation](demos/billing-deescalation/) | Tracks an angry caller's frustration turn by turn, adapts its voice and tactics, and hands off to a person. |
 | [Claim intake](demos/claim-intake/) | Takes an auto insurance claim by voice, validates each field, and files it. |
 | [Clinic scheduler](demos/clinic-scheduler/) | Books a doctor appointment by voice, finds open slots, and handles reschedules. |
 | [Delivery window call](demos/delivery-window-call/) | Calls a customer to confirm a delivery: detects voicemail, takes keypad presses, and reschedules by voice. |
