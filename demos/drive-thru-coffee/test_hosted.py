@@ -37,6 +37,7 @@ import hosted_onprem
 import httpx
 import hosted_ivr
 import hosted_copilot
+import hosted_stresstest
 import hosted_tenant
 import hosted_water
 from livekit.agents.llm import ChatMessage
@@ -2299,6 +2300,63 @@ class InterviewDemo(unittest.IsolatedAsyncioTestCase):
             duplex._count({"type": "response.event", "event": {"type": "response.created"}})
         await asyncio.gather(*spawned)
         self.assertEqual(stop.await_count, 2)
+
+    async def test_stresstest_adapter_leaves_no_shared_modules(self):
+        self.assertNotIn("stresstest", sys.modules)
+        self.assertIs(hosted_stresstest._module.stresstest, hosted_stresstest.stresstest)
+
+    async def test_stresstest_calls_start_empty_and_stay_isolated(self):
+        agent = object.__new__(hosted.HostedStressTest)
+        first, second = agent.initial_state(), agent.initial_state()
+        self.assertEqual(first, {"phase": "idle", "runs": [], "live": None, "regression": None})
+        first["runs"].append({"version": "v1"})
+        self.assertEqual(second["runs"], [])
+
+    async def test_stresstest_runs_on_metered_providers_with_a_new_voice(self):
+        hosted.claims[ROOM] = {"id": ID}
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                },
+            ),
+            patch.object(
+                hosted,
+                "get_job_context",
+                return_value=SimpleNamespace(room=SimpleNamespace(name=ROOM)),
+            ),
+        ):
+            agent = hosted.HostedStressTest()
+            sim = agent.make_sim_llm()
+        self.assertEqual(agent.tts.model, "sonic-3")
+        self.assertEqual(sim.model, "gpt-4o-mini")
+        self.assertIsNot(sim, agent.llm)
+        self.assertEqual({tool.info.name for tool in agent.tools}, {"run_suite", "call_in"})
+        await agent.llm.aclose()
+        await sim.aclose()
+
+    async def test_stresstest_bills_every_simulated_request_and_caps_spend(self):
+        agent = object.__new__(hosted.HostedStressTest)
+        agent._sim_usd = hosted.Decimal(0)
+        agent._report_pending = False
+        agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+        metrics = SimpleNamespace(
+            prompt_tokens=10_000, prompt_cached_tokens=2_000, completion_tokens=1_000
+        )
+        self.assertEqual(hosted_stresstest.sim_cost(metrics), hosted.Decimal("0.00195"))
+        for _ in range(3):
+            agent.meter_simulation(metrics)
+        self.assertEqual(len(agent.sink.records), 3)
+        self.assertEqual({p for p, _ in agent.sink.records.values()}, {"openai"})
+        self.assertTrue(agent.can_spend())
+        with patch.object(hosted.asyncio, "sleep", new_callable=AsyncMock):
+            await asyncio.gather(*list(hosted.tasks))
+        agent.sink.report.assert_awaited_once()
+        agent._sim_usd = hosted_stresstest.SIM_USD_CAP
+        self.assertFalse(agent.can_spend())
 
 
 if __name__ == "__main__":
