@@ -16,33 +16,32 @@ import hosted
 import hosted_cancel
 import hosted_claim
 import hosted_clinic
-import hosted_panel
-import hosted_interp
-import hosted_pharmacy
-import hosted_furnace
-import hosted_fraud
-import hosted_interview
-import hosted_mortgage
-import hosted_router
-import hosted_rebook
-import hosted_returns
-import hosted_outage
-import hosted_postop
-import hosted_deescalate
-import hosted_recall
-import hosted_cost
-import hosted_payer
-import hosted_resume
-import hosted_onprem
-import httpx
-import hosted_ivr
-import hosted_copilot
-import hosted_stresstest
 import hosted_concierge
+import hosted_copilot
+import hosted_cost
+import hosted_deescalate
+import hosted_fraud
+import hosted_furnace
+import hosted_interp
+import hosted_interview
+import hosted_ivr
+import hosted_mortgage
+import hosted_onprem
+import hosted_outage
+import hosted_panel
+import hosted_payer
+import hosted_pharmacy
+import hosted_postop
+import hosted_rebook
+import hosted_recall
+import hosted_resume
+import hosted_returns
+import hosted_router
+import hosted_stresstest
 import hosted_tenant
 import hosted_water
-from livekit.agents.llm import ChatMessage
-from livekit.agents.llm import ChatContext
+import httpx
+from livekit.agents.llm import ChatContext, ChatMessage
 from trivia import HostedTriviaHost, initial_state
 
 ID = "598cd768-86d4-42a1-bb44-adc44fba4207"
@@ -265,7 +264,45 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
     async def test_registry_admits_each_demo_and_nothing_else(self):
         self.assertEqual(
             hosted.DEMOS,
-            {"coffee", "trivia", "water", "clinic", "claim", "tenant", "panel", "sdr"},
+            {
+                "coffee",
+                "trivia",
+                "water",
+                "tenant",
+                "clinic",
+                "claim",
+                "panel",
+                "interp",
+                "pharmacy",
+                "city311",
+                "checkout",
+                "furnace",
+                "fraud",
+                "interview",
+                "mortgage",
+                "router",
+                "builder",
+                "rebook",
+                "returns",
+                "delivery",
+                "outage",
+                "cancel",
+                "bill",
+                "pronounce",
+                "postop",
+                "approval",
+                "deescalate",
+                "recall",
+                "cost",
+                "payer",
+                "resume",
+                "onprem",
+                "ivr",
+                "copilot",
+                "stresstest",
+                "concierge",
+                "sdr",
+            },
         )
         for demo in hosted.DEMOS:
             metadata = json.dumps({"agent": demo, "reservation": ID})

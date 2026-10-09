@@ -28,6 +28,12 @@ from typing import Literal
 import aic_sdk as aic
 import numpy as np
 from dotenv import load_dotenv
+from health import (
+    DIMENSIONS,
+    NEUTRAL,
+    AudioHealth,
+    band,
+)
 from livekit import rtc
 from livekit.agents import (
     Agent,
@@ -41,13 +47,6 @@ from livekit.agents import (
 )
 from livekit.plugins import cartesia, deepgram, openai, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
-
-from health import (
-    DIMENSIONS,
-    NEUTRAL,
-    AudioHealth,
-    band,
-)
 
 load_dotenv()
 logger = logging.getLogger(__name__)

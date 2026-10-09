@@ -25,7 +25,6 @@ from dotenv import load_dotenv
 from livekit import api, rtc
 from livekit.agents import (
     AMD,
-    llm,
     Agent,
     AgentServer,
     AgentSession,
@@ -35,6 +34,7 @@ from livekit.agents import (
     cli,
     function_tool,
     get_job_context,
+    llm,
 )
 from livekit.plugins import cartesia, deepgram, openai, silero
 

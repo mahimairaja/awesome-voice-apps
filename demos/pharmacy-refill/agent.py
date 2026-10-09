@@ -19,6 +19,7 @@ import json
 import logging
 from collections.abc import AsyncIterable
 
+import refill
 from dotenv import load_dotenv
 from livekit import rtc
 from livekit.agents import (
@@ -33,8 +34,6 @@ from livekit.agents import (
     function_tool,
 )
 from livekit.plugins import cartesia, deepgram, openai, silero
-
-import refill
 from refill import FieldName
 
 load_dotenv()

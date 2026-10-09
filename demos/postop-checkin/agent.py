@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 
+import protocol
 from dotenv import load_dotenv
 from livekit import rtc
 from livekit.agents import (
@@ -31,8 +32,6 @@ from livekit.agents import (
     function_tool,
 )
 from livekit.plugins import cartesia, deepgram, openai, silero
-
-import protocol
 from protocol import Drainage, TempUnit
 
 load_dotenv()

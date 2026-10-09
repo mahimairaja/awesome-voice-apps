@@ -24,6 +24,8 @@ import time
 from pathlib import Path
 from typing import Protocol
 
+import application
+from application import FieldName, estimate_tokens
 from dotenv import load_dotenv
 from livekit import rtc
 from livekit.agents import (
@@ -38,9 +40,6 @@ from livekit.agents import (
 )
 from livekit.agents.metrics import LLMMetrics
 from livekit.plugins import cartesia, deepgram, openai, silero
-
-import application
-from application import FieldName, estimate_tokens
 
 load_dotenv()
 

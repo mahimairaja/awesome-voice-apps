@@ -14,102 +14,31 @@ import httpx
 import status
 import voicegateway
 from agent import DriveThruAttendant, _publish_cart, _publish_menu
-from hosted_checkout import GREETING as CHECKOUT_GREETING
-from hosted_checkout import VoiceCheckout
+from hosted_approval import GREETING as APPROVAL_GREETING
+from hosted_approval import HostedManager, RefundDesk, publish_approval
+from hosted_approval import initial_state as approval_state
+from hosted_approval import voice as approval_voice
+from hosted_bill import GREETING as BILL_GREETING
+from hosted_bill import BillExplainer
+from hosted_bill import vision_cost as bill_vision_cost
 from hosted_builder import GREETING as BUILDER_GREETING
 from hosted_builder import VOICES, ConfigurableAgent, parse_config
 from hosted_cancel import GREETING as CANCEL_GREETING
 from hosted_cancel import CancelLine, publish_cancel
 from hosted_cancel import initial_state as cancel_state
 from hosted_cancel import instructions as cancel_instructions
-from hosted_bill import GREETING as BILL_GREETING
-from hosted_bill import BillExplainer
-from hosted_bill import vision_cost as bill_vision_cost
-from hosted_approval import GREETING as APPROVAL_GREETING
-from hosted_approval import HostedManager, RefundDesk, publish_approval
-from hosted_approval import initial_state as approval_state
-from hosted_approval import voice as approval_voice
+from hosted_checkout import GREETING as CHECKOUT_GREETING
+from hosted_checkout import VoiceCheckout
+from hosted_city311 import GREETING as CITY311_GREETING
+from hosted_city311 import City311Agent, publish_city311
+from hosted_city311 import initial_state as city311_state
+from hosted_city311 import make_stt as city311_stt
+from hosted_city311 import make_tts as city311_tts
 from hosted_claim import ClaimIntake, publish_claim
 from hosted_claim import initial_state as claim_state
-from hosted_city311 import GREETING as CITY311_GREETING
-from hosted_city311 import City311Agent, make_stt, make_tts, publish_city311
-from hosted_city311 import initial_state as city311_state
 from hosted_claim import instructions as claim_instructions
 from hosted_clinic import ClinicScheduler, publish_clinic
-from hosted_delivery import DeliveryCaller, publish_delivery
-from hosted_delivery import initial_state as delivery_state
 from hosted_clinic import initial_state as clinic_state
-from hosted_panel import GREETING as PANEL_GREETING
-from hosted_panel import SoloPanelScribe, publish_panel
-from hosted_pharmacy import GREETING as PHARMACY_GREETING
-from hosted_pharmacy import RefillLine, make_stt, publish_refill
-from hosted_pharmacy import initial_state as pharmacy_state
-from hosted_pharmacy import instructions as pharmacy_instructions
-from hosted_furnace import COMPANY as FURNACE_COMPANY
-from hosted_furnace import DETECTOR_OPTIONS as FURNACE_DETECTOR
-from hosted_furnace import FurnaceLine, publish_furnace
-from hosted_furnace import initial_state as furnace_state
-from hosted_fraud import FrontDesk, HostedFraudDesk, HostedVerify, publish_fraud
-from hosted_fraud import GREETING as FRAUD_GREETING
-from hosted_fraud import initial_state as fraud_state
-from hosted_fraud import voice as fraud_voice
-from hosted_fraud import watch as fraud_watch
-from hosted_interview import InterviewDesk, Lobby, bounded_builder, order_for, round_seconds
-from hosted_mortgage import GREETING as MORTGAGE_GREETING
-from hosted_mortgage import TURN_HANDLING as MORTGAGE_TURN_HANDLING
-from hosted_mortgage import MortgageAdvisor
-from hosted_router import GREETING as ROUTER_GREETING
-from hosted_router import RouterRescue, vision_cost
-from hosted_rebook import FlightRebooker, build_llm, build_tts
-from hosted_returns import GRADE_BUDGET, ReturnsDesk, grade_cost, publish_returns
-from hosted_returns import GREETING as RETURNS_GREETING
-from hosted_returns import initial_state as returns_state
-from hosted_outage import GREETING as OUTAGE_GREETING
-from hosted_outage import OutageLine, outage_stt
-from hosted_outage import initial_state as outage_state
-from hosted_pronounce import GREETING as PRONOUNCE_GREETING
-from hosted_pronounce import PronunciationCoach, make_tts, publish_coach
-from hosted_pronounce import initial_state as pronounce_state
-from hosted_pronounce import instructions as pronounce_instructions
-from hosted_pronounce import make_stt as pronounce_stt
-from hosted_postop import CheckInCall, publish_checkin
-from hosted_postop import greeting as postop_greeting
-from hosted_postop import initial_state as postop_state
-from hosted_postop import instructions as postop_instructions
-from hosted_postop import make_stt as postop_stt
-from hosted_postop import make_tts as postop_tts
-from hosted_deescalate import GREETING as DEESCALATE_GREETING
-from hosted_deescalate import BillingDesk
-from hosted_deescalate import voice as deescalate_voice
-from hosted_recall import HOSTED_INSTRUCTIONS as RECALL_INSTRUCTIONS
-from hosted_recall import Concierge, SiteStore, publish_recall, summary_cost
-from hosted_recall import greeting as recall_greeting
-from hosted_recall import initial_state as recall_state
-from hosted_cost import GREETING as COST_GREETING
-from hosted_cost import CostRouter
-from hosted_cost import router as cost_router
-from hosted_payer import AGENT_VOICE as PAYER_VOICE
-from hosted_payer import PayerCaller, publish_payer
-from hosted_payer import initial_state as payer_state
-from hosted_payer import instructions as payer_instructions
-from hosted_resume import LoanCallback, SiteStore
-from hosted_resume import instructions as resume_instructions
-from hosted_onprem import GREETING as ONPREM_GREETING
-from hosted_onprem import INSTRUCTIONS as ONPREM_INSTRUCTIONS
-from hosted_onprem import PrivateHealthLine
-from hosted_onprem import initial_state as onprem_state
-from hosted_ivr import GREETING as IVR_GREETING
-from hosted_ivr import PhoneTreeRouter, publish_router, router_cost
-from hosted_ivr import initial_state as ivr_state
-from hosted_ivr import instructions as ivr_instructions
-from hosted_copilot import GREETING as COPILOT_GREETING
-from hosted_copilot import Prospect
-from hosted_copilot import cost as copilot_cost
-from hosted_copilot import limits as copilot_limits
-from hosted_copilot import voice as copilot_voice
-from hosted_stresstest import GREETING as STRESSTEST_GREETING
-from hosted_stresstest import SIM_USD_CAP, StressTestLead, sim_cost
-from hosted_stresstest import initial_state as stresstest_state
 from hosted_concierge import (
     CONCIERGE,
     HOTEL,
@@ -119,6 +48,83 @@ from hosted_concierge import (
     publish_concierge,
 )
 from hosted_concierge import initial_state as concierge_state
+from hosted_copilot import GREETING as COPILOT_GREETING
+from hosted_copilot import Prospect
+from hosted_copilot import cost as copilot_cost
+from hosted_copilot import limits as copilot_limits
+from hosted_copilot import voice as copilot_voice
+from hosted_cost import GREETING as COST_GREETING
+from hosted_cost import CostRouter
+from hosted_cost import router as cost_router
+from hosted_deescalate import GREETING as DEESCALATE_GREETING
+from hosted_deescalate import BillingDesk
+from hosted_deescalate import voice as deescalate_voice
+from hosted_delivery import DeliveryCaller, publish_delivery
+from hosted_delivery import initial_state as delivery_state
+from hosted_fraud import GREETING as FRAUD_GREETING
+from hosted_fraud import FrontDesk, HostedFraudDesk, HostedVerify, publish_fraud
+from hosted_fraud import initial_state as fraud_state
+from hosted_fraud import voice as fraud_voice
+from hosted_fraud import watch as fraud_watch
+from hosted_furnace import COMPANY as FURNACE_COMPANY
+from hosted_furnace import DETECTOR_OPTIONS as FURNACE_DETECTOR
+from hosted_furnace import FurnaceLine, publish_furnace
+from hosted_furnace import initial_state as furnace_state
+from hosted_interview import InterviewDesk, Lobby, bounded_builder, order_for, round_seconds
+from hosted_ivr import GREETING as IVR_GREETING
+from hosted_ivr import PhoneTreeRouter, publish_router, router_cost
+from hosted_ivr import initial_state as ivr_state
+from hosted_ivr import instructions as ivr_instructions
+from hosted_mortgage import GREETING as MORTGAGE_GREETING
+from hosted_mortgage import TURN_HANDLING as MORTGAGE_TURN_HANDLING
+from hosted_mortgage import MortgageAdvisor
+from hosted_onprem import GREETING as ONPREM_GREETING
+from hosted_onprem import INSTRUCTIONS as ONPREM_INSTRUCTIONS
+from hosted_onprem import PrivateHealthLine
+from hosted_onprem import initial_state as onprem_state
+from hosted_outage import GREETING as OUTAGE_GREETING
+from hosted_outage import OutageLine, outage_stt
+from hosted_outage import initial_state as outage_state
+from hosted_panel import GREETING as PANEL_GREETING
+from hosted_panel import SoloPanelScribe, publish_panel
+from hosted_payer import AGENT_VOICE as PAYER_VOICE
+from hosted_payer import PayerCaller, publish_payer
+from hosted_payer import initial_state as payer_state
+from hosted_payer import instructions as payer_instructions
+from hosted_pharmacy import GREETING as PHARMACY_GREETING
+from hosted_pharmacy import RefillLine, publish_refill
+from hosted_pharmacy import initial_state as pharmacy_state
+from hosted_pharmacy import instructions as pharmacy_instructions
+from hosted_pharmacy import make_stt as pharmacy_stt
+from hosted_postop import CheckInCall, publish_checkin
+from hosted_postop import greeting as postop_greeting
+from hosted_postop import initial_state as postop_state
+from hosted_postop import instructions as postop_instructions
+from hosted_postop import make_stt as postop_stt
+from hosted_postop import make_tts as postop_tts
+from hosted_pronounce import GREETING as PRONOUNCE_GREETING
+from hosted_pronounce import PronunciationCoach, publish_coach
+from hosted_pronounce import initial_state as pronounce_state
+from hosted_pronounce import instructions as pronounce_instructions
+from hosted_pronounce import make_stt as pronounce_stt
+from hosted_pronounce import make_tts as pronounce_tts
+from hosted_rebook import FlightRebooker, build_llm, build_tts
+from hosted_recall import HOSTED_INSTRUCTIONS as RECALL_INSTRUCTIONS
+from hosted_recall import Concierge, publish_recall, summary_cost
+from hosted_recall import SiteStore as RecallStore
+from hosted_recall import greeting as recall_greeting
+from hosted_recall import initial_state as recall_state
+from hosted_resume import LoanCallback
+from hosted_resume import SiteStore as ResumeStore
+from hosted_resume import instructions as resume_instructions
+from hosted_returns import GRADE_BUDGET, ReturnsDesk, grade_cost, publish_returns
+from hosted_returns import GREETING as RETURNS_GREETING
+from hosted_returns import initial_state as returns_state
+from hosted_router import GREETING as ROUTER_GREETING
+from hosted_router import RouterRescue, vision_cost
+from hosted_stresstest import GREETING as STRESSTEST_GREETING
+from hosted_stresstest import SIM_USD_CAP, StressTestLead, sim_cost
+from hosted_stresstest import initial_state as stresstest_state
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -496,7 +502,7 @@ class HostedPharmacy(HostedGuard, RefillLine):
         super().__init__()
         self._instructions = pharmacy_instructions()
         # Nova-3 keyterms for the formulary; smart format writes dates as dates.
-        self.update_options(stt=make_stt())
+        self.update_options(stt=pharmacy_stt())
 
     def initial_state(self) -> dict:
         return pharmacy_state()
@@ -518,7 +524,7 @@ class HostedCity311(HostedGuard, City311Agent):
     def __init__(self) -> None:
         super().__init__()
         # Nova-3 in code-switching mode, and a voice that follows the router.
-        self.update_options(stt=make_stt(), tts=make_tts())
+        self.update_options(stt=city311_stt(), tts=city311_tts())
 
     def initial_state(self) -> dict:
         return city311_state()
@@ -911,7 +917,7 @@ class HostedPronounce(HostedGuard, PronunciationCoach):
         super().__init__()
         self._instructions = pronounce_instructions()
         # Plain Nova-3 (no keyterms, so errors stay visible) and multilingual Sonic 3.
-        self.update_options(stt=pronounce_stt(), tts=make_tts())
+        self.update_options(stt=pronounce_stt(), tts=pronounce_tts())
 
     def initial_state(self) -> dict:
         return pronounce_state()
@@ -1026,7 +1032,7 @@ class HostedRecall(HostedGuard, Concierge):
     def __init__(self) -> None:
         super().__init__()
         # The client file lives on the site, keyed by the reservation's account.
-        self.store = SiteStore(control, self.approval["id"])
+        self.store = RecallStore(control, self.approval["id"])
         self.update_options(tts=cartesia.TTS(model="sonic-3"))
         self._entries: list[dict] = []
 
@@ -1152,7 +1158,7 @@ class HostedResume(HostedGuard, LoanCallback):
         super().__init__()
         self._instructions = resume_instructions()
         # Checkpoints go to the site, keyed by the account behind this reservation.
-        self.store = SiteStore(control, self.approval["id"])
+        self.store = ResumeStore(control, self.approval["id"])
         # A fresh per-call client; sonic-3, since sonic-2 is being retired.
         self.update_options(tts=cartesia.TTS(model="sonic-3"))
 

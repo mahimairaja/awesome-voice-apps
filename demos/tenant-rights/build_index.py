@@ -20,7 +20,6 @@ import pathlib
 
 import numpy as np
 from dotenv import load_dotenv
-
 from rag import embed_documents, embedding_backend
 
 load_dotenv()

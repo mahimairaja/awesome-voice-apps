@@ -21,6 +21,7 @@ import json
 import logging
 import time
 
+import routing
 from dotenv import load_dotenv
 from livekit import rtc
 from livekit.agents import (
@@ -36,8 +37,6 @@ from livekit.agents import (
     function_tool,
 )
 from livekit.plugins import cartesia, deepgram, openai, silero
-
-import routing
 
 load_dotenv()
 
