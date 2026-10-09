@@ -44,6 +44,7 @@ from hosted_mortgage import TURN_HANDLING as MORTGAGE_TURN_HANDLING
 from hosted_mortgage import MortgageAdvisor
 from hosted_router import GREETING as ROUTER_GREETING
 from hosted_router import RouterRescue, vision_cost
+from hosted_rebook import FlightRebooker, build_llm, build_tts
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -669,6 +670,38 @@ class HostedBuilder(HostedGuard, ConfigurableAgent):
         await super().on_enter()
 
 
+class HostedRebook(HostedGuard, FlightRebooker):
+    demo = "rebook"
+    # A background search adds a reply for its update and one for its result.
+    llm_budget = 20
+    greeting = (
+        "Say this is a rebooking simulation for a made-up airline and nothing is booked. "
+        "Say their 18:05 flight to Vancouver is cancelled for weather and offer to rebook."
+    )
+
+    def __init__(self) -> None:
+        super().__init__()
+        # Primary plus fallback, both inside the providers the playground meters.
+        replaced = (self.llm, self.tts)
+        failover_llm = build_llm(self.outage, max_completion_tokens=180, max_retries=0, store=False)
+        failover_tts = build_tts(self.outage)
+        self.update_options(llm=failover_llm, tts=failover_tts)
+        self.watch(failover_llm, failover_tts)
+        for component in replaced:
+            spawn(component.aclose())
+
+    def initial_state(self) -> dict:
+        return self.state
+
+    def publish_initial(self) -> None:
+        self.publish()
+
+    async def on_enter(self) -> None:
+        await super().on_enter()
+        if not self._closing:
+            await self.start_background(self.session)
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT-Live demos (REALTIME_DEMOS) start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -689,6 +722,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "mortgage": HostedMortgage,
     "router": HostedRouter,
     "builder": HostedBuilder,
+    "rebook": HostedRebook,
 }
 # GPT-Live speech-to-speech demos share the call plumbing in build_server.
 REALTIME_DEMOS = frozenset({"sdr", "interp"})

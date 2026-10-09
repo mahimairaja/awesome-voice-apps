@@ -6,6 +6,7 @@ import os
 import sys
 import time
 import unittest
+from contextlib import asynccontextmanager
 from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -21,6 +22,7 @@ import hosted_fraud
 import hosted_interview
 import hosted_mortgage
 import hosted_router
+import hosted_rebook
 import hosted_tenant
 import hosted_water
 from livekit.agents.llm import ChatMessage
@@ -930,6 +932,123 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         for agent in (first, second):
             await agent.llm.aclose()
             await agent._vision.close()
+
+    def rebook_agent(self, room=ROOM):
+        hosted.claims[room] = {"id": ID}
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                },
+            ),
+            patch.object(
+                hosted,
+                "get_job_context",
+                return_value=SimpleNamespace(room=SimpleNamespace(name=room)),
+            ),
+        ):
+            return hosted.HostedRebook()
+
+    async def test_rebook_calls_get_their_own_failover_stack_and_state(self):
+        first, second = self.rebook_agent(), self.rebook_agent("playground-second")
+        await asyncio.sleep(0)
+        self.assertIsInstance(first.llm, hosted_rebook._module.llm.FallbackAdapter)
+        self.assertIsInstance(first.tts, hosted_rebook._module.tts.FallbackAdapter)
+        self.assertIsNot(first.llm, second.llm)
+        self.assertIsNot(first.outage, second.outage)
+        self.assertIs(first.initial_state(), first.state)
+        self.assertIsNot(first.state, second.state)
+        first.outage.start("llm")
+        self.assertFalse(second.outage.down("llm"))
+        for agent in (first, second):
+            for component in agent.llm._llm_instances:
+                await component.aclose()
+
+    async def test_rebook_search_runs_in_background_and_books_the_pick(self):
+        module = hosted_rebook._module
+        agent = module.FlightRebooker(SimpleNamespace())
+
+        @asynccontextmanager
+        async def filler(*_args, **_kwargs):
+            yield
+
+        context = SimpleNamespace(update=AsyncMock(), with_filler=filler)
+        with (
+            patch.object(module, "publish_ui_event") as publish,
+            patch.object(module, "SEARCH_SECONDS", 0),
+        ):
+            self.assertIn("Search first", await agent.rebook(context, "A"))
+            search = asyncio.create_task(agent.search_flights(context))
+            await asyncio.sleep(0)
+            # The search has released control; a policy answer lands meanwhile.
+            self.assertEqual(agent.state["search"], "running")
+            context.update.assert_awaited_once()
+            self.assertIn("bags", (await agent.check_policy(context, "bags")).lower())
+            self.assertIn("C: Borealis 102", await search)
+            self.assertTrue(agent.outage.down("llm"))
+            self.assertFalse(agent.outage.down("tts"))
+            self.assertIn("Borealis 102", await agent.rebook(context, "C"))
+            self.assertIn("already rebooked", await agent.search_flights(context))
+            self.assertIn("now failing", await agent.simulate_outage(context, "voice"))
+            self.assertIn("already", await agent.simulate_outage(context, "voice"))
+        self.assertEqual(agent.state["booking"]["status"], "rebooked")
+        self.assertEqual(agent.state["booking"]["seat"], "14A window")
+        lanes = [event["lane"] for event in agent.state["events"]]
+        self.assertEqual(lanes.count("tts"), 1)
+        texts = " ".join(event["text"] for event in agent.state["events"])
+        self.assertIn("answered while the search keeps running", texts)
+        snapshot = publish.call_args.args[2]
+        self.assertLess(len(json.dumps(snapshot)), 16384)
+        self.assertEqual(module.new_state()["events"], [])
+
+    async def test_rebook_outage_fails_over_and_recovers_without_network(self):
+        module = hosted_rebook._module
+        agent = module.FlightRebooker(SimpleNamespace())
+
+        class Backup(module.llm.LLM):
+            def chat(self, *, chat_ctx, tools=None, conn_options=None, **_kwargs):
+                return BackupStream(
+                    self, chat_ctx=chat_ctx, tools=tools or [], conn_options=conn_options
+                )
+
+        class BackupStream(module.llm.LLMStream):
+            async def _run(self):
+                self._event_ch.send_nowait(
+                    module.llm.ChatChunk(id="b", delta=module.llm.ChoiceDelta(content="ok"))
+                )
+
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "offline", "CARTESIA_API_KEY": "x"}):
+            primary = module.FlakyLLM(outage=agent.outage, model="gpt-4o-mini")
+            voice = module.build_tts(agent.outage)
+        adapter = module.llm.FallbackAdapter([primary, Backup()], attempt_timeout=1)
+        agent.watch(adapter, voice)
+        agent.outage.start("llm")
+        chat = module.llm.ChatContext.empty()
+        chat.add_message(role="user", content="hello")
+        with patch.object(module, "publish_ui_event"):
+            async with adapter.chat(chat_ctx=chat) as stream:
+                text = "".join([c.delta.content async for c in stream if c.delta])
+            self.assertEqual(text, "ok")
+            self.assertEqual(agent.state["providers"]["llm"]["serving"], "backup")
+            self.assertIn("gpt-4.1-nano took the next request", agent.state["events"][-1]["text"])
+            # A passed recovery probe hands traffic back; the voice lane reports alike.
+            adapter.emit("llm_availability_changed", SimpleNamespace(llm=primary, available=True))
+            self.assertEqual(agent.state["providers"]["llm"]["serving"], "primary")
+            cartesia_voice = voice._tts_instances[0]
+            voice.emit(
+                "tts_availability_changed", SimpleNamespace(tts=cartesia_voice, available=False)
+            )
+            self.assertEqual(agent.state["providers"]["tts"]["serving"], "backup")
+        with self.assertRaises(module.APIConnectionError):
+            primary.chat(chat_ctx=chat)
+        with self.assertRaises(module.APIConnectionError):
+            agent.outage.start("tts")
+            cartesia_voice.stream()
+        await adapter.aclose()
+        await voice.aclose()
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()
