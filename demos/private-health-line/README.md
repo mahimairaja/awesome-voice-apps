@@ -19,6 +19,9 @@ Each AI provider gets only what its job needs:
 The agent's `stt_node` replaces any spoken number of three or more digits
 ("412", "4 1 2", "four one two") with `[participant number]` before the session,
 the chat history or the model see the transcript, and keeps the number itself.
+A number split across two final transcripts ("four one", then "two seven") is
+joined and redacted too: until the number is recorded, a short run of digits at
+the end of a transcript is held back in case the next one continues it.
 Every request to the language model goes through a counting `httpx` transport
 that measures its size and checks its body for the participant number. The
 agent publishes those counts, with the form, as a `PrivateLine` event on the

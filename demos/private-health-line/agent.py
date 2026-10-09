@@ -90,13 +90,8 @@ _WORD = re.compile(r"[A-Za-z]+|\d+")
 _JOINER = re.compile(r"[\s,.-]*")
 
 
-def redact(text: str) -> tuple[str, list[str]]:
-    """Replace every spoken number of 3 to 8 digits with TOKEN.
-
-    Speech to text writes a participant number as "412", "4 1 2" or "four one
-    two"; all three become TOKEN. Single numbers ("two doses") are left alone.
-    Returns the redacted text and the digits it removed.
-    """
+def _runs(text: str) -> list[tuple[int, int, str]]:
+    """Each run of digits or digit words as (start, end, digits)."""
     runs: list[list[re.Match]] = [[]]
     for word in _WORD.finditer(text):
         if not (word.group().isdigit() or word.group().lower() in _DIGITS):
@@ -105,16 +100,49 @@ def redact(text: str) -> tuple[str, list[str]]:
             runs[-1].append(word)
         else:
             runs.append([word])
-    found, out, last = [], [], 0
-    for run in filter(None, runs):
-        digits = "".join(
-            w.group() if w.group().isdigit() else _DIGITS[w.group().lower()] for w in run
+    return [
+        (
+            run[0].start(),
+            run[-1].end(),
+            "".join(w.group() if w.group().isdigit() else _DIGITS[w.group().lower()] for w in run),
         )
+        for run in filter(None, runs)
+    ]
+
+
+def screen_text(text: str, carry: str = "", hold: bool = False) -> tuple[str, list[str], str]:
+    """Replace every spoken number of 3 to 8 digits with TOKEN.
+
+    Speech to text writes a participant number as "412", "4 1 2" or "four one
+    two"; all three become TOKEN. Single numbers ("two doses") are left alone.
+
+    A number can arrive split across final transcripts ("four one", then "two
+    seven"). `carry` is the short run that ended the previous final; a run at
+    the start of this text continues it. With `hold` (no number recorded yet),
+    a short run at the end is redacted too and returned as the new carry, so
+    no fragment reaches the model while the caller is still saying it.
+    Returns the redacted text, the numbers it removed and the new carry.
+    """
+    runs = _runs(text)
+    if carry and runs and _JOINER.fullmatch(text[: runs[0][0]]):
+        runs[0] = (runs[0][0], runs[0][1], carry + runs[0][2])
+    found, out, last, rest = [], [], 0, ""
+    for i, (start, end, digits) in enumerate(runs):
         if 3 <= len(digits) <= 8:
-            out += [text[last : run[0].start()], TOKEN]
-            last = run[-1].end()
             found.append(digits)
-    return "".join(out) + text[last:], found
+        elif hold and i == len(runs) - 1 and len(digits) < 3 and _JOINER.fullmatch(text[end:]):
+            rest = digits
+        else:
+            continue
+        out += [text[last:start], TOKEN]
+        last = end
+    return "".join(out) + text[last:], found, rest
+
+
+def redact(text: str) -> tuple[str, list[str]]:
+    """Redact one transcript on its own: the text and the numbers it removed."""
+    text, found, _ = screen_text(text)
+    return text, found
 
 
 def _yes_no(value: str) -> bool | None:
@@ -305,6 +333,7 @@ class PrivateHealthLine(Agent):
         self.room = room
         self._state: dict | None = None
         self._publish_pending = False
+        self._carry = ""
         self.ledger.on_change = self.schedule_publish
 
     def bind(self, state: dict) -> None:
@@ -359,12 +388,18 @@ class PrivateHealthLine(Agent):
 
     def screen(self, event: stt.SpeechEvent) -> stt.SpeechEvent:
         """Redact the transcript before the session, the model or the history see it."""
-        for alt in event.alternatives:
-            alt.text, found = redact(alt.text)
-            if found and event.type == stt.SpeechEventType.FINAL_TRANSCRIPT:
+        final = event.type == stt.SpeechEventType.FINAL_TRANSCRIPT
+        state = self._state
+        hold = state is not None and not state["participant"]
+        carry = self._carry
+        for i, alt in enumerate(event.alternatives):
+            alt.text, found, rest = screen_text(alt.text, carry, hold)
+            if not final or i:
+                continue
+            self._carry = rest
+            if found:
                 self.ledger.redacted += len(found)
-                state = self._state
-                if state is not None and not state["participant"]:
+                if hold:
                     state["participant"] = found[0]
                     self.ledger.secret = found[0]
                 self.schedule_publish()
