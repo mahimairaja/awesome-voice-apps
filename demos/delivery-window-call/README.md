@@ -7,10 +7,8 @@ short message and a hang-up.
 
 ## Credentials
 
-`LIVEKIT_*`, `DEEPGRAM_API_KEY`, `OPENAI_API_KEY` and `CARTESIA_API_KEY`. For
-real phone calls you also need a LiveKit outbound SIP trunk (Twilio, Telnyx or
-another provider) and its id in `SIP_OUTBOUND_TRUNK_ID`. Calls cost money per
-minute with your SIP provider.
+`LIVEKIT_*`, `DEEPGRAM_API_KEY`, `OPENAI_API_KEY` and `CARTESIA_API_KEY`. No
+phone line or SIP trunk is needed: the callee joins from a browser.
 
 ## Run
 
@@ -21,23 +19,22 @@ uv run python agent.py download-files
 uv run python agent.py dev
 ```
 
-Place a call to a number you own (US and Canada, `+1` format):
+Then dispatch the agent into a room:
 
 ```sh
-lk dispatch create --new-room --agent-name delivery-window-call \
-  --metadata '{"phone_number": "+15555550123"}'
+lk dispatch create --new-room --agent-name delivery-window-call
 ```
 
-Without a number, the agent waits in the room for a browser participant to
-publish a microphone, which counts as picking up. Keypad presses then come from
-`room.localParticipant.publishDtmf(code, digit)`, so you can try the whole flow
-without a phone line. To hear the voicemail path, answer and read a greeting
+The agent waits in the room for a browser participant to publish a microphone,
+which counts as picking up. Keypad presses then come from
+`room.localParticipant.publishDtmf(code, digit)`, the same event a phone keypad
+produces. To hear the voicemail path, answer and read a greeting
 such as "Hi, you've reached Sam, leave a message after the tone."
 
 ## How it works
 
-- `create_sip_participant(..., wait_until_answered=True)` dials through the trunk.
-  It returns when `sip.callStatus` turns `active`, the moment the callee picks up.
+- The agent does not greet first. It waits for the callee to pick up (here, to
+  publish a microphone; on a phone line, for the SIP call to turn `active`).
 - `AMD` runs on the first thing the callee says and returns `human`,
   `machine-vm`, `machine-unavailable` or `uncertain`. It reuses the session's
   LLM and transcripts, so it adds no extra provider.

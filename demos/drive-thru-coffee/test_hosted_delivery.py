@@ -1,4 +1,4 @@
-"""Offline tests for the hosted delivery window call; never dial or call providers."""
+"""Offline tests for the hosted delivery window call; never call providers."""
 
 import asyncio
 import datetime
@@ -25,17 +25,16 @@ class Probe(hosted_delivery.DeliveryCaller):
 
     session = None
 
-    def __init__(self, phone=None):
+    def __init__(self):
         self.room = SimpleNamespace(
             name=ROOM, local_participant=SimpleNamespace(publish_data=AsyncMock())
         )
-        self.phone = phone
         self.callee = "visitor-1"
         self._hung_up = False
         self._call = None
         self.said = []
         self.session = SimpleNamespace(
-            userdata=hosted_delivery.initial_state(phone, MONDAY),
+            userdata=hosted_delivery.initial_state(MONDAY),
             interrupt=MagicMock(),
             say=self._say,
             generate_reply=MagicMock(),
@@ -62,29 +61,12 @@ def amd(category, transcript="Hello?"):
 
 
 class DeliveryCall(unittest.IsolatedAsyncioTestCase):
-    def test_only_a_signed_north_american_number_is_dialled(self):
-        self.assertEqual(hosted_delivery.phone_from('{"phone": "+14165550123"}'), "+14165550123")
-        for metadata in (
-            "",
-            "not json",
-            '{"phone": "+441632960961"}',
-            '{"phone": "+11165550123"}',
-            '{"phone": 14165550123}',
-            '{"agent": "delivery"}',
-        ):
-            self.assertIsNone(hosted_delivery.phone_from(metadata))
-
     def test_windows_fall_on_weekdays_and_state_is_per_call(self):
-        first = hosted_delivery.initial_state(None, datetime.date(2026, 10, 9))  # a Friday
-        second = hosted_delivery.initial_state(None, datetime.date(2026, 10, 9))
+        first = hosted_delivery.initial_state(datetime.date(2026, 10, 9))  # a Friday
+        second = hosted_delivery.initial_state(datetime.date(2026, 10, 9))
         self.assertEqual(first["windows"][0]["label"], "Tuesday October 13, 1 to 5 PM")
         self.assertEqual(first["windows"][1]["label"], "Monday October 12, 8 AM to noon")
         self.assertIsNot(first["keys"], second["keys"])
-        self.assertEqual(first["mode"], "browser")
-        phone = hosted_delivery.initial_state("+14165550123")
-        self.assertEqual(phone["mode"], "phone")
-        # The page never receives the number being dialled.
-        self.assertNotIn("+14165550123", json.dumps(hosted_delivery._module.snapshot(phone)))
 
     async def test_press_one_confirms_without_the_llm(self):
         agent = Probe()
@@ -159,40 +141,8 @@ class DeliveryCall(unittest.IsolatedAsyncioTestCase):
         agent.room.on = MagicMock()
         agent.room.off = MagicMock()
         with patch.object(hosted_delivery._module, "RING_SECONDS", 0.01):
-            self.assertFalse(await agent._wait_for_browser_answer())
+            self.assertFalse(await agent._wait_for_answer())
         self.assertEqual(agent.session.userdata["outcome"], "no-answer")
-
-    async def test_phone_mode_dials_the_trunk_and_reports_busy(self):
-        agent = Probe("+14165550123")
-        agent.session.room_io = SimpleNamespace(set_participant=MagicMock())
-        agent.room.on = MagicMock()
-        dial = AsyncMock()
-        ctx = SimpleNamespace(api=SimpleNamespace(sip=SimpleNamespace(create_sip_participant=dial)))
-        module = hosted_delivery._module
-        with (
-            patch.dict(module.os.environ, {"SIP_OUTBOUND_TRUNK_ID": "ST_test"}),
-            patch.object(module, "get_job_context", return_value=ctx),
-        ):
-            self.assertTrue(await agent._dial_phone())
-            request = dial.await_args.args[0]
-            self.assertEqual(request.sip_call_to, "+14165550123")
-            self.assertEqual(request.sip_trunk_id, "ST_test")
-            self.assertTrue(request.wait_until_answered)
-            agent.session.room_io.set_participant.assert_called_once_with("callee-phone")
-
-            busy = module.api.SipCallError(
-                "unavailable", "busy", status=503, metadata={"sip_status_code": "486"}
-            )
-            dial.side_effect = busy
-            agent.session.userdata = hosted_delivery.initial_state("+14165550123", MONDAY)
-            self.assertFalse(await agent._dial_phone())
-        self.assertEqual(agent.session.userdata["outcome"], "busy")
-
-    async def test_phone_mode_needs_a_trunk(self):
-        agent = Probe("+14165550123")
-        with patch.dict(hosted_delivery._module.os.environ, {"SIP_OUTBOUND_TRUNK_ID": ""}):
-            with self.assertRaises(RuntimeError):
-                await agent._dial_phone()
 
     async def test_hosted_call_listens_first_and_hangs_up_through_the_site(self):
         self.assertEqual(hosted.HostedDelivery.greeting, "")
@@ -203,7 +153,7 @@ class DeliveryCall(unittest.IsolatedAsyncioTestCase):
         await agent.hang_up()
         agent._finish.assert_awaited_once()
 
-    async def test_hosted_agent_reads_the_number_from_the_signed_dispatch(self):
+    async def test_hosted_agent_ignores_a_phone_number_in_the_dispatch(self):
         hosted.claims[ROOM] = {"id": ID}
         ctx = SimpleNamespace(
             room=SimpleNamespace(name=ROOM),
@@ -217,8 +167,10 @@ class DeliveryCall(unittest.IsolatedAsyncioTestCase):
             patch.object(hosted, "get_job_context", return_value=ctx),
         ):
             agent = hosted.HostedDelivery()
-        self.assertEqual(agent.phone, "+14165550123")
-        self.assertEqual(agent.initial_state()["mode"], "phone")
+        # Browser only: nothing in the dispatch makes the agent dial.
+        self.assertFalse(hasattr(agent, "phone"))
+        self.assertEqual(agent.initial_state()["stage"], "idle")
+        self.assertNotIn("mode", agent.initial_state())
         await agent.llm.aclose()
 
 

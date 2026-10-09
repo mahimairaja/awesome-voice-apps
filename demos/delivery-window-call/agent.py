@@ -4,27 +4,21 @@ The agent places the call, lets answering machine detection (AMD) decide who
 picked up, and then either talks to the customer (press 1 to confirm, 2 to
 reschedule, or just say it) or leaves a voicemail and hangs up.
 
-Two ways to reach the callee:
-- Phone: dispatch the agent with metadata {"phone_number": "+15555550123"} and
-  set SIP_OUTBOUND_TRUNK_ID. The agent dials through your SIP trunk.
-- Browser: dispatch without a number. The first participant who publishes a
-  microphone is the callee: publishing the mic is "picking up", and keypad
-  presses arrive with localParticipant.publishDtmf().
+The callee joins from the browser: the first participant who publishes a
+microphone is the callee, publishing the mic is "picking up", and keypad
+presses arrive with localParticipant.publishDtmf(). No phone line is needed.
 
 Run it:
 1. Copy .env.example to .env and fill the keys.
 2. uv sync && uv run python agent.py download-files
 3. uv run python agent.py dev, then dispatch:
-   lk dispatch create --new-room --agent-name delivery-window-call \
-     --metadata '{"phone_number": "+15555550123"}'
+   lk dispatch create --new-room --agent-name delivery-window-call
 """
 
 import asyncio
 import datetime
 import json
 import logging
-import os
-import re
 import time
 
 from dotenv import load_dotenv
@@ -51,7 +45,6 @@ logger = logging.getLogger("delivery-window-call")
 BRAND = "Northbound Home"
 ITEM = "a three-seat sofa"
 # North American numbers only: +1, then a valid area code and exchange.
-PHONE = re.compile(r"^\+1[2-9]\d{2}[2-9]\d{6}$")
 RING_SECONDS = 25
 DIGITS = frozenset("0123456789*#")
 
@@ -85,10 +78,9 @@ def build_windows(today: datetime.date | None = None) -> list[dict]:
     ]
 
 
-def initial_state(phone: str | None = None, today: datetime.date | None = None) -> dict:
+def initial_state(today: datetime.date | None = None) -> dict:
     windows = build_windows(today)
     return {
-        "mode": "phone" if phone else "browser",
         "stage": "idle",
         "started": None,
         "timeline": [],
@@ -103,10 +95,9 @@ def initial_state(phone: str | None = None, today: datetime.date | None = None) 
 
 
 def snapshot(data: dict) -> dict:
-    """The display state sent to the page: no phone number, no audio."""
+    """The display state sent to the page: no audio, nothing private."""
     return {
-        key: data[key]
-        for key in ("mode", "stage", "timeline", "amd", "keys", "menu", "order", "windows")
+        key: data[key] for key in ("stage", "timeline", "amd", "keys", "menu", "order", "windows")
     } | {"outcome": data["outcome"]}
 
 
@@ -150,10 +141,9 @@ def voicemail_text(data: dict) -> str:
 
 
 class DeliveryCaller(Agent):
-    def __init__(self, room: rtc.Room, phone: str | None = None) -> None:
+    def __init__(self, room: rtc.Room) -> None:
         super().__init__(instructions=INSTRUCTIONS)
         self.room = room
-        self.phone = phone
         self.callee: str | None = None
         self._hung_up = False
         self._call: asyncio.Task | None = None
@@ -177,7 +167,7 @@ class DeliveryCaller(Agent):
     # endregion
 
     async def on_enter(self) -> None:
-        self.session.userdata = initial_state(self.phone)
+        self.session.userdata = initial_state()
         self._call = asyncio.ensure_future(self.run_call())
 
     async def run_call(self) -> None:
@@ -186,13 +176,10 @@ class DeliveryCaller(Agent):
         self.room.on("sip_dtmf_received", self._on_dtmf)
         self.mark("dialling")
         try:
-            if self.phone:
-                answered = await self._dial_phone()
-            else:
-                self.mark("ringing")
-                answered = await self._wait_for_browser_answer()
-            if not answered:
+            self.mark("ringing")
+            if not await self._wait_for_answer():
                 return
+            self.room.on("participant_disconnected", self._on_left)
             self.mark("answered")
             async with AMD(
                 session,
@@ -211,40 +198,8 @@ class DeliveryCaller(Agent):
             logger.exception("delivery call failed")
             await self.hang_up()
 
-    async def _dial_phone(self) -> bool:
-        trunk = os.environ.get("SIP_OUTBOUND_TRUNK_ID", "")
-        if not trunk or not PHONE.match(self.phone or ""):
-            raise RuntimeError("Phone calls need SIP_OUTBOUND_TRUNK_ID and a +1 number")
-        self.callee = "callee-phone"
-        # The room_io follows the callee, not any web viewer already in the room.
-        self.session.room_io.set_participant(self.callee)
-
-        # For an outbound call, sip.callStatus stays "dialing" until the callee
-        # picks up and then turns "active"; create_sip_participant returns then.
-        self.mark("ringing")
-        try:
-            await get_job_context().api.sip.create_sip_participant(
-                api.CreateSIPParticipantRequest(
-                    room_name=self.room.name,
-                    sip_trunk_id=trunk,
-                    sip_call_to=self.phone,
-                    participant_identity=self.callee,
-                    participant_name="Customer",
-                    ringing_timeout=datetime.timedelta(seconds=RING_SECONDS),
-                    wait_until_answered=True,
-                ),
-                timeout=RING_SECONDS + 15,
-            )
-        except (api.SipCallError, asyncio.TimeoutError) as error:
-            code = getattr(error, "sip_status_code", None)
-            self.mark("busy" if code == 486 else "no-answer")
-            await self._end("busy" if code == 486 else "no-answer")
-            return False
-        self.room.on("participant_disconnected", self._on_left)
-        return True
-
-    async def _wait_for_browser_answer(self) -> bool:
-        """In the browser, publishing the microphone is picking up the phone."""
+    async def _wait_for_answer(self) -> bool:
+        """Publishing the microphone is picking up the phone."""
         answered = asyncio.Event()
 
         def check(*_args) -> None:
@@ -425,7 +380,7 @@ class DeliveryCaller(Agent):
         await self.hang_up()
 
     async def hang_up(self) -> None:
-        """End the call for everyone. Deleting the room drops the phone line too."""
+        """End the call for everyone by deleting the room."""
         if self._hung_up:
             return
         self._hung_up = True
@@ -449,12 +404,6 @@ server.setup_fnc = prewarm
 @server.rtc_session(agent_name="delivery-window-call")
 async def entrypoint(ctx: JobContext) -> None:
     ctx.log_context_fields = {"room": ctx.room.name}
-    phone = None
-    if ctx.job.metadata:
-        phone = json.loads(ctx.job.metadata).get("phone_number")
-    if phone and not PHONE.match(phone):
-        raise ValueError("phone_number must be a +1 North American number")
-
     session = AgentSession(
         userdata={},
         stt=deepgram.STT(model="nova-3"),
@@ -463,7 +412,7 @@ async def entrypoint(ctx: JobContext) -> None:
         vad=ctx.proc.userdata["vad"],
     )
     await ctx.connect()
-    await session.start(agent=DeliveryCaller(ctx.room, phone), room=ctx.room)
+    await session.start(agent=DeliveryCaller(ctx.room), room=ctx.room)
 
 
 if __name__ == "__main__":
