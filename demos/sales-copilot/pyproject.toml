@@ -1,0 +1,10 @@
+[project]
+name = "sales-copilot"
+version = "0.1.0"
+description = "A discovery call with an AI prospect while a silent copilot surfaces live sales cues."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero]>=1.8.5,<2.0",
+    "numpy>=1.26",
+    "python-dotenv>=1.0",
+]

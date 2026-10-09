@@ -30,6 +30,7 @@ jobs:
           - loan-callback
           - private-health-line
           - phone-tree-router
+          - sales-copilot
     steps:
       - uses: actions/checkout@v4
 

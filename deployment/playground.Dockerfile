@@ -37,6 +37,7 @@ COPY demos/payer-verification/agent.py demos/payer-verification/payer.py /app/de
 COPY demos/loan-callback/agent.py demos/loan-callback/application.py /app/demos/loan-callback/
 COPY demos/private-health-line/agent.py /app/demos/private-health-line/
 COPY demos/phone-tree-router/agent.py demos/phone-tree-router/routing.py /app/demos/phone-tree-router/
+COPY demos/sales-copilot/agent.py demos/sales-copilot/copilot.py /app/demos/sales-copilot/
 RUN useradd --create-home worker
 USER worker
 RUN python -m livekit.agents download-files

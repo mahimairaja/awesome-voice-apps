@@ -45,6 +45,7 @@ README lists its requirements and any extra setup. Provider usage may cost money
 | [Roadside dispatch](demos/roadside-dispatch/) | Roadside dispatcher: scores caller audio with Tyto, adapts when the line degrades, and re-confirms details captured over a bad line. |
 | [Storm outage line](demos/storm-outage-line/) | Logs a power outage on a simulated landline or bad cell line, scores each reading, and shows what the telephony fixes win back. |
 | [Support cost router](demos/support-cost-router/) | Routes each support turn to the cheapest model that can take it, answers repeat questions from a semantic cache, and prices the call against always using the big model. |
+| [Sales copilot](demos/sales-copilot/) | A discovery call with an AI buyer while a silent second agent surfaces battle cards, a line to say and the next question, timed live. |
 | [Talk to our team](demos/talk-to-our-team/) | GPT-Live sales conversation with request corrections and a guarded simulated calendar. |
 | [Tenant rights](demos/tenant-rights/) | Answers US renter questions from public HUD guidance, names the source, and redirects to legal help when a question is out of scope. |
 | [Water tracker](demos/water-tracker/) | Logs glasses of water by voice and tracks progress toward a daily goal. |

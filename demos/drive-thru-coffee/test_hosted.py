@@ -36,6 +36,7 @@ import hosted_resume
 import hosted_onprem
 import httpx
 import hosted_ivr
+import hosted_copilot
 import hosted_tenant
 import hosted_water
 from livekit.agents.llm import ChatMessage
@@ -2003,6 +2004,85 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(agent.tts.model, "sonic-3")
         self.assertEqual([tool.info.name for tool in agent.tools], ["transfer"])
         await agent.llm.aclose()
+
+    async def test_copilot_speaks_on_sonic_3_and_leaves_no_shared_modules(self):
+        self.assertNotIn("copilot", sys.modules)
+        # One prospect reply per rep turn and no tools: the default budget fits.
+        self.assertEqual(hosted.HostedCopilot.llm_budget, 12)
+        hosted.claims[ROOM] = {"id": ID, "seconds": 60}
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                },
+            ),
+            patch.object(
+                hosted,
+                "get_job_context",
+                return_value=SimpleNamespace(room=SimpleNamespace(name=ROOM)),
+            ),
+        ):
+            agent = hosted.HostedCopilot()
+        self.assertEqual(agent.tts.model, "sonic-3")
+        self.assertIn("Kestrel Freight", agent.instructions)
+        self.assertIn("role-play", agent.greeting)
+        self.assertIsNone(agent.copilot)
+        await agent.llm.aclose()
+
+    async def test_copilot_limits_scale_and_its_requests_bill_the_call(self):
+        self.assertEqual(hosted_copilot.limits(120), {"max_lines": 14, "max_lookups": 24})
+        self.assertEqual(hosted_copilot.limits(30), {"max_lines": 3, "max_lookups": 6})
+        self.assertEqual(hosted_copilot.limits(1), {"max_lines": 1, "max_lookups": 1})
+        with self.assertRaises(KeyError):
+            hosted_copilot.cost("gpt-5", 10, 10)
+        agent = object.__new__(hosted.HostedCopilot)
+        agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+        agent.meter_copilot("gpt-4o-mini", 1_000_000, 100_000)
+        agent.meter_copilot("text-embedding-3-small", 500_000, 0)
+        await asyncio.sleep(0)
+        self.assertEqual(
+            sorted(agent.sink.records.values()),
+            [
+                ("openai", hosted_copilot.Decimal("0.01")),
+                ("openai", hosted_copilot.Decimal("0.21")),
+            ],
+        )
+        self.assertEqual(agent.sink.report.await_count, 2)
+
+    async def test_copilot_calls_keep_separate_state(self):
+        def make(room):
+            agent = object.__new__(hosted.HostedCopilot)
+            hosted_copilot.Prospect.__init__(agent, room)
+            agent._activity = None
+            agent.approval = {"seconds": 120}
+            agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+            return agent
+
+        first, second = make(SimpleNamespace()), make(SimpleNamespace())
+        session = MagicMock()
+        with (
+            patch.dict(hosted.os.environ, {"OPENAI_API_KEY": "offline"}),
+            patch.object(hosted_copilot._module, "publish_ui_event") as publish,
+            patch.object(type(first), "session", session, create=True),
+        ):
+            first.publish_initial()
+            second.publish_initial()
+            first.copilot.heard_rep("hello there")
+        self.assertIsNot(first.copilot, second.copilot)
+        self.assertIsNot(first.copilot.client, second.copilot.client)
+        self.assertEqual(first.copilot.max_lines, 14)
+        self.assertEqual(second.copilot.words, {"rep": 0, "prospect": 0})
+        self.assertEqual(
+            [call.args[1:3] for call in publish.call_args_list][:2],
+            [("Copilot", "mount"), ("Copilot", "mount")],
+        )
+        events = {call.args[0] for call in session.on.call_args_list}
+        self.assertEqual(events, {"user_input_transcribed", "conversation_item_added"})
+        for agent in (first, second):
+            await agent.copilot.client.close()
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()

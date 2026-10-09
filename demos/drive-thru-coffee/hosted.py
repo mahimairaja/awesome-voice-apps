@@ -100,6 +100,11 @@ from hosted_ivr import GREETING as IVR_GREETING
 from hosted_ivr import PhoneTreeRouter, publish_router, router_cost
 from hosted_ivr import initial_state as ivr_state
 from hosted_ivr import instructions as ivr_instructions
+from hosted_copilot import GREETING as COPILOT_GREETING
+from hosted_copilot import Prospect
+from hosted_copilot import cost as copilot_cost
+from hosted_copilot import limits as copilot_limits
+from hosted_copilot import voice as copilot_voice
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -1215,6 +1220,29 @@ class HostedIvr(HostedGuard, PhoneTreeRouter):
         spawn(self.sink.report())
 
 
+class HostedCopilot(HostedGuard, Prospect):
+    """The prospect speaks through HostedGuard; the silent copilot bills to the same call."""
+
+    demo = "copilot"
+    greeting = COPILOT_GREETING
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.update_options(tts=copilot_voice())
+
+    def initial_state(self) -> dict:
+        return {}
+
+    def publish_initial(self) -> None:
+        self.start_copilot(meter=self.meter_copilot, **copilot_limits(self.approval["seconds"]))
+
+    def meter_copilot(self, model: str, input_tokens: int, output_tokens: int) -> None:
+        # VoiceGateway does not see the copilot's direct OpenAI calls; bill them here.
+        cost = copilot_cost(model, input_tokens, output_tokens)
+        self.sink.records[f"copilot-{uuid.uuid4()}"] = ("openai", cost)
+        spawn(self.sink.report())
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT-Live demos (REALTIME_DEMOS) start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -1251,6 +1279,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "resume": HostedResume,
     "onprem": HostedOnprem,
     "ivr": HostedIvr,
+    "copilot": HostedCopilot,
 }
 # GPT-Live speech-to-speech demos share the call plumbing in build_server.
 REALTIME_DEMOS = frozenset({"sdr", "interp"})
