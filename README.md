@@ -33,6 +33,7 @@ README lists its requirements and any extra setup. Provider usage may cost money
 | [Build your own agent](demos/build-your-own-agent/) | One agent configured per tenant: change its brief, tools and voice mid-call over LiveKit RPC. |
 | [Claim intake](demos/claim-intake/) | Takes an auto insurance claim by voice, validates each field, and files it. |
 | [Clinic scheduler](demos/clinic-scheduler/) | Books a doctor appointment by voice, finds open slots, and handles reschedules. |
+| [Delivery window call](demos/delivery-window-call/) | Calls a customer to confirm a delivery: detects voicemail, takes keypad presses, and reschedules by voice. |
 | [Drive-thru coffee](demos/drive-thru-coffee/) | Takes a coffee order, modifies items mid-flow, totals the cart. |
 | [Front desk interpreter](demos/front-desk-interpreter/) | Two languages, one front desk. Real-time, both directions. |
 | [Panel scribe](demos/panel-scribe/) | Labels each interviewer's voice live in a candidate debrief and turns it into an attributed scorecard. |

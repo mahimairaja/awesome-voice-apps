@@ -23,6 +23,7 @@ COPY demos/router-rescue/agent.py /app/demos/router-rescue/
 COPY demos/build-your-own-agent/agent.py /app/demos/build-your-own-agent/
 COPY demos/flight-rebooking/agent.py /app/demos/flight-rebooking/
 COPY demos/returns-desk-qa/agent.py /app/demos/returns-desk-qa/
+COPY demos/delivery-window-call/agent.py /app/demos/delivery-window-call/
 RUN useradd --create-home worker
 USER worker
 RUN python -m livekit.agents download-files

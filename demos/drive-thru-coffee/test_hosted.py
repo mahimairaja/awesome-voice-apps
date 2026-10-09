@@ -258,8 +258,11 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             hosted.parse_job(json.dumps({"agent": "roadside", "reservation": ID}), ROOM)
         for demo, agent in hosted.CASCADE_AGENTS.items():
             self.assertEqual(agent.demo, demo)
-            # The interview lobby hands off silently; each interviewer opens its round.
-            self.assertEqual(bool(agent.greeting), demo != "interview")
+            # The interview lobby hands off silently, and outbound calls listen
+            # first; every other demo opens with a greeting.
+            self.assertEqual(
+                bool(agent.greeting), demo != "interview" and agent is not hosted.HostedDelivery
+            )
 
     async def test_water_calls_start_empty_and_stay_isolated(self):
         agent = object.__new__(hosted.HostedWater)

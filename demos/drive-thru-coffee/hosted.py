@@ -22,6 +22,8 @@ from hosted_city311 import City311Agent, make_stt, make_tts, publish_city311
 from hosted_city311 import initial_state as city311_state
 from hosted_claim import instructions as claim_instructions
 from hosted_clinic import ClinicScheduler, publish_clinic
+from hosted_delivery import DeliveryCaller, publish_delivery
+from hosted_delivery import initial_state as delivery_state
 from hosted_clinic import initial_state as clinic_state
 from hosted_panel import GREETING as PANEL_GREETING
 from hosted_panel import SoloPanelScribe, publish_panel
@@ -271,6 +273,7 @@ class HostedGuard:
                 dead_air=False,
             )
             self.publish_initial()
+            # Outbound demos wait for the callee to speak first.
             if self.greeting:
                 await self.session.generate_reply(instructions=self.greeting)
         except Exception:
@@ -736,6 +739,29 @@ class HostedReturns(HostedGuard, ReturnsDesk):
         spawn(sink.report())
 
 
+class HostedDelivery(HostedGuard, DeliveryCaller):
+    demo = "delivery"
+    # No greeting: the agent places the call and listens for who answers first.
+    greeting = ""
+
+    def initial_state(self) -> dict:
+        return delivery_state()
+
+    def publish_initial(self) -> None:
+        publish_delivery(self.room, self.session.userdata)
+
+    async def on_enter(self) -> None:
+        await super().on_enter()
+        self._call = spawn(self.run_call())
+
+    async def hang_up(self) -> None:
+        if self._hung_up:
+            return
+        self._hung_up = True
+        # The site deletes the room when the call ends.
+        await self._finish()
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT-Live demos (REALTIME_DEMOS) start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -758,6 +784,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "builder": HostedBuilder,
     "rebook": HostedRebook,
     "returns": HostedReturns,
+    "delivery": HostedDelivery,
 }
 # GPT-Live speech-to-speech demos share the call plumbing in build_server.
 REALTIME_DEMOS = frozenset({"sdr", "interp"})
