@@ -33,6 +33,7 @@ README lists its requirements and any extra setup. Provider usage may cost money
 | [Clinic scheduler](demos/clinic-scheduler/) | Books a doctor appointment by voice, finds open slots, and handles reschedules. |
 | [Drive-thru coffee](demos/drive-thru-coffee/) | Takes a coffee order, modifies items mid-flow, totals the cart. |
 | [Front desk interpreter](demos/front-desk-interpreter/) | Two languages, one front desk. Real-time, both directions. |
+| [Manager approval](demos/manager-approval/) | Asks a manager to approve an over-limit refund mid-call, holds gracefully, and warm-transfers with the brief. |
 | [Panel scribe](demos/panel-scribe/) | Labels each interviewer's voice live in a candidate debrief and turns it into an attributed scorecard. |
 | [Quick trivia](demos/quick-trivia/) | Shows three trivia questions the caller can edit, then quizzes them one at a time and keeps score. |
 | [Roadside dispatch](demos/roadside-dispatch/) | Roadside dispatcher: scores caller audio with Tyto, adapts when the line degrades, and re-confirms details captured over a bad line. |

@@ -11,6 +11,10 @@ from decimal import ROUND_CEILING, Decimal
 import httpx
 import voicegateway
 from agent import DriveThruAttendant, _publish_cart, _publish_menu
+from hosted_approval import GREETING as APPROVAL_GREETING
+from hosted_approval import HostedManager, RefundDesk, publish_approval
+from hosted_approval import initial_state as approval_state
+from hosted_approval import voice as approval_voice
 from hosted_claim import ClaimIntake, publish_claim
 from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
@@ -30,6 +34,7 @@ from livekit.agents import (
     get_job_context,
 )
 from livekit.agents.voice.agent_session import SessionConnectOptions
+from livekit.agents.voice.room_io import RoomOptions
 from livekit.plugins import cartesia, deepgram, openai, silero
 from trivia import QUESTIONS, HostedTriviaHost, publish_trivia
 from trivia import initial_state as trivia_state
@@ -354,6 +359,58 @@ class HostedClaim(HostedGuard, ClaimIntake):
         publish_claim(self.room, self.session.userdata)
 
 
+class HostedApproval(HostedGuard, RefundDesk):
+    """Returns agent that asks the visitor, as manager, to approve over RPC."""
+
+    demo = "approval"
+    # Lookup, the request, a little hold talk, the decision, the refund and
+    # possibly a transfer: most turns are a tool call plus a reply.
+    llm_budget = 24
+    greeting = APPROVAL_GREETING
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.update_options(tts=approval_voice("agent"))
+
+    def initial_state(self) -> dict:
+        return approval_state()
+
+    def publish_initial(self) -> None:
+        publish_approval(self.room, self.session.userdata)
+
+    def make_manager(self, case: dict):
+        return HostedManager(
+            self,
+            self.room,
+            case,
+            chat_ctx=self._carried_context(),
+            stt=self.stt,
+            llm=self.llm,
+            tts=approval_voice("manager"),
+        )
+
+    # The same limits as HostedGuard.llm_node and tts_node, on the shared
+    # counters, for the manager this call transfers to.
+    def charge_llm(self, chat_ctx) -> bool:
+        self._llm_requests += 1
+        scale = self.approval["seconds"] / 120
+        if (
+            self._llm_requests > max(1, int(self.llm_budget * scale))
+            or len(json.dumps(chat_ctx.to_dict()).encode()) > 16000
+        ):
+            spawn(self._finish())
+            return False
+        return True
+
+    async def bound_text(self, text):
+        async for chunk in text:
+            self._tts_bytes += len(chunk.encode())
+            if self._tts_bytes > int(4000 * self.approval["seconds"] / 120):
+                spawn(self._finish())
+                return
+            yield chunk
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -364,6 +421,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
+    "approval": HostedApproval,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 
@@ -483,7 +541,11 @@ def build_server() -> AgentServer:
         await ctx.connect()
         approval = claims.get(ctx.room.name, {})
         agent = CASCADE_AGENTS[approval.get("demo", "coffee")]()
-        await session.start(agent=agent, room=ctx.room, record=False)
+        # Approval visitors may publish data so the page can answer RPC. Never
+        # let that channel feed typed chat to the model past the speech path.
+        await session.start(
+            agent=agent, room=ctx.room, record=False, room_options=RoomOptions(text_input=False)
+        )
 
     return server
 
