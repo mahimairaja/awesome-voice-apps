@@ -81,6 +81,7 @@ class HostedCity311(unittest.IsolatedAsyncioTestCase):
         first, second = self.build(), self.build()
         self.assertEqual(first.stt._opts.language, "multi")
         self.assertEqual(first.stt.model, "nova-3")
+        self.assertEqual(first.stt._opts.endpointing_ms, 100)
         self.assertIsNot(first.tts, second.tts)
         self.assertIsNot(first.stt, second.stt)
         await first.llm.aclose()

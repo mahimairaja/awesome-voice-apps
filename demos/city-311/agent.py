@@ -228,7 +228,8 @@ def initial_state() -> dict:
 
 def make_stt() -> deepgram.STT:
     # `multi` is Nova-3's code-switching mode: one stream, a language per result.
-    return deepgram.STT(model="nova-3", language="multi")
+    # Deepgram recommends 100 ms endpointing for code-switching (default is 25).
+    return deepgram.STT(model="nova-3", language="multi", endpointing_ms=100)
 
 
 def make_tts(lang: str = "en") -> cartesia.TTS:
