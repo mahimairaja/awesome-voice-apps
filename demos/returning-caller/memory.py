@@ -227,8 +227,9 @@ def snapshot(state: dict, now: float) -> dict:
             "fresh": e["id"] in fresh,
         }
 
+    # A replaced summary is housekeeping, not something the caller deleted.
     forgotten = sorted(
-        (e for e in entries if e["forgotten"] is not None),
+        (e for e in entries if e["forgotten"] is not None and e["by"] != "replaced"),
         key=lambda e: e["forgotten"],
         reverse=True,
     )
