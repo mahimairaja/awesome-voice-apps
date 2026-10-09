@@ -13,8 +13,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import hosted
 import hosted_claim
 import hosted_clinic
+import hosted_panel
 import hosted_tenant
 import hosted_water
+from livekit.agents.llm import ChatMessage
 from trivia import HostedTriviaHost, initial_state
 
 ID = "598cd768-86d4-42a1-bb44-adc44fba4207"
@@ -236,7 +238,8 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
 
     async def test_registry_admits_each_demo_and_nothing_else(self):
         self.assertEqual(
-            hosted.DEMOS, {"coffee", "trivia", "water", "clinic", "claim", "tenant", "sdr"}
+            hosted.DEMOS,
+            {"coffee", "trivia", "water", "clinic", "claim", "tenant", "panel", "sdr"},
         )
         for demo in hosted.DEMOS:
             metadata = json.dumps({"agent": demo, "reservation": ID})
@@ -410,6 +413,97 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(type(agent.llm).__module__.startswith("livekit.plugins.openai"))
         await agent.llm.aclose()
         self.assertEqual(hosted.HostedGuard.llm_budget, 12)
+
+    async def test_panel_handoffs_attribute_lines_to_the_spoken_seat(self):
+        self.assertEqual(hosted_panel.handoff("Engineer here."), ("Engineer", ""))
+        self.assertEqual(
+            hosted_panel.handoff("This is the recruiter, she was great with the team"),
+            ("Recruiter", "she was great with the team"),
+        )
+        self.assertEqual(
+            hosted_panel.handoff("Okay, switching to the hiring manager. Strong hire."),
+            ("Hiring manager", "Strong hire."),
+        )
+        self.assertEqual(
+            hosted_panel.handoff("I think the engineer liked her"),
+            (None, "I think the engineer liked her"),
+        )
+        self.assertEqual(
+            hosted_panel.handoff("Manager expects stronger tests"),
+            (None, "Manager expects stronger tests"),
+        )
+        self.assertEqual(
+            hosted_panel.handoff("I'm the engineer. Clean code."), ("Engineer", "Clean code.")
+        )
+        self.assertEqual(hosted_panel.handoff("I am the recruiter"), ("Recruiter", ""))
+        room = SimpleNamespace()
+        first = hosted_panel.SoloPanelScribe(room)
+        second = hosted_panel.SoloPanelScribe(SimpleNamespace())
+
+        def turn(text):
+            return ChatMessage(role="user", content=[text])
+
+        with patch.object(hosted_panel._module, "publish_ui_event") as publish:
+            with self.assertRaises(hosted_panel.StopResponse):
+                await first.on_user_turn_completed(None, turn("Engineer here."))
+
+            async def say(text):
+                msg = turn(text)
+                with self.assertRaises(hosted_panel.StopResponse):
+                    await first.on_user_turn_completed(None, msg)
+                return msg
+
+            msg = await say("Her system design was solid")
+            self.assertEqual(msg.content, ["[Engineer] Her system design was solid"])
+            await say("Recruiter. Great with people, wants remote")
+            recap = turn("scribe recap")
+            await first.on_user_turn_completed(None, recap)
+        self.assertEqual(
+            first.transcript,
+            [
+                {"speaker": "Engineer", "text": "Her system design was solid"},
+                {"speaker": "Recruiter", "text": "Great with people, wants remote"},
+                {"speaker": "Recruiter", "text": "scribe recap"},
+            ],
+        )
+        self.assertEqual(second.transcript, [])
+        self.assertEqual(second.sidecar.current_speaker, "Hiring manager")
+        meters = [c.kwargs["props"] for c in publish.call_args_list if c.args[1] == "Meters"]
+        self.assertEqual([item["label"] for item in meters[-1]["items"]], ["Engineer", "Recruiter"])
+        with patch.object(hosted_panel._module, "publish_ui_event") as publish:
+            row = hosted_panel.ScorecardRow(
+                interviewer="Engineer", strengths="design", concerns="none", lean="hire"
+            )
+            unspoken = hosted_panel.ScorecardRow(
+                interviewer="Hiring manager", strengths="-", concerns="-", lean="undecided"
+            )
+            await first.publish_scorecard(None, [row, unspoken], "Lean hire.")
+        table = publish.call_args_list[0].kwargs["props"]
+        self.assertEqual(table["rows"], [["Engineer", "design", "none", "hire"]])
+
+    async def test_panel_loads_without_its_original_provider_plugins(self):
+        for name in hosted_panel._PROVIDERS:
+            self.assertNotIn(f"livekit.plugins.{name}", sys.modules)
+        hosted.claims[ROOM] = {"id": ID}
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                },
+            ),
+            patch.object(
+                hosted,
+                "get_job_context",
+                return_value=SimpleNamespace(room=SimpleNamespace(name=ROOM)),
+            ),
+        ):
+            agent = hosted.HostedPanel()
+        self.assertIn("one visitor plays the whole panel", agent.instructions)
+        self.assertEqual(len(agent.tools), 1)
+        await agent.llm.aclose()
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()

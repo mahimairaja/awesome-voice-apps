@@ -16,6 +16,8 @@ from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
 from hosted_clinic import ClinicScheduler, publish_clinic
 from hosted_clinic import initial_state as clinic_state
+from hosted_panel import GREETING as PANEL_GREETING
+from hosted_panel import SoloPanelScribe, publish_panel
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -354,6 +356,26 @@ class HostedClaim(HostedGuard, ClaimIntake):
         publish_claim(self.room, self.session.userdata)
 
 
+class HostedPanel(HostedGuard, SoloPanelScribe):
+    demo = "panel"
+    greeting = PANEL_GREETING
+
+    def __init__(self) -> None:
+        super().__init__()
+        # One recap writes a row per seat in a single tool call; 180 tokens truncates it.
+        self.update_options(
+            llm=openai.LLM(
+                model="gpt-4o-mini", max_completion_tokens=450, max_retries=0, store=False
+            )
+        )
+
+    def initial_state(self) -> dict:
+        return {}
+
+    def publish_initial(self) -> None:
+        publish_panel(self.room)
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -364,6 +386,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
+    "panel": HostedPanel,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 
