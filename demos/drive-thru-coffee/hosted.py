@@ -4,11 +4,13 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import time
 import uuid
 from decimal import ROUND_CEILING, Decimal
 
 import httpx
+import status
 import voicegateway
 from agent import DriveThruAttendant, _publish_cart, _publish_menu
 from hosted_claim import ClaimIntake, publish_claim
@@ -489,4 +491,8 @@ def build_server() -> AgentServer:
 
 
 if __name__ == "__main__":
-    cli.run_app(build_server())
+    server = build_server()
+    if sys.argv[1:2] == ["start"]:
+        # Liveness and key checks for mahimai.ca/status; only on the hosted worker.
+        status.start(DEMOS)
+    cli.run_app(server)
