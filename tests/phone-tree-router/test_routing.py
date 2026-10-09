@@ -33,7 +33,8 @@ def test_menu_time_is_the_perfect_caller_best_case():
     assert billing["keys"] == ["1", "3"]
     # Main menu intro, first option, press, submenu intro, three options, press.
     said = [s["text"] for s in billing["steps"] if s["kind"] == "say"]
-    assert said[1] == "For billing and payments, press 1."
+    assert said[3] == "Please listen closely, as our menu options have changed."
+    assert said[4] == "For billing and payments, press 1."
     assert said[-1] == "For questions about your bill, press 3."
     words = sum(len(text.split()) for text in said)
     expected = (
@@ -51,7 +52,7 @@ def test_menu_time_is_the_perfect_caller_best_case():
 def test_main_menu_before_routing_has_no_total():
     menu = routing.menu_path(None)
     assert menu["total"] is None and menu["keys"] == []
-    assert len(menu["steps"]) == 1 + len(routing.MENU.options)
+    assert len(menu["steps"]) == 4 + len(routing.MENU.options)
     with pytest.raises(ValueError):
         routing.menu_path("tv")
 

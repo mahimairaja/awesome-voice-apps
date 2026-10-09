@@ -14,6 +14,7 @@ The model never picks the queue. A separate router call scores every queue
 """
 
 import math
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -161,7 +162,9 @@ def _path(menu: Menu, department: str) -> list[tuple[Menu, int]] | None:
 def _menu_steps(menu: Menu, upto: int | None, at: float) -> tuple[list[dict], float]:
     """The lines a caller hears in one menu, stopping after option `upto`."""
     steps = []
-    lines = [menu.intro, *(o.line for o in menu.options[: None if upto is None else upto + 1])]
+    # Intros are read a sentence at a time, with a pause after each.
+    intro = re.split(r"(?<=[.!?])\s+", menu.intro)
+    lines = [*intro, *(o.line for o in menu.options[: None if upto is None else upto + 1])]
     for text in lines:
         seconds = speak_seconds(text)
         steps.append({"kind": "say", "text": text, "at": round(at, 1), "dur": round(seconds, 1)})
