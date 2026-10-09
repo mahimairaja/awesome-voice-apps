@@ -44,7 +44,7 @@ logger = logging.getLogger("delivery-window-call")
 
 BRAND = "Northbound Home"
 ITEM = "a three-seat sofa"
-# North American numbers only: +1, then a valid area code and exchange.
+# Seconds to wait for the callee to publish a microphone before giving up.
 RING_SECONDS = 25
 DIGITS = frozenset("0123456789*#")
 
