@@ -24,6 +24,7 @@ jobs:
           - fair-cancellation
           - pronunciation-coach
           - postop-checkin
+          - returning-caller
     steps:
       - uses: actions/checkout@v4
 
