@@ -1,0 +1,9 @@
+[project]
+name = "pronunciation-coach"
+version = "0.1.0"
+description = "A speaking coach that scores every word you read aloud and drills only the weak ones."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero]>=1.8,<2.0",
+    "python-dotenv>=1.0",
+]

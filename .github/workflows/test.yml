@@ -22,6 +22,7 @@ jobs:
           - pharmacy-refill
           - furnace-repair
           - fair-cancellation
+          - pronunciation-coach
     steps:
       - uses: actions/checkout@v4
 
