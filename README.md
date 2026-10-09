@@ -40,6 +40,7 @@ README lists its requirements and any extra setup. Provider usage may cost money
 | [Manager approval](demos/manager-approval/) | Asks a manager to approve an over-limit refund mid-call, holds gracefully, and warm-transfers with the brief. |
 | [Panel scribe](demos/panel-scribe/) | Labels each interviewer's voice live in a candidate debrief and turns it into an attributed scorecard. |
 | [Post-op check-in](demos/postop-checkin/) | Calls a patient on day 3 after knee surgery; a fixed rule table, not the model, decides when to send them to the nurse or 911. |
+| [Payer verification call](demos/payer-verification/) | Calls an insurer for a clinic: presses through the phone tree, waits on hold, and captures benefits from the rep. |
 | [Quick trivia](demos/quick-trivia/) | Shows three trivia questions the caller can edit, then quizzes them one at a time and keeps score. |
 | [Roadside dispatch](demos/roadside-dispatch/) | Roadside dispatcher: scores caller audio with Tyto, adapts when the line degrades, and re-confirms details captured over a bad line. |
 | [Storm outage line](demos/storm-outage-line/) | Logs a power outage on a simulated landline or bad cell line, scores each reading, and shows what the telephony fixes win back. |

@@ -26,6 +26,7 @@ jobs:
           - postop-checkin
           - returning-caller
           - support-cost-router
+          - payer-verification
     steps:
       - uses: actions/checkout@v4
 

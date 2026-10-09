@@ -1,0 +1,9 @@
+[project]
+name = "payer-verification"
+version = "0.1.0"
+description = "Calls an insurer for a clinic: works the phone tree, waits on hold, and captures benefits."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero]>=1.8,<2.0",
+    "python-dotenv>=1.0",
+]
