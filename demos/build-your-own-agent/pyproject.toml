@@ -1,0 +1,9 @@
+[project]
+name = "build-your-own-agent"
+version = "0.1.0"
+description = "One voice agent configured per tenant: swap its brief, tools and voice mid-call over LiveKit RPC."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero]>=1.6,<2.0",
+    "python-dotenv>=1.0",
+]

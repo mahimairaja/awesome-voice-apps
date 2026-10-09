@@ -19,6 +19,19 @@ jobs:
           - tenant-rights
           - claim-intake
           - panel-scribe
+          - pharmacy-refill
+          - furnace-repair
+          - fair-cancellation
+          - pronunciation-coach
+          - postop-checkin
+          - returning-caller
+          - support-cost-router
+          - payer-verification
+          - loan-callback
+          - private-health-line
+          - phone-tree-router
+          - sales-copilot
+          - agent-stress-test
     steps:
       - uses: actions/checkout@v4
 

@@ -1,0 +1,9 @@
+[project]
+name = "phone-tree-router"
+version = "0.1.0"
+description = "A support line that routes callers by what they say, not by what they press."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero]>=1.8,<2.0",
+    "python-dotenv>=1.0",
+]

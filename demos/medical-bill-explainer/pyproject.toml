@@ -1,0 +1,9 @@
+[project]
+name = "medical-bill-explainer"
+version = "0.1.0"
+description = "Health plan member services that reads the bill you share mid-call, explains each line and disputes the errors."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero,images]>=1.8,<2.0",
+    "python-dotenv>=1.0",
+]

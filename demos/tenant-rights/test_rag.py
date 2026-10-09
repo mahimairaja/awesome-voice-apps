@@ -9,7 +9,6 @@ path), and an empty index is never treated as covered.
 """
 
 import numpy as np
-
 from rag import retrieve
 
 

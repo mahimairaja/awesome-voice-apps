@@ -1,0 +1,16 @@
+[project]
+name = "storm-outage-line"
+version = "0.1.0"
+description = "A power outage line on a simulated phone network: hear what landline and bad cell audio do to speech-to-text, and what the telephony fixes win back."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero]>=1.8.5,<2.0",
+    "numpy>=1.26",
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

@@ -3,7 +3,8 @@
 Maintainer-owned integration for mahimai.ca. Contributors only need a runnable demo.
 
 Build from the repository root with `deployment/playground.Dockerfile`. The single
-worker accepts server-approved coffee, trivia, water, clinic, claim, tenant and SDR reservations. Keep the
+worker accepts a server-approved reservation for any demo in `CASCADE_AGENTS` (see
+`hosted.py`) or a GPT Live demo in `REALTIME_DEMOS`. Keep the
 existing `mahimai-playground-coffee` dispatch name for compatibility.
 
 To host another STT, LLM and TTS demo: add a small adapter beside `hosted.py`
@@ -14,7 +15,14 @@ same id before it can reserve a call. Provider keys and pricing must already be
 supported by `PlaygroundSink`; unknown pricing ends the call. A demo built on other
 providers keeps its own code: the adapter swaps the stack (see `hosted_claim.py`,
 which stubs the unused plugin imports while loading). Raise `llm_budget` on the
-hosted class when a demo needs more than 12 model turns in two minutes.
+hosted class when a demo needs more than 12 model turns in two minutes. A demo
+that hands off to other agents must charge them to the same call caps (see
+`hosted_fraud.py`), or a handoff resets the limits.
+
+A demo that wraps its own provider clients overrides `voice_stack()` (see
+`HostedOnprem`): the private health line measures and inspects every language
+model request through its own OpenAI client, so it keeps that client instead of
+the default one. It uses the same Deepgram, OpenAI and Cartesia keys.
 
 Required environment: LiveKit credentials, OpenAI, Deepgram and Cartesia keys,
 `PLAYGROUND_ORIGIN`, `PLAYGROUND_WORKER_SECRET`, `VOICEGW_COLLECTOR_URL`, and

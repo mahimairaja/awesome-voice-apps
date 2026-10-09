@@ -38,7 +38,6 @@ from livekit.agents import (
 )
 from livekit.plugins import nvidia, openai, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
-
 from rag import NIM_BASE_URL, embed_query, embedding_backend, load_index, retrieve
 
 load_dotenv()

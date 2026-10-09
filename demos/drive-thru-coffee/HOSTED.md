@@ -18,6 +18,11 @@ Server secrets required:
 - PLAYGROUND_ORIGIN: approved site or preview HTTPS origin
 - PLAYGROUND_WORKER_SECRET: same random secret configured on the site
 - VOICEGW_COLLECTOR_URL, VOICEGW_API_KEY: private authenticated collector
+- SPATIUS_APP_ID, SPATIUS_API_KEY, SPATIUS_AVATAR_ID: the concierge demo's
+  avatar. The site needs the same SPATIUS_APP_ID and SPATIUS_AVATAR_ID (never
+  the API key) so the browser can draw the face. Optional SPATIUS_USD_PER_MINUTE
+  (default 0.02) sets the per-second avatar charge the worker reports. Without
+  the keys, concierge calls end before any inference.
 
 Do not put secrets in this repository or browser storage. Do not run this worker
 against a public playground until infrastructure and provider spending have been
@@ -41,9 +46,18 @@ This telemetry is separate from the site's conservative admission ledger. Provid
 billing, network costs and hosting charges still require reconciliation. A budget
 alert is not a guaranteed invoice cap.
 
+## Status heartbeat
+
+`hosted.py start` also runs `status.py` on a daemon thread. Once a minute it posts
+`{"action": "heartbeat"}` to the site's worker endpoint with the demo ids it has
+loaded and one probe per provider key: `GET /v1/models/gpt-4o-mini` on OpenAI,
+`GET /v1/projects` on Deepgram and `GET /voices?limit=1` on Cartesia. These are
+reads, not inference, so they are not billed. The site turns them into
+mahimai.ca/status; no new variables are needed.
+
 ## Offline verification
 
-Run `python -m unittest discover -s . -p test_hosted.py`. No provider requests are
+Run `python -m unittest discover -s . -p 'test_*.py'`. No provider requests are
 made. These checks cover admission, attribution, generation limits and deadline cleanup; real audio,
 concurrent carts, provider telemetry and container memory were also checked locally
 on 2026-10-04. Deployment-specific checks still precede launch.
