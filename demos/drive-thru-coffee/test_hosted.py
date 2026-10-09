@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import hosted
 import hosted_claim
 import hosted_clinic
+import hosted_interp
 import hosted_tenant
 import hosted_water
 from trivia import HostedTriviaHost, initial_state
@@ -236,7 +237,8 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
 
     async def test_registry_admits_each_demo_and_nothing_else(self):
         self.assertEqual(
-            hosted.DEMOS, {"coffee", "trivia", "water", "clinic", "claim", "tenant", "sdr"}
+            hosted.DEMOS,
+            {"coffee", "trivia", "water", "clinic", "claim", "tenant", "sdr", "interp"},
         )
         for demo in hosted.DEMOS:
             metadata = json.dumps({"agent": demo, "reservation": ID})
@@ -410,6 +412,55 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(type(agent.llm).__module__.startswith("livekit.plugins.openai"))
         await agent.llm.aclose()
         self.assertEqual(hosted.HostedGuard.llm_budget, 12)
+
+    async def test_interpreter_pairs_each_line_with_what_was_said(self):
+        for key in hosted_interp._STUBS:
+            self.assertNotIn(key, sys.modules)
+        finish = AsyncMock()
+        spawn = MagicMock()
+        args = (SimpleNamespace(name=ROOM), {"id": ID}, finish, spawn, None)
+        with patch.dict(hosted.os.environ, {"OPENAI_API_KEY": "offline"}):
+            agent = hosted.realtime_agent("interp", *args)
+            other = hosted.realtime_agent("interp", *args)
+            for demo in hosted.REALTIME_DEMOS:
+                model = hosted.realtime_model(demo)
+                self.assertTrue(type(model).__module__.startswith("livekit.plugins.openai"))
+        self.assertIsInstance(agent, hosted_interp.HostedInterpreter)
+        self.assertIn("one visitor plays both people", agent.instructions)
+        self.assertIn("desk clerk who speaks English", agent.instructions)
+
+        def said(role, text):
+            return SimpleNamespace(role=role, text_content=text)
+
+        with patch.object(hosted_interp._module, "publish_ui_event") as publish:
+            agent.interpreted(said("assistant", "Hello, I am the interpreter."))
+            agent.greeted = True
+            agent.hear("Hola, tengo una reserva")
+            agent.hear("a nombre de Ana.")
+            agent.interpreted(said("user", "ignored"))
+            agent.interpreted(said("assistant", "Hello, I have a booking under Ana."))
+            agent.hear("Welcome, Ana.")
+            agent.interpreted(said("assistant", "Bienvenida, Ana."))
+        self.assertEqual(
+            agent.captions,
+            [
+                {
+                    "text": "Hello, I have a booking under Ana.",
+                    "original": "Hola, tengo una reserva a nombre de Ana.",
+                },
+                {"text": "Bienvenida, Ana.", "original": "Welcome, Ana."},
+            ],
+        )
+        self.assertEqual(other.captions, [])
+        props = publish.call_args_list[-1].kwargs["props"]
+        self.assertEqual(props["items"], agent.captions)
+        created = {"type": "response.event", "event": {"type": "response.created"}}
+        for _ in range(hosted_interp.MAX_RESPONSES):
+            agent.budget_event(created)
+        spawn.assert_not_called()
+        agent.budget_event(created)
+        spawn.assert_called_once()
+        spawn.call_args.args[0].close()
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()

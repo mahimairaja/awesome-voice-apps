@@ -355,7 +355,7 @@ class HostedClaim(HostedGuard, ClaimIntake):
 
 
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
-# GPT Live demos ("sdr") start their own session below. Adding a demo here also
+# GPT-Live demos (REALTIME_DEMOS) start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
 CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "coffee": HostedCoffee,
@@ -365,7 +365,40 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "clinic": HostedClinic,
     "claim": HostedClaim,
 }
-DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
+# GPT-Live speech-to-speech demos share the call plumbing in build_server.
+REALTIME_DEMOS = frozenset({"sdr", "interp"})
+DEMOS = frozenset({*CASCADE_AGENTS, *REALTIME_DEMOS})
+
+
+def realtime_model(demo: str):
+    # Imported per call: each adapter loads its contributed demo by path.
+    if demo == "interp":
+        from hosted_interp import BACKEND_INSTRUCTIONS
+
+        options = {"instructions": BACKEND_INSTRUCTIONS, "max_output_tokens": 100}
+    else:
+        from hosted_sdr import BACKEND_INSTRUCTIONS
+
+        options = {"instructions": BACKEND_INSTRUCTIONS, "max_output_tokens": 600}
+    return openai.realtime.GPTLiveModel(
+        voice="marin",
+        responses_options={
+            "model": "gpt-5.6-luna",
+            "parallel_tool_calls": False,
+            "reasoning": {"effort": "low"},
+            **options,
+        },
+    )
+
+
+def realtime_agent(demo: str, *args):
+    if demo == "interp":
+        from hosted_interp import HostedInterpreter
+
+        return HostedInterpreter(*args)
+    from hosted_sdr import HostedSDR
+
+    return HostedSDR(*args)
 
 
 def build_server() -> AgentServer:
@@ -391,21 +424,11 @@ def build_server() -> AgentServer:
     @server.rtc_session(agent_name="mahimai-playground-coffee", on_request=authorize)
     async def coffee(ctx):
         approval = claims.get(ctx.room.name, {})
-        if approval.get("demo") == "sdr":
-            from hosted_sdr import BACKEND_INSTRUCTIONS, HostedSDR
-
+        if approval.get("demo") in REALTIME_DEMOS:
+            demo = approval["demo"]
             claims.pop(ctx.room.name)
             session = AgentSession(
-                llm=openai.realtime.GPTLiveModel(
-                    voice="marin",
-                    responses_options={
-                        "model": "gpt-5.6-luna",
-                        "instructions": BACKEND_INSTRUCTIONS,
-                        "parallel_tool_calls": False,
-                        "max_output_tokens": 600,
-                        "reasoning": {"effort": "low"},
-                    },
-                ),
+                llm=realtime_model(demo),
                 vad=ctx.proc.userdata["vad"],
                 conn_options=SessionConnectOptions(llm_conn_options=APIConnectOptions(max_retry=0)),
             )
@@ -413,7 +436,7 @@ def build_server() -> AgentServer:
             finished = asyncio.Event()
             sink = PlaygroundSink(approval["id"])
 
-            async def finish_sdr():
+            async def finish_realtime():
                 nonlocal closing
                 if closing:
                     await finished.wait()
@@ -432,25 +455,25 @@ def build_server() -> AgentServer:
                                 await capture.drain()
                             await sink.flush()
                     except Exception:
-                        logger.warning("SDR final metering pending; reservation retained")
+                        logger.warning("Realtime final metering pending; reservation retained")
                     await control("finish", approval["id"])
                 except (httpx.HTTPError, ValueError):
-                    logger.warning("SDR room cleanup pending server recovery")
+                    logger.warning("Realtime room cleanup pending server recovery")
                 finally:
                     try:
                         await ctx.room.disconnect()
                     finally:
                         finished.set()
 
-            sink.stop = finish_sdr
+            sink.stop = finish_realtime
 
             async def deadline():
                 await asyncio.sleep(max(0, approval["deadline"] - time.time()))
-                await finish_sdr()
+                await finish_realtime()
 
             timer = spawn(deadline())
-            session.on("close", lambda _: spawn(finish_sdr()))
-            agent = HostedSDR(ctx.room, approval, finish_sdr, spawn, sink)
+            session.on("close", lambda _: spawn(finish_realtime()))
+            agent = realtime_agent(demo, ctx.room, approval, finish_realtime, spawn, sink)
             session.on(
                 "user_input_transcribed",
                 lambda event: agent.hear(event.transcript) if event.is_final else None,
@@ -458,7 +481,7 @@ def build_server() -> AgentServer:
 
             async def cleanup():
                 timer.cancel()
-                await finish_sdr()
+                await finish_realtime()
 
             ctx.add_shutdown_callback(cleanup)
             try:
