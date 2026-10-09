@@ -31,6 +31,11 @@ from hosted_furnace import COMPANY as FURNACE_COMPANY
 from hosted_furnace import DETECTOR_OPTIONS as FURNACE_DETECTOR
 from hosted_furnace import FurnaceLine, publish_furnace
 from hosted_furnace import initial_state as furnace_state
+from hosted_fraud import FrontDesk, HostedFraudDesk, HostedVerify, publish_fraud
+from hosted_fraud import GREETING as FRAUD_GREETING
+from hosted_fraud import initial_state as fraud_state
+from hosted_fraud import voice as fraud_voice
+from hosted_fraud import watch as fraud_watch
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -464,6 +469,66 @@ class HostedFurnace(HostedGuard, FurnaceLine):
         self.watch_turns(self.session, self.session.vad)
 
 
+class HostedFraud(HostedGuard, FrontDesk):
+    """Front desk of a multi-agent call: verification and the specialist share its caps."""
+
+    demo = "fraud"
+    # Three checks, a handoff, an action and a few manipulation attempts.
+    llm_budget = 28
+    greeting = FRAUD_GREETING
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.update_options(tts=fraud_voice("front"))
+
+    def initial_state(self) -> dict:
+        return fraud_state()
+
+    def publish_initial(self) -> None:
+        publish_fraud(self.room, self.session.userdata)
+
+    async def on_enter(self) -> None:
+        fraud_watch(self.session, self.room)
+        await super().on_enter()
+
+    def make_verifier(self):
+        return HostedVerify(self, self.room, stt=self.stt, llm=self.llm, tts=self.tts)
+
+    def make_fraud_desk(self, case: dict):
+        return HostedFraudDesk(
+            self,
+            self.room,
+            case,
+            chat_ctx=self.chat_ctx.copy(
+                exclude_function_call=True, exclude_instructions=True
+            ).truncate(max_items=6),
+            stt=self.stt,
+            llm=self.llm,
+            tts=fraud_voice("specialist"),
+        )
+
+    # The same limits as HostedGuard.llm_node and tts_node, on the shared
+    # counters, for the agents this call hands off to.
+    def charge_llm(self, chat_ctx) -> bool:
+        self._llm_requests += 1
+        scale = self.approval["seconds"] / 120
+        if (
+            self._llm_requests > max(1, int(self.llm_budget * scale))
+            or len(json.dumps(chat_ctx.to_dict()).encode()) > 16000
+        ):
+            spawn(self._finish())
+            return False
+        return True
+
+    async def bound_text(self, text):
+        async for chunk in text:
+            self._tts_bytes += len(chunk.encode())
+            if self._tts_bytes > int(4000 * self.approval["seconds"] / 120):
+                spawn(self._finish())
+                return
+            yield chunk
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT-Live demos (REALTIME_DEMOS) start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -479,6 +544,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "city311": HostedCity311,
     "checkout": HostedCheckout,
     "furnace": HostedFurnace,
+    "fraud": HostedFraud,
 }
 # GPT-Live speech-to-speech demos share the call plumbing in build_server.
 REALTIME_DEMOS = frozenset({"sdr", "interp"})

@@ -14,7 +14,9 @@ same id before it can reserve a call. Provider keys and pricing must already be
 supported by `PlaygroundSink`; unknown pricing ends the call. A demo built on other
 providers keeps its own code: the adapter swaps the stack (see `hosted_claim.py`,
 which stubs the unused plugin imports while loading). Raise `llm_budget` on the
-hosted class when a demo needs more than 12 model turns in two minutes.
+hosted class when a demo needs more than 12 model turns in two minutes. A demo
+that hands off to other agents must charge them to the same call caps (see
+`hosted_fraud.py`), or a handoff resets the limits.
 
 Required environment: LiveKit credentials, OpenAI, Deepgram and Cartesia keys,
 `PLAYGROUND_ORIGIN`, `PLAYGROUND_WORKER_SECRET`, `VOICEGW_COLLECTOR_URL`, and

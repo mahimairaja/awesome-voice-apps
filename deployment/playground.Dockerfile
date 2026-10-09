@@ -16,6 +16,7 @@ COPY demos/pharmacy-refill/agent.py demos/pharmacy-refill/refill.py /app/demos/p
 COPY demos/city-311/agent.py /app/demos/city-311/
 COPY demos/voice-checkout/agent.py /app/demos/voice-checkout/
 COPY demos/furnace-repair/agent.py demos/furnace-repair/turns.py /app/demos/furnace-repair/
+COPY demos/card-fraud-line/agent.py /app/demos/card-fraud-line/
 RUN useradd --create-home worker
 USER worker
 RUN python -m livekit.agents download-files

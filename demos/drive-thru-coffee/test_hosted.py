@@ -17,6 +17,7 @@ import hosted_panel
 import hosted_interp
 import hosted_pharmacy
 import hosted_furnace
+import hosted_fraud
 import hosted_tenant
 import hosted_water
 from livekit.agents.llm import ChatMessage
@@ -723,6 +724,78 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         ):
             await hosted.authorize(request)
         self.assertFalse(hosted.claims)
+
+    def fraud_desk(self):
+        room = SimpleNamespace(name=ROOM)
+        hosted.claims[ROOM] = {"id": ID, "seconds": 60}
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                },
+            ),
+            patch.object(hosted, "get_job_context", return_value=SimpleNamespace(room=room)),
+        ):
+            return hosted.HostedFraud()
+
+    async def test_fraud_handoffs_use_the_call_clients_and_a_second_voice(self):
+        guard = self.fraud_desk()
+        self.addAsyncCleanup(guard.llm.aclose)
+        verifier = guard.make_verifier()
+        self.assertIs(verifier.llm, guard.llm)
+        self.assertIs(verifier.tts, guard.tts)
+        with patch.dict(hosted.os.environ, {"CARTESIA_API_KEY": "offline"}):
+            desk = guard.make_fraud_desk(hosted_fraud.initial_state() | {"handoff": []})
+        self.assertIs(desk.stt, guard.stt)
+        self.assertIs(desk.llm, guard.llm)
+        self.assertIsNot(desk.tts, guard.tts)
+        self.assertNotEqual(desk.tts._opts.voice, guard.tts._opts.voice)
+        self.assertEqual(guard.tts._opts.model, "sonic-3")
+
+    async def test_fraud_handoffs_cannot_reset_the_call_caps(self):
+        guard = object.__new__(hosted.HostedFraud)
+        guard.approval = {"seconds": 60}
+        guard._llm_requests = 14
+        guard._tts_bytes = 0
+        guard._finish = AsyncMock()
+        context = SimpleNamespace(to_dict=dict)
+        for agent in (
+            hosted_fraud.HostedVerify(guard, SimpleNamespace()),
+            hosted_fraud.HostedFraudDesk(guard, SimpleNamespace(), {"handoff": []}),
+        ):
+            chunks = [chunk async for chunk in agent.llm_node(context, [], None)]
+            self.assertEqual(chunks, [])
+        await asyncio.sleep(0)
+        self.assertEqual(guard._llm_requests, 16)
+        self.assertEqual(guard._finish.await_count, 2)
+        guard._finish.reset_mock()
+
+        async def text():
+            yield "a" * 1900
+            yield "b" * 200
+
+        async def fake_tts(_agent, bounded, _settings):
+            async for chunk in bounded:
+                yield chunk
+
+        with patch.object(hosted_fraud.FraudDesk, "tts_node", fake_tts):
+            desk = hosted_fraud.HostedFraudDesk(guard, SimpleNamespace(), {"handoff": []})
+            spoken = [chunk async for chunk in desk.tts_node(text(), None)]
+        self.assertEqual(sum(map(len, spoken)), 1900)
+        await asyncio.sleep(0)
+        guard._finish.assert_awaited_once()
+
+    async def test_fraud_calls_start_locked_with_their_own_code(self):
+        agent = object.__new__(hosted.HostedFraud)
+        first, second = agent.initial_state(), agent.initial_state()
+        self.assertFalse(first["verified"])
+        self.assertEqual(set(first["tools"].values()), {"locked"})
+        self.assertIsNot(first["flags"], second["flags"])
+        self.assertRegex(first["code"], r"^\d{6}$")
+        self.assertIn("simulated", hosted.HostedFraud.greeting)
 
 
 if __name__ == "__main__":
