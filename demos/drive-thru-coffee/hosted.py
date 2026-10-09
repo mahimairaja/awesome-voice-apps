@@ -15,6 +15,8 @@ from hosted_claim import ClaimIntake, publish_claim
 from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
 from hosted_clinic import ClinicScheduler, publish_clinic
+from hosted_delivery import DeliveryCaller, phone_from, publish_delivery
+from hosted_delivery import initial_state as delivery_state
 from hosted_clinic import initial_state as clinic_state
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
@@ -236,7 +238,9 @@ class HostedGuard:
                 dead_air=False,
             )
             self.publish_initial()
-            await self.session.generate_reply(instructions=self.greeting)
+            # Outbound demos wait for the callee to speak first.
+            if self.greeting:
+                await self.session.generate_reply(instructions=self.greeting)
         except Exception:
             await self._finish()
             raise
@@ -354,6 +358,35 @@ class HostedClaim(HostedGuard, ClaimIntake):
         publish_claim(self.room, self.session.userdata)
 
 
+class HostedDelivery(HostedGuard, DeliveryCaller):
+    demo = "delivery"
+    # No greeting: the agent places the call and listens for who answers first.
+    greeting = ""
+
+    def __init__(self) -> None:
+        # Dial only a number the site verified and signed into the dispatch.
+        phone = phone_from(get_job_context().job.metadata)
+        super().__init__()
+        self.phone = phone
+
+    def initial_state(self) -> dict:
+        return delivery_state(self.phone)
+
+    def publish_initial(self) -> None:
+        publish_delivery(self.room, self.session.userdata)
+
+    async def on_enter(self) -> None:
+        await super().on_enter()
+        self._call = spawn(self.run_call())
+
+    async def hang_up(self) -> None:
+        if self._hung_up:
+            return
+        self._hung_up = True
+        # The site deletes the room, which also drops the phone line.
+        await self._finish()
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -364,6 +397,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
+    "delivery": HostedDelivery,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 

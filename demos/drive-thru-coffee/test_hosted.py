@@ -236,7 +236,8 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
 
     async def test_registry_admits_each_demo_and_nothing_else(self):
         self.assertEqual(
-            hosted.DEMOS, {"coffee", "trivia", "water", "clinic", "claim", "tenant", "sdr"}
+            hosted.DEMOS,
+            {"coffee", "trivia", "water", "clinic", "claim", "tenant", "delivery", "sdr"},
         )
         for demo in hosted.DEMOS:
             metadata = json.dumps({"agent": demo, "reservation": ID})
@@ -245,7 +246,8 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             hosted.parse_job(json.dumps({"agent": "roadside", "reservation": ID}), ROOM)
         for demo, agent in hosted.CASCADE_AGENTS.items():
             self.assertEqual(agent.demo, demo)
-            self.assertTrue(agent.greeting)
+            # Outbound calls listen first; every inbound demo opens with a greeting.
+            self.assertTrue(agent.greeting or agent is hosted.HostedDelivery)
 
     async def test_water_calls_start_empty_and_stay_isolated(self):
         agent = object.__new__(hosted.HostedWater)

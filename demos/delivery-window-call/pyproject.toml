@@ -1,0 +1,9 @@
+[project]
+name = "delivery-window-call"
+version = "0.1.0"
+description = "An outbound agent calls to confirm a delivery window: voicemail detection, keypad input, and a reschedule by voice."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[cartesia,deepgram,openai,silero]>=1.8.5,<2.0",
+    "python-dotenv>=1.0",
+]
