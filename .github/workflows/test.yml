@@ -20,6 +20,7 @@ jobs:
           - claim-intake
           - panel-scribe
           - pharmacy-refill
+          - furnace-repair
     steps:
       - uses: actions/checkout@v4
 

@@ -27,6 +27,10 @@ from hosted_pharmacy import GREETING as PHARMACY_GREETING
 from hosted_pharmacy import RefillLine, make_stt, publish_refill
 from hosted_pharmacy import initial_state as pharmacy_state
 from hosted_pharmacy import instructions as pharmacy_instructions
+from hosted_furnace import COMPANY as FURNACE_COMPANY
+from hosted_furnace import DETECTOR_OPTIONS as FURNACE_DETECTOR
+from hosted_furnace import FurnaceLine, publish_furnace
+from hosted_furnace import initial_state as furnace_state
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -441,6 +445,25 @@ class HostedCheckout(HostedGuard, VoiceCheckout):
         pass
 
 
+class HostedFurnace(HostedGuard, FurnaceLine):
+    demo = "furnace"
+    # Four details, two read-backs and a dispatch, often several per answer.
+    llm_budget = 20
+    detector_options = FURNACE_DETECTOR
+    greeting = (
+        f"Answer as the {FURNACE_COMPANY} after-hours line. Say this is a simulation: "
+        "no technician is sent, so use a made-up address and number. "
+        "Ask what is wrong with the heat."
+    )
+
+    def initial_state(self) -> dict:
+        return furnace_state()
+
+    def publish_initial(self) -> None:
+        publish_furnace(self.room, self.session.userdata)
+        self.watch_turns(self.session, self.session.vad)
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT-Live demos (REALTIME_DEMOS) start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -455,6 +478,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "pharmacy": HostedPharmacy,
     "city311": HostedCity311,
     "checkout": HostedCheckout,
+    "furnace": HostedFurnace,
 }
 # GPT-Live speech-to-speech demos share the call plumbing in build_server.
 REALTIME_DEMOS = frozenset({"sdr", "interp"})

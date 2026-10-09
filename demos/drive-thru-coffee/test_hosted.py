@@ -16,6 +16,7 @@ import hosted_clinic
 import hosted_panel
 import hosted_interp
 import hosted_pharmacy
+import hosted_furnace
 import hosted_tenant
 import hosted_water
 from livekit.agents.llm import ChatMessage
@@ -627,6 +628,85 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             agent = hosted.HostedPharmacy()
         self.assertIn("two-minute limit", agent.instructions)
         self.assertIn("metformin", agent.stt._opts.keyterm)
+        await agent.llm.aclose()
+
+    async def test_furnace_calls_start_empty_and_dispatch_once(self):
+        agent = object.__new__(hosted.HostedFurnace)
+        first, second = agent.initial_state(), agent.initial_state()
+        self.assertEqual(first, {"ticket": {}, "ref": None})
+        self.assertIsNot(first["ticket"], second["ticket"])
+        line = object.__new__(hosted_furnace.FurnaceLine)
+        line.room = SimpleNamespace()
+        context = SimpleNamespace(userdata=first)
+        module = hosted_furnace._module
+        with patch.object(module, "publish_ui_event") as publish:
+            rejected = await line.update_ticket(context, callback_number="416 555 01")
+            self.assertIn("callback rejected", rejected)
+            self.assertIn("missing", await line.dispatch_technician(context))
+            heard = await line.update_ticket(
+                context,
+                problem="furnace stopped, no heat",
+                address="42 Maple Street, Barrie",
+                callback_number="416 555 0142",
+            )
+            self.assertIn("4 1 6, 5 5 5, 0 1 4 2", heard)
+            self.assertIn("still needed: safety", heard)
+            await line.update_ticket(context, gas_smell=False, vulnerable_occupant=True)
+            sent = await line.dispatch_technician(context)
+            again = await line.dispatch_technician(context)
+        self.assertEqual(sent, again)
+        self.assertIn("within 2 hours", sent)
+        self.assertRegex(first["ref"]["id"], r"^BHL-[0-9A-F]{5}$")
+        self.assertEqual(second, {"ticket": {}, "ref": None})
+        self.assertIn("Card", [call.args[1] for call in publish.call_args_list])
+
+    async def test_furnace_never_dispatches_to_a_gas_smell(self):
+        line = object.__new__(hosted_furnace.FurnaceLine)
+        line.room = SimpleNamespace()
+        data = hosted_furnace.initial_state()
+        context = SimpleNamespace(userdata=data)
+        with patch.object(hosted_furnace._module, "publish_ui_event"):
+            note = await line.update_ticket(
+                context,
+                problem="no heat",
+                address="9 Elm Road",
+                callback_number="705 555 0199",
+                gas_smell=True,
+                vulnerable_occupant=False,
+            )
+            self.assertIn("GAS", note)
+            self.assertIn("do not dispatch", await line.dispatch_technician(context))
+        self.assertIsNone(data["ref"])
+
+    async def test_furnace_uses_cloud_detector_without_local_model(self):
+        self.assertEqual(
+            hosted.HostedFurnace.detector_options, {"version": "v1", "local_fallback": False}
+        )
+        self.assertNotIn("turns", sys.modules)
+        hosted.claims[ROOM] = {"id": ID}
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                    "LIVEKIT_API_KEY": "offline",
+                    "LIVEKIT_API_SECRET": "offline",
+                },
+            ),
+            patch.object(
+                hosted,
+                "get_job_context",
+                return_value=SimpleNamespace(room=SimpleNamespace(name=ROOM)),
+            ),
+        ):
+            agent = hosted.HostedFurnace()
+        detector = agent.turn_detection
+        self.assertEqual(detector.model, "turn-detector-v1")
+        self.assertIsNotNone(detector._cloud_opts)
+        self.assertFalse(detector._local_fallback)
+        self.assertEqual(agent.timeline.model, "turn-detector-v1")
         await agent.llm.aclose()
 
     async def test_failed_accept_does_not_leak_claim(self):

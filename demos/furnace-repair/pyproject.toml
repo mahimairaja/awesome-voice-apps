@@ -1,0 +1,9 @@
+[project]
+name = "furnace-repair"
+version = "0.1.0"
+description = "An emergency furnace line that waits for callers to finish, with a silence timer in shadow."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero]>=1.8.5,<2.0",
+    "python-dotenv>=1.0",
+]
