@@ -25,6 +25,7 @@ COPY demos/flight-rebooking/agent.py /app/demos/flight-rebooking/
 COPY demos/returns-desk-qa/agent.py /app/demos/returns-desk-qa/
 COPY demos/delivery-window-call/agent.py /app/demos/delivery-window-call/
 COPY demos/storm-outage-line/agent.py demos/storm-outage-line/phone_line.py demos/storm-outage-line/scoring.py /app/demos/storm-outage-line/
+COPY demos/fair-cancellation/agent.py demos/fair-cancellation/policy.py /app/demos/fair-cancellation/
 RUN useradd --create-home worker
 USER worker
 RUN python -m livekit.agents download-files

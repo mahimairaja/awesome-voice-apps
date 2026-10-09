@@ -15,6 +15,10 @@ from hosted_checkout import GREETING as CHECKOUT_GREETING
 from hosted_checkout import VoiceCheckout
 from hosted_builder import GREETING as BUILDER_GREETING
 from hosted_builder import VOICES, ConfigurableAgent, parse_config
+from hosted_cancel import GREETING as CANCEL_GREETING
+from hosted_cancel import CancelLine, publish_cancel
+from hosted_cancel import initial_state as cancel_state
+from hosted_cancel import instructions as cancel_instructions
 from hosted_claim import ClaimIntake, publish_claim
 from hosted_claim import initial_state as claim_state
 from hosted_city311 import GREETING as CITY311_GREETING
@@ -784,6 +788,26 @@ class HostedOutage(HostedGuard, OutageLine):
         self.publish()
 
 
+class HostedCancel(HostedGuard, CancelLine):
+    demo = "cancel"
+    # Reason, offer and a decision, each a tool call plus a short reply. When the
+    # policy cancels on its own it speaks without an LLM request at all.
+    llm_budget = 20
+    greeting = CANCEL_GREETING
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._instructions = cancel_instructions()
+        # Sonic 2 retires on 2026-10-20.
+        self.update_options(tts=cartesia.TTS(model="sonic-3"))
+
+    def initial_state(self) -> dict:
+        return cancel_state()
+
+    def publish_initial(self) -> None:
+        publish_cancel(self.room, self.session.userdata)
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT-Live demos (REALTIME_DEMOS) start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -808,6 +832,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "returns": HostedReturns,
     "delivery": HostedDelivery,
     "outage": HostedOutage,
+    "cancel": HostedCancel,
 }
 # GPT-Live speech-to-speech demos share the call plumbing in build_server.
 REALTIME_DEMOS = frozenset({"sdr", "interp"})

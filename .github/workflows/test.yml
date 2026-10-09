@@ -21,6 +21,7 @@ jobs:
           - panel-scribe
           - pharmacy-refill
           - furnace-repair
+          - fair-cancellation
     steps:
       - uses: actions/checkout@v4
 

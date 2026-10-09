@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import hosted
+import hosted_cancel
 import hosted_claim
 import hosted_clinic
 import hosted_panel
@@ -1236,6 +1237,106 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         frame = await wrapped.__anext__()
         self.assertEqual(frame.sample_rate, 24000)
         self.assertGreater(agent.line.stats.packets, 0)
+
+    async def test_cancel_calls_get_their_own_account(self):
+        self.assertNotIn("policy", sys.modules)
+        agent = object.__new__(hosted.HostedCancel)
+        first, second = agent.initial_state(), agent.initial_state()
+        self.assertIsNot(first["account"], second["account"])
+        self.assertIsNot(first["log"], second["log"])
+        self.assertIn("two-minute limit", hosted_cancel.instructions())
+
+    def cancel_line(self, state):
+        line = hosted_cancel.CancelLine(SimpleNamespace())
+        session = MagicMock(userdata=state)
+        return line, session
+
+    async def test_cancel_policy_cancels_without_the_model(self):
+        from livekit.agents import StopResponse, llm
+
+        state = hosted_cancel.initial_state()
+        line, session = self.cancel_line(state)
+        turn = llm.ChatContext.empty()
+        with (
+            patch.object(type(line), "session", property(lambda self: session)),
+            patch.object(hosted_cancel._module, "publish_ui_event") as publish,
+        ):
+            message = llm.ChatMessage(role="user", content=["I want to cancel"])
+            await line.on_user_turn_completed(turn, message)
+            context = SimpleNamespace(userdata=state)
+            await line.note_reason(context, "price")
+            self.assertTrue((await line.make_offer(context)).startswith("approved"))
+            with self.assertRaises(StopResponse):
+                no = llm.ChatMessage(role="user", content=["No thanks, just cancel"])
+                await line.on_user_turn_completed(turn, no)
+        said = session.say.call_args
+        self.assertIn("is cancelled", said.args[0])
+        self.assertFalse(said.kwargs["allow_interruptions"])
+        props = publish.call_args.args[2]
+        self.assertEqual(publish.call_args.args[1], "Cancel")
+        self.assertEqual(props["clock"]["state"], "enforced")
+        self.assertRegex(props["outcome"]["ref"], r"^CX-[3479ACFHKMRX]{3}-[3479ACFHKMRX]{3}$")
+
+    async def test_cancel_tts_speaks_the_disclosure_and_drops_unapproved_deals(self):
+        state = hosted_cancel.initial_state()
+        hosted_cancel.policy.observe_caller(state, "cancel please")
+        hosted_cancel.policy.note_reason(state, "switching")
+        line, session = self.cancel_line(state)
+        heard = []
+
+        async def fake_tts(self, text, model_settings):
+            async for chunk in text:
+                heard.append(chunk)
+            yield b"frame"
+
+        async def reply():
+            for chunk in ["Sorry to see you go. I can do 40", "% off for a year. Done?"]:
+                yield chunk
+
+        with (
+            patch.object(type(line), "session", property(lambda self: session)),
+            patch.object(hosted_cancel._module, "publish_ui_event"),
+            patch.object(hosted_cancel._module.Agent, "tts_node", fake_tts),
+        ):
+            async for _ in line.tts_node(reply(), None):
+                pass
+            spoken = "".join(heard)
+            self.assertNotIn("40", spoken)
+            self.assertIn("Sorry to see you go.", spoken)
+            state["reason"] = "price"
+            hosted_cancel.policy.make_offer(state)
+            heard.clear()
+            async for _ in line.tts_node(reply(), None):
+                pass
+        spoken = "".join(heard)
+        self.assertTrue(spoken.startswith(hosted_cancel.policy.DISCLOSURE))
+        # The approved offer is half off; the model's 40% is still not spoken.
+        self.assertNotIn("40", spoken)
+        self.assertEqual(state["log"][-2]["rule"], "OFFER.DISCLOSE")
+        self.assertEqual(state["log"][-1]["rule"], "SPEECH.SCREEN")
+
+    async def test_cancel_uses_sonic_3_and_a_bigger_budget(self):
+        self.assertEqual(hosted.HostedCancel.llm_budget, 20)
+        hosted.claims[ROOM] = {"id": ID}
+        with (
+            patch.dict(
+                hosted.os.environ,
+                {
+                    "DEEPGRAM_API_KEY": "offline",
+                    "OPENAI_API_KEY": "offline",
+                    "CARTESIA_API_KEY": "offline",
+                },
+            ),
+            patch.object(
+                hosted,
+                "get_job_context",
+                return_value=SimpleNamespace(room=SimpleNamespace(name=ROOM)),
+            ),
+        ):
+            agent = hosted.HostedCancel()
+        self.assertEqual(agent.tts.model, "sonic-3")
+        self.assertIn("two-minute limit", agent.instructions)
+        await agent.llm.aclose()
 
     async def test_failed_accept_does_not_leak_claim(self):
         request = self.request()
