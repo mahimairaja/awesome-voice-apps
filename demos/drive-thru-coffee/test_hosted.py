@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import hosted
 import hosted_claim
 import hosted_clinic
+import hosted_interview
 import hosted_tenant
 import hosted_water
 from trivia import HostedTriviaHost, initial_state
@@ -236,7 +237,8 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
 
     async def test_registry_admits_each_demo_and_nothing_else(self):
         self.assertEqual(
-            hosted.DEMOS, {"coffee", "trivia", "water", "clinic", "claim", "tenant", "sdr"}
+            hosted.DEMOS,
+            {"coffee", "trivia", "water", "clinic", "claim", "tenant", "interview", "sdr"},
         )
         for demo in hosted.DEMOS:
             metadata = json.dumps({"agent": demo, "reservation": ID})
@@ -245,7 +247,8 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             hosted.parse_job(json.dumps({"agent": "roadside", "reservation": ID}), ROOM)
         for demo, agent in hosted.CASCADE_AGENTS.items():
             self.assertEqual(agent.demo, demo)
-            self.assertTrue(agent.greeting)
+            # The interview lobby hands off silently; each interviewer opens its round.
+            self.assertEqual(bool(agent.greeting), demo != "interview")
 
     async def test_water_calls_start_empty_and_stay_isolated(self):
         agent = object.__new__(hosted.HostedWater)
@@ -425,6 +428,135 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         ):
             await hosted.authorize(request)
         self.assertFalse(hosted.claims)
+
+
+class FakeSession:
+    def __init__(self):
+        self.handlers = {}
+        self.update_agent = MagicMock()
+
+    def on(self, name, handler):
+        self.handlers[name] = handler
+
+    def emit(self, name, **fields):
+        self.handlers[name](SimpleNamespace(**fields))
+
+
+def message(role, text="", **metrics):
+    return SimpleNamespace(role=role, text_content=text, metrics=metrics)
+
+
+class InterviewDemo(unittest.IsolatedAsyncioTestCase):
+    def desk(self, order=("cascade", "duplex"), **options):
+        session = FakeSession()
+        room = SimpleNamespace(local_participant=SimpleNamespace(publish_data=AsyncMock()))
+        built = []
+
+        def build(architecture, label, question):
+            built.append((architecture, label, question))
+            return SimpleNamespace(architecture=architecture)
+
+        desk = hosted_interview.InterviewDesk(session, room, order, build=build, **options)
+        return desk, session, room, built
+
+    async def events(self, room):
+        await asyncio.sleep(0)
+        sent = [
+            json.loads(call.args[0]) for call in room.local_participant.publish_data.await_args_list
+        ]
+        return [(event["component"], event["props"]) for event in sent]
+
+    def answer(self, session, text="I led the migration."):
+        session.emit("user_state_changed", old_state="listening", new_state="speaking")
+        session.emit("user_state_changed", old_state="speaking", new_state="listening")
+        session.emit(
+            "conversation_item_added",
+            item=message("user", text, end_of_turn_delay=0.5, transcription_delay=0.2),
+        )
+        session.emit("agent_state_changed", old_state="thinking", new_state="speaking")
+
+    async def test_order_is_shared_with_the_site_and_covers_both(self):
+        self.assertEqual(hosted_interview.order_for(ID), ("duplex", "cascade"))
+        self.assertEqual(hosted_interview.order_for(ID[:-1] + "6"), ("cascade", "duplex"))
+        self.assertEqual(hosted_interview.round_seconds(120), hosted_interview.ROUND_SECONDS)
+        self.assertEqual(hosted_interview.round_seconds(30), 20.0)
+        with self.assertRaises(ValueError):
+            self.desk(order=("cascade", "cascade"))
+
+    async def test_rounds_hand_off_then_reveal(self):
+        done = AsyncMock()
+        desk, session, room, built = self.desk(on_done=done)
+        desk.first_agent()
+        self.assertEqual(built[0][:2], ("cascade", "A"))
+        # The opening line has no answer before it, so it is not a timed turn.
+        session.emit("conversation_item_added", item=message("assistant", "Hi"))
+        for _ in range(2):
+            self.answer(session)
+            session.emit(
+                "conversation_item_added",
+                item=message(
+                    "assistant", "Nice", e2e_latency=1.1, llm_node_ttft=0.3, tts_node_ttfb=0.2
+                ),
+            )
+        session.update_agent.assert_called_once()
+        self.assertEqual(built[1][:2], ("duplex", "B"))
+        events = await self.events(room)
+        turns = [props for name, props in events if name == "Turn"]
+        self.assertEqual(len(turns), 2)
+        self.assertEqual(turns[0]["total_ms"], 1100)
+        self.assertEqual(turns[0]["stages"], {"endpoint": 500, "stt": 200, "llm": 300, "tts": 200})
+        # Duplex turns have no stages; a reply that starts over the candidate is an overlap.
+        session.emit("user_state_changed", old_state="listening", new_state="speaking")
+        session.emit("agent_state_changed", old_state="listening", new_state="speaking")
+        session.emit("conversation_item_added", item=message("user", "It went down twice."))
+        session.emit("conversation_item_added", item=message("assistant", "Mm-hm"))
+        self.answer(session)
+        session.emit("conversation_item_added", item=message("assistant", "Thanks"))
+        await asyncio.sleep(0)
+        done.assert_awaited_once()
+        events = await self.events(room)
+        turns = [props for name, props in events if name == "Turn"]
+        self.assertTrue(turns[2]["overlap"])
+        self.assertEqual(turns[2]["stages"], {})
+        self.assertEqual(turns[2]["total_ms"], 0)
+        self.assertIn(("Reveal", {"A": "cascade", "B": "duplex"}), events)
+        self.assertEqual(events[-2][1]["status"], "done")
+        desk.close()
+
+    async def test_slow_round_moves_on_and_replies_are_capped(self):
+        desk, session, _, built = self.desk(round_seconds=0)
+        desk.first_agent()
+        self.answer(session)
+        session.emit("conversation_item_added", item=message("assistant", "Go on"))
+        session.update_agent.assert_called_once()
+        desk.close()
+        desk, session, _, _ = self.desk()
+        for _ in range(hosted_interview._module.MAX_REPLIES_PER_ROUND):
+            session.emit("conversation_item_added", item=message("assistant", "Hello?"))
+        session.update_agent.assert_called_once()
+        desk.close()
+
+    async def test_cascade_interviewer_stops_the_call_past_its_cap(self):
+        stop = AsyncMock()
+        spawned = []
+        with patch.dict(
+            os.environ, {"OPENAI_API_KEY": "t", "DEEPGRAM_API_KEY": "t", "CARTESIA_API_KEY": "t"}
+        ):
+            build = hosted_interview.bounded_builder(
+                stop, lambda coro: spawned.append(asyncio.ensure_future(coro))
+            )
+            agent = build("cascade", "A", "Why?")
+            duplex = build("duplex", "B", "Why?")
+        self.assertEqual(duplex.architecture, "duplex")
+        agent._llm_requests = hosted_interview.CASCADE_LLM_REQUESTS
+        chunks = [chunk async for chunk in agent.llm_node(SimpleNamespace(), [], None)]
+        self.assertEqual(chunks, [])
+        await asyncio.gather(*spawned)
+        stop.assert_awaited_once()
+        for _ in range(hosted_interview.DUPLEX_RESPONSES + 1):
+            duplex._count({"type": "response.event", "event": {"type": "response.created"}})
+        await asyncio.gather(*spawned)
+        self.assertEqual(stop.await_count, 2)
 
 
 if __name__ == "__main__":

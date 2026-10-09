@@ -16,6 +16,7 @@ from hosted_claim import initial_state as claim_state
 from hosted_claim import instructions as claim_instructions
 from hosted_clinic import ClinicScheduler, publish_clinic
 from hosted_clinic import initial_state as clinic_state
+from hosted_interview import InterviewDesk, Lobby, bounded_builder, order_for, round_seconds
 from hosted_tenant import EMBED_USD_PER_TOKEN, TenantGuide, publish_tenant
 from hosted_tenant import GREETING as TENANT_GREETING
 from hosted_water import DEFAULT_GOAL, WaterCoach, publish_water
@@ -236,7 +237,8 @@ class HostedGuard:
                 dead_air=False,
             )
             self.publish_initial()
-            await self.session.generate_reply(instructions=self.greeting)
+            if self.greeting:
+                await self.session.generate_reply(instructions=self.greeting)
         except Exception:
             await self._finish()
             raise
@@ -354,6 +356,65 @@ class HostedClaim(HostedGuard, ClaimIntake):
         publish_claim(self.room, self.session.userdata)
 
 
+class HostedInterview(HostedGuard, Lobby):
+    """Blind A/B interview: a pipeline and GPT-Live take one round each."""
+
+    demo = "interview"
+    # The lobby hands off at once; each interviewer opens its own round.
+    greeting = ""
+    desk = None
+
+    def initial_state(self) -> dict:
+        return {}
+
+    def publish_initial(self) -> None:
+        # GPT-Live bills by the session minute, so cap the call like the SDR demo.
+        self.sink.stop = self._finish
+        self.desk = InterviewDesk(
+            self.session,
+            self.room,
+            order_for(self.approval["id"]),
+            build=bounded_builder(self._finish, spawn),
+            on_done=self._wrap_up,
+            round_seconds=round_seconds(self.approval["seconds"]),
+        )
+        self.session.update_agent(self.desk.first_agent())
+
+    async def _wrap_up(self) -> None:
+        # Let the closing line play, then end early: the vote happens on the page.
+        await asyncio.sleep(3)
+        await self._finish()
+
+    async def _finish(self) -> None:
+        if self._closing:
+            return
+        self._closing = True
+        if self._deadline_task and self._deadline_task is not asyncio.current_task():
+            self._deadline_task.cancel()
+        if self.desk:
+            self.desk.close()
+        session = self._active_session
+        session.shutdown(drain=False)
+        try:
+            # GPT-Live reports its final duration on close. Meter it before the
+            # room goes, so the reservation is charged for the whole session.
+            async with asyncio.timeout(8):
+                await session.aclose()
+                capture = getattr(session, "_vg_capture", None)
+                if capture:
+                    await capture.reconcile(session)
+                    await capture.drain()
+                await self.sink.flush()
+        except Exception:  # noqa: BLE001 - the site keeps the reservation on failure
+            logger.warning("Interview final metering pending; reservation retained")
+        try:
+            await control("finish", self.approval["id"])
+        except (httpx.HTTPError, ValueError):
+            logger.warning("Room cleanup pending server recovery")
+        finally:
+            await self.room.disconnect()
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT Live demos ("sdr") start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -364,6 +425,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "tenant": HostedTenant,
     "clinic": HostedClinic,
     "claim": HostedClaim,
+    "interview": HostedInterview,
 }
 DEMOS = frozenset({*CASCADE_AGENTS, "sdr"})
 
