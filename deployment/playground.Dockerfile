@@ -11,6 +11,7 @@ COPY demos/tenant-rights/data/hud-resident-rights.md /app/demos/tenant-rights/da
 COPY demos/clinic-scheduler/agent.py /app/demos/clinic-scheduler/
 COPY demos/claim-intake/agent.py /app/demos/claim-intake/
 COPY demos/panel-scribe/agent.py /app/demos/panel-scribe/
+COPY demos/front-desk-interpreter/agent.py /app/demos/front-desk-interpreter/
 RUN useradd --create-home worker
 USER worker
 RUN python -m livekit.agents download-files
