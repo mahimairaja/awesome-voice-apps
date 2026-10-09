@@ -19,6 +19,7 @@ jobs:
           - tenant-rights
           - claim-intake
           - panel-scribe
+          - support-cost-router
     steps:
       - uses: actions/checkout@v4
 
