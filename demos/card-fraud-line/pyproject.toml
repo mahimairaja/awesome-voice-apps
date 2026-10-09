@@ -1,0 +1,9 @@
+[project]
+name = "card-fraud-line"
+version = "0.1.0"
+description = "A bank fraud alert line: verification task, specialist handoff, and a live guardrail."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[deepgram,openai,cartesia,silero]>=1.8.5,<2.0",
+    "python-dotenv>=1.0",
+]
