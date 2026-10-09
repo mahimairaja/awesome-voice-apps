@@ -19,6 +19,9 @@ from hosted_cancel import GREETING as CANCEL_GREETING
 from hosted_cancel import CancelLine, publish_cancel
 from hosted_cancel import initial_state as cancel_state
 from hosted_cancel import instructions as cancel_instructions
+from hosted_bill import GREETING as BILL_GREETING
+from hosted_bill import BillExplainer
+from hosted_bill import vision_cost as bill_vision_cost
 from hosted_claim import ClaimIntake, publish_claim
 from hosted_claim import initial_state as claim_state
 from hosted_city311 import GREETING as CITY311_GREETING
@@ -808,6 +811,33 @@ class HostedCancel(HostedGuard, CancelLine):
         publish_cancel(self.room, self.session.userdata)
 
 
+class HostedBill(HostedGuard, BillExplainer):
+    demo = "bill"
+    # Each bill read adds a tool call plus a reply on top of the usual turns.
+    llm_budget = 24
+    greeting = BILL_GREETING
+
+    def __init__(self) -> None:
+        super().__init__()
+        # sonic-2 is being retired; this demo starts on sonic-3.
+        self.update_options(tts=cartesia.TTS(model="sonic-3"))
+
+    def initial_state(self) -> dict:
+        return {}
+
+    def publish_initial(self) -> None:
+        BillExplainer.publish_initial(self)
+
+    async def on_enter(self) -> None:
+        self.watch_uploads()
+        await super().on_enter()
+
+    def meter_vision(self, usage) -> None:
+        # Direct vision requests bypass VoiceGateway; bill each read to this call.
+        self.sink.records[f"bill-vision-{uuid.uuid4()}"] = ("openai", bill_vision_cost(usage))
+        spawn(self.sink.report())
+
+
 # The playground registry: each STT, LLM and TTS demo the site can reserve.
 # GPT-Live demos (REALTIME_DEMOS) start their own session below. Adding a demo here also
 # needs its id in the site's PLAYGROUND_DEMOS and a COPY line in the Dockerfile.
@@ -833,6 +863,7 @@ CASCADE_AGENTS: dict[str, type[HostedGuard]] = {
     "delivery": HostedDelivery,
     "outage": HostedOutage,
     "cancel": HostedCancel,
+    "bill": HostedBill,
 }
 # GPT-Live speech-to-speech demos share the call plumbing in build_server.
 REALTIME_DEMOS = frozenset({"sdr", "interp"})
