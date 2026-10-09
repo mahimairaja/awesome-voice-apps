@@ -428,6 +428,14 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             hosted_panel.handoff("I think the engineer liked her"),
             (None, "I think the engineer liked her"),
         )
+        self.assertEqual(
+            hosted_panel.handoff("Manager expects stronger tests"),
+            (None, "Manager expects stronger tests"),
+        )
+        self.assertEqual(
+            hosted_panel.handoff("I'm the engineer. Clean code."), ("Engineer", "Clean code.")
+        )
+        self.assertEqual(hosted_panel.handoff("I am the recruiter"), ("Recruiter", ""))
         room = SimpleNamespace()
         first = hosted_panel.SoloPanelScribe(room)
         second = hosted_panel.SoloPanelScribe(SimpleNamespace())
@@ -466,7 +474,10 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             row = hosted_panel.ScorecardRow(
                 interviewer="Engineer", strengths="design", concerns="none", lean="hire"
             )
-            await first.publish_scorecard(None, [row], "Lean hire.")
+            unspoken = hosted_panel.ScorecardRow(
+                interviewer="Hiring manager", strengths="-", concerns="-", lean="undecided"
+            )
+            await first.publish_scorecard(None, [row, unspoken], "Lean hire.")
         table = publish.call_args_list[0].kwargs["props"]
         self.assertEqual(table["rows"], [["Engineer", "design", "none", "hire"]])
 

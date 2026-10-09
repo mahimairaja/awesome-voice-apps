@@ -53,12 +53,17 @@ _ALIASES = {
     "recruiter": "Recruiter",
 }
 # A handoff opens the turn: "Engineer here.", "This is the recruiter, ...",
-# "Switching to the hiring manager." Names later in a sentence are just talk.
+# "I'm the hiring manager." A bare seat name counts only when a pause or
+# "here"/"speaking" follows it, so "Manager expects stronger tests" stays a line.
+_SEAT = r"(?:the\s+)?(?P<{}>hiring manager|manager|engineer|recruiter)"
 _HANDOFF = re.compile(
     r"^\s*(?:(?:ok(?:ay)?|now|so)[\s,]+)?"
-    r"(?:(?:this is|it's|it is|switch(?:ing)? to|speaking as|as|over to)\s+)?"
-    r"(?:the\s+)?(hiring manager|manager|engineer|recruiter)\b"
-    r"(?:\s+(?:here|speaking))?[\s,.:;!-]*",
+    r"(?:"
+    r"(?:i['\u2019]m|i am|this is|it['\u2019]s|it is|switch(?:ing)? to|speaking as|as|over to)\s+"
+    + _SEAT.format("cued")
+    + r"\b(?:\s+(?:here|speaking)\b)?"
+    r"|" + _SEAT.format("bare") + r"(?:\s+(?:here|speaking)\b|\s*(?=[,.:;!-]|$))"
+    r")[\s,.:;!-]*",
     re.IGNORECASE,
 )
 
@@ -70,8 +75,8 @@ HOSTED_INSTRUCTIONS = (
 
 GREETING = (
     "In two short sentences: say this is a hiring-panel simulation where they play "
-    "every interviewer, so they should start each part with hiring manager, engineer "
-    "or recruiter, and say scribe recap for the scorecard. Then stop."
+    "every interviewer, so they should start each part with hiring manager here, "
+    "engineer here or recruiter here, and say scribe recap for the scorecard. Then stop."
 )
 
 
@@ -80,7 +85,8 @@ def handoff(text: str) -> tuple[str | None, str]:
     match = _HANDOFF.match(text)
     if not match:
         return None, text
-    return _ALIASES[match.group(1).lower()], text[match.end() :].strip()
+    seat = match.group("cued") or match.group("bare")
+    return _ALIASES[seat.lower()], text[match.end() :].strip()
 
 
 class SpokenPanel:
@@ -95,17 +101,20 @@ class SpokenPanel:
         self.words: dict[str, int] = {}
 
     def feed_frame(self, frame) -> None:
-        pass
+        """Ignore audio: the seat comes from the spoken handoff."""
 
     def display_speaker(self) -> str:
+        """Return the seat the visitor last handed off to."""
         return self.current_speaker
 
     def record(self, text: str) -> None:
+        """Credit the line's words to the current seat."""
         count = len(text.split())
         if count:
             self.words[self.current_speaker] = self.words.get(self.current_speaker, 0) + count
 
     def talk_time_items(self, now: float = 0.0) -> list[dict]:
+        """Return each seat's share of words, marking the top talker."""
         total = sum(self.words.values())
         if not total:
             return []
@@ -118,6 +127,8 @@ class SpokenPanel:
 
 
 class ScorecardRow(BaseModel):
+    """One interviewer's debrief row, typed for OpenAI's strict tool schema."""
+
     interviewer: Literal["Hiring manager", "Engineer", "Recruiter"]
     strengths: str
     concerns: str
@@ -125,11 +136,14 @@ class ScorecardRow(BaseModel):
 
 
 class SoloPanelScribe(PanelScribe):
+    """PanelScribe for one visitor who speaks every seat in turn."""
+
     def __init__(self, room) -> None:
         super().__init__(room, SpokenPanel())
         self._instructions = _module.INSTRUCTIONS + HOSTED_INSTRUCTIONS
 
     async def on_user_turn_completed(self, turn_ctx, new_message) -> None:
+        """Apply a leading seat handoff, then score the rest of the line."""
         seat, rest = handoff((new_message.text_content or "").strip())
         if seat:
             self.sidecar.current_speaker = seat
@@ -151,10 +165,13 @@ class SoloPanelScribe(PanelScribe):
         rows: one row per interviewer seat that spoke. consensus: one sentence
         overall hiring lean.
         """
-        _module.publish_scorecard_ui(self.room, [row.model_dump() for row in rows], consensus)
+        # Keep only seats the visitor actually spoke as.
+        spoken = [row.model_dump() for row in rows if row.interviewer in self.sidecar.words]
+        _module.publish_scorecard_ui(self.room, spoken, consensus)
         return "scorecard published"
 
 
 def publish_panel(room) -> None:
+    """Mount the empty transcript and talk-time panels."""
     _module.publish_transcript(room, [])
     _module.publish_talk_time(room, [])
