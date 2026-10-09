@@ -14,6 +14,7 @@ COPY demos/panel-scribe/agent.py /app/demos/panel-scribe/
 COPY demos/front-desk-interpreter/agent.py /app/demos/front-desk-interpreter/
 COPY demos/pharmacy-refill/agent.py demos/pharmacy-refill/refill.py /app/demos/pharmacy-refill/
 COPY demos/city-311/agent.py /app/demos/city-311/
+COPY demos/voice-checkout/agent.py /app/demos/voice-checkout/
 RUN useradd --create-home worker
 USER worker
 RUN python -m livekit.agents download-files
