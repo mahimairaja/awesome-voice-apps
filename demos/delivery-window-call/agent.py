@@ -219,13 +219,9 @@ class DeliveryCaller(Agent):
         # The room_io follows the callee, not any web viewer already in the room.
         self.session.room_io.set_participant(self.callee)
 
-        def on_attributes(changed: dict, participant: rtc.Participant) -> None:
-            status = changed.get("sip.callStatus")
-            if participant.identity == self.callee and status in {"dialing", "ringing"}:
-                if self.session.userdata["stage"] != "ringing" and status == "ringing":
-                    self.mark("ringing")
-
-        self.room.on("participant_attributes_changed", on_attributes)
+        # For an outbound call, sip.callStatus stays "dialing" until the callee
+        # picks up and then turns "active"; create_sip_participant returns then.
+        self.mark("ringing")
         try:
             await get_job_context().api.sip.create_sip_participant(
                 api.CreateSIPParticipantRequest(
@@ -244,8 +240,6 @@ class DeliveryCaller(Agent):
             self.mark("busy" if code == 486 else "no-answer")
             await self._end("busy" if code == 486 else "no-answer")
             return False
-        finally:
-            self.room.off("participant_attributes_changed", on_attributes)
         self.room.on("participant_disconnected", self._on_left)
         return True
 

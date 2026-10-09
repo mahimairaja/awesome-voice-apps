@@ -37,7 +37,7 @@ such as "Hi, you've reached Sam, leave a message after the tone."
 ## How it works
 
 - `create_sip_participant(..., wait_until_answered=True)` dials through the trunk.
-  The `sip.callStatus` attribute reports ringing as it happens.
+  It returns when `sip.callStatus` turns `active`, the moment the callee picks up.
 - `AMD` runs on the first thing the callee says and returns `human`,
   `machine-vm`, `machine-unavailable` or `uncertain`. It reuses the session's
   LLM and transcripts, so it adds no extra provider.

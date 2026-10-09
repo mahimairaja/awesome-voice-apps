@@ -162,6 +162,38 @@ class DeliveryCall(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(await agent._wait_for_browser_answer())
         self.assertEqual(agent.session.userdata["outcome"], "no-answer")
 
+    async def test_phone_mode_dials_the_trunk_and_reports_busy(self):
+        agent = Probe("+14165550123")
+        agent.session.room_io = SimpleNamespace(set_participant=MagicMock())
+        agent.room.on = MagicMock()
+        dial = AsyncMock()
+        ctx = SimpleNamespace(api=SimpleNamespace(sip=SimpleNamespace(create_sip_participant=dial)))
+        module = hosted_delivery._module
+        with (
+            patch.dict(module.os.environ, {"SIP_OUTBOUND_TRUNK_ID": "ST_test"}),
+            patch.object(module, "get_job_context", return_value=ctx),
+        ):
+            self.assertTrue(await agent._dial_phone())
+            request = dial.await_args.args[0]
+            self.assertEqual(request.sip_call_to, "+14165550123")
+            self.assertEqual(request.sip_trunk_id, "ST_test")
+            self.assertTrue(request.wait_until_answered)
+            agent.session.room_io.set_participant.assert_called_once_with("callee-phone")
+
+            busy = module.api.SipCallError(
+                "unavailable", "busy", status=503, metadata={"sip_status_code": "486"}
+            )
+            dial.side_effect = busy
+            agent.session.userdata = hosted_delivery.initial_state("+14165550123", MONDAY)
+            self.assertFalse(await agent._dial_phone())
+        self.assertEqual(agent.session.userdata["outcome"], "busy")
+
+    async def test_phone_mode_needs_a_trunk(self):
+        agent = Probe("+14165550123")
+        with patch.dict(hosted_delivery._module.os.environ, {"SIP_OUTBOUND_TRUNK_ID": ""}):
+            with self.assertRaises(RuntimeError):
+                await agent._dial_phone()
+
     async def test_hosted_call_listens_first_and_hangs_up_through_the_site(self):
         self.assertEqual(hosted.HostedDelivery.greeting, "")
         agent = object.__new__(hosted.HostedDelivery)
