@@ -1,0 +1,9 @@
+[project]
+name = "hotel-concierge"
+version = "0.1.0"
+description = "A video avatar concierge that recommends a restaurant and books a table, with lip sync and interruptions measured live."
+requires-python = ">=3.11"
+dependencies = [
+    "livekit-agents[openai,silero,spatius]>=1.8.5,<2.0",
+    "python-dotenv>=1.0",
+]

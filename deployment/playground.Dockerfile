@@ -1,6 +1,10 @@
 FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
+# libopus: the concierge's Spatius avatar sends the agent's audio as Ogg Opus.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libopus0 \
+    && rm -rf /var/lib/apt/lists/*
 COPY demos/drive-thru-coffee/requirements-hosted.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY demos/drive-thru-coffee/*.py /app/demos/drive-thru-coffee/
@@ -39,6 +43,7 @@ COPY demos/private-health-line/agent.py /app/demos/private-health-line/
 COPY demos/phone-tree-router/agent.py demos/phone-tree-router/routing.py /app/demos/phone-tree-router/
 COPY demos/sales-copilot/agent.py demos/sales-copilot/copilot.py /app/demos/sales-copilot/
 COPY demos/agent-stress-test/agent.py demos/agent-stress-test/stresstest.py /app/demos/agent-stress-test/
+COPY demos/hotel-concierge/agent.py /app/demos/hotel-concierge/
 RUN useradd --create-home worker
 USER worker
 RUN python -m livekit.agents download-files
