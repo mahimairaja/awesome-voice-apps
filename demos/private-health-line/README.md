@@ -1,15 +1,16 @@
 # Private health line
 
-A post-surgery check-in call for a fictional Canadian hospital where speech
-recognition, the language model and the voice all run on your own GPU server.
-No outside AI provider receives audio or text.
+A clinical trial check-in call for a fictional Canadian research hospital
+where speech recognition, the language model and the voice all run on your own
+GPU server. No outside AI provider receives audio or text.
 
-The agent asks six questions (name, procedure, pain, fever, wound, medication),
-validates each answer in a tool, and routes the call to a nurse callback when an
-answer is a warning sign. Every model request goes through a counting transport,
-so the agent knows how many bytes it sent to which host and how long each stage
-took. It publishes that, with the form, as a `PrivateLine` event on the `ui` data
-topic.
+The line calls a trial participant for their weekly symptom diary. The agent
+asks six questions (participant, missed doses, new symptoms, severity, ER or
+hospital visits, new medication), validates each answer in a tool, and flags
+possible adverse events for the study coordinator. Every model request goes
+through a counting transport, so the agent knows how many bytes it sent to
+which host and how long each stage took. It publishes that, with the form, as a
+`PrivateLine` event on the `ui` data topic.
 
 | Stage | Model | Server |
 |---|---|---|

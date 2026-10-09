@@ -1,8 +1,8 @@
-"""private-health-line: a post-surgery check-in line that keeps every byte in-house.
+"""private-health-line: a clinical trial check-in line that keeps every byte in-house.
 
-A patient calls the day after day surgery. The agent asks six check-in
-questions, records each answer through a validated tool, and routes the call to
-a nurse callback when an answer is a warning sign.
+The research hospital's line calls a trial participant for their weekly symptom
+diary. The agent asks six questions, records each answer through a validated
+tool, and flags possible adverse events for the study coordinator.
 
 What makes it different is where the call goes. Speech-to-text, the language
 model and the voice all run on one self-hosted GPU box behind an
@@ -51,19 +51,21 @@ logger = logging.getLogger(__name__)
 HOSPITAL = "Kestrel Bay Regional Health"
 STAGES = ("stt", "llm", "tts")
 
-FieldName = Literal["patient", "procedure", "pain", "fever", "wound", "medication"]
+FieldName = Literal["participant", "doses", "symptoms", "severity", "hospital", "medication"]
 FIELDS: tuple[str, ...] = FieldName.__args__
 LABELS = {
-    "patient": "patient",
-    "procedure": "procedure",
-    "pain": "pain, 0 to 10",
-    "fever": "fever",
-    "wound": "wound",
-    "medication": "medication",
+    "participant": "participant",
+    "doses": "doses missed",
+    "symptoms": "new symptoms",
+    "severity": "severity",
+    "hospital": "ER or hospital",
+    "medication": "new medication",
 }
-WOUND = ("clean", "red", "swollen", "draining", "bleeding")
-_YES = {"yes", "y", "yeah", "yep", "true", "i do", "i am", "taking them"}
-_NO = {"no", "n", "nope", "nah", "false", "i don't", "not really", "none"}
+SEVERITY = ("none", "mild", "moderate", "severe")
+_YES = {"yes", "y", "yeah", "yep", "true", "i did", "i have", "i am"}
+_NO = {"no", "n", "nope", "nah", "false", "i didn't", "i haven't", "not really", "none"}
+_NUMBERS = {"none": 0, "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5}
+_NUMBERS |= {"six": 6, "seven": 7}
 
 
 def _yes_no(value: str) -> bool | None:
@@ -72,49 +74,38 @@ def _yes_no(value: str) -> bool | None:
 
 
 def check_answer(field: str, value: str) -> tuple[bool, str, str | None]:
-    """Validate one answer. Returns (ok, normalized value or reason, warning sign)."""
+    """Validate one answer. Returns (ok, normalized value or reason, possible adverse event)."""
     v = value.strip()
     if not v:
         return False, "the answer came through empty; ask again", None
-    if field in ("patient", "procedure"):
+    if field == "participant":
         return True, v[:60], None
-    if field == "pain":
+    if field == "symptoms":
+        return True, ("none" if _yes_no(v) is False else v[:60]), None
+    if field == "doses":
+        said = v.lower().rstrip(".")
         try:
-            score = int(float(v))
+            missed = _NUMBERS[said] if said in _NUMBERS else int(float(said))
         except ValueError:
-            return False, "pain is a whole number from 0 to 10", None
-        if not 0 <= score <= 10:
-            return False, "pain is a whole number from 0 to 10", None
-        return True, f"{score}/10", f"pain {score}/10" if score >= 7 else None
-    if field == "fever":
-        try:
-            celsius = float(v.lower().removesuffix("c").strip())
-        except ValueError:
-            answer = _yes_no(v)
-            if answer is None:
-                return False, "answer yes or no, or give a temperature in Celsius", None
-            return True, "yes" if answer else "no", "fever" if answer else None
-        if not 34 <= celsius <= 43:
-            return False, "that temperature is out of range; ask for it in Celsius", None
-        flag = f"temperature {celsius:.1f} C" if celsius >= 38 else None
-        return True, f"{celsius:.1f} C", flag
-    if field == "wound":
-        # "Clean and dry" is clean; "a bit red and draining" is red. A warning word wins.
+            return False, "doses missed is a whole number from 0 to 7", None
+        if not 0 <= missed <= 7:
+            return False, "doses missed is a whole number from 0 to 7", None
+        flag = f"missed {missed} doses" if missed >= 2 else None
+        return True, f"{missed} of 7", flag
+    if field == "severity":
+        # "Mild, maybe moderate" is moderate: the worst word they used wins.
         said = v.lower()
-        words = [w for w in WOUND if w in said]
+        words = [w for w in SEVERITY if w in said]
         if not words:
-            return False, f"describe the wound as one of: {', '.join(WOUND)}", None
-        word = next((w for w in words if w != "clean"), "clean")
-        return True, word, None if word == "clean" else f"wound {word}"
-    if field == "medication":
+            return False, f"describe it as one of: {', '.join(SEVERITY)}", None
+        word = max(words, key=SEVERITY.index)
+        return True, word, "severe symptoms" if word == "severe" else None
+    if field in ("hospital", "medication"):
         answer = _yes_no(v)
         if answer is None:
-            return False, "answer yes or no: taking medication as prescribed", None
-        return (
-            True,
-            "as prescribed" if answer else "not as prescribed",
-            (None if answer else "not taking medication as prescribed"),
-        )
+            return False, "answer yes or no", None
+        flag = "emergency or hospital visit" if field == "hospital" else "new medication"
+        return True, "yes" if answer else "no", flag if answer else None
     return False, "unknown field", None
 
 
@@ -306,20 +297,23 @@ def _ref() -> str:
 
 
 INSTRUCTIONS = (
-    f"You are the post-surgery check-in line for {HOSPITAL}, a fictional Canadian "
-    "hospital. The caller had day surgery yesterday. Ask these one at a time, in "
-    "order: their name, the procedure they had, their pain from 0 to 10, whether "
-    "they have a fever (a temperature in Celsius is fine), how the wound looks "
-    "(clean, red, swollen, draining or bleeding), and whether they are taking their "
-    "medication as prescribed. Call record_answer for each answer with the exact "
-    "field name; if it is rejected, give the reason in one short sentence and ask "
-    "again. If one answer covers several questions, record each. Never invent an "
-    "answer. When all six are recorded, call complete_checkin and tell them the "
-    "outcome and reference. Never give medical advice or a diagnosis. If they "
-    "describe chest pain, trouble breathing or heavy bleeding, tell them to call 911 "
-    "now. If asked where their voice goes: speech recognition, this model and this "
-    "voice all run on the hospital's own servers, and no outside AI company receives "
-    "the call. Keep replies to one or two short sentences, plain text, no lists."
+    f"You are the clinical trial check-in line for {HOSPITAL}, a fictional Canadian "
+    "research hospital. You are calling a participant in a drug trial for their "
+    "weekly symptom diary. Ask these one at a time, in order: their participant "
+    "number or name, how many of this week's seven daily doses they missed, any new "
+    "or worse symptoms, how severe those are (none, mild, moderate or severe), "
+    "whether they went to an emergency room or stayed in hospital since the last "
+    "call, and whether they started any new medication. Call record_answer for each "
+    "answer with the exact field name; if it is rejected, give the reason in one "
+    "short sentence and ask again. If one answer covers several questions, record "
+    "each. Never invent an answer. When all six are recorded, call complete_checkin "
+    "and tell them the outcome and reference. Never give medical advice, never say "
+    "whether a symptom is caused by the study drug, and never tell them to stop or "
+    "change a dose. If they describe chest pain, trouble breathing or a severe "
+    "allergic reaction, tell them to call 911 now. If asked where their voice goes: "
+    "speech recognition, this model and this voice all run on the hospital's own "
+    "servers, and no outside AI company receives the call. Keep replies to one or "
+    "two short sentences, plain text, no lists."
 )
 
 
@@ -394,8 +388,9 @@ class PrivateHealthLine(Agent):
     async def record_answer(self, context: RunContext[dict], field: FieldName, value: str) -> str:
         """Record one check-in answer.
 
-        Fields: patient (name), procedure, pain (0-10), fever (yes, no or Celsius),
-        wound (clean, red, swollen, draining, bleeding), medication (yes or no).
+        Fields: participant (number or name), doses (missed this week, 0-7),
+        symptoms (new or worse, or none), severity (none, mild, moderate, severe),
+        hospital (ER visit or stay, yes or no), medication (new medication, yes or no).
         """
         ok, result, flag = check_answer(field, value)
         if not ok:
@@ -407,7 +402,10 @@ class PrivateHealthLine(Agent):
             state["flags"][field] = flag
         self.publish()
         if flag:
-            return f"recorded {field}: {result}. This is a warning sign; do not reassure."
+            return (
+                f"recorded {field}: {result}. This is a possible adverse event for the "
+                "study coordinator; do not reassure or explain it."
+            )
         return f"recorded {field}: {result}"
 
     @function_tool()
@@ -419,14 +417,15 @@ class PrivateHealthLine(Agent):
             return f"cannot complete yet, still missing: {', '.join(missing)}"
         state["ref"] = state["ref"] or _ref()
         flags = list(state["flags"].values())
-        state["outcome"] = "nurse" if flags else "routine"
+        state["outcome"] = "coordinator" if flags else "routine"
         self.publish()
         if flags:
             return (
-                f"Outcome: a nurse will call back today about {', '.join(flags)}. "
+                f"Outcome: the study coordinator will call back today about "
+                f"{', '.join(flags)}. "
                 f"Reference {state['ref']}."
             )
-        return f"Outcome: routine recovery, no callback needed. Reference {state['ref']}."
+        return f"Outcome: diary recorded, no callback needed. Reference {state['ref']}."
 
 
 server = AgentServer()
@@ -457,8 +456,8 @@ async def entrypoint(ctx: JobContext) -> None:
     agent.publish()
     await session.generate_reply(
         instructions=(
-            f"Say you are the {HOSPITAL} post-surgery check-in line, a simulation, and "
-            "ask for their name."
+            f"Say you are the {HOSPITAL} clinical trial check-in line, a simulation, "
+            "and ask for their participant number or name."
         )
     )
 

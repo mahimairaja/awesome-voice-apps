@@ -1,7 +1,7 @@
 [project]
 name = "private-health-line"
 version = "0.1.0"
-description = "A post-surgery check-in line where speech, model and voice all run on your own GPU server."
+description = "A clinical trial check-in line where speech, model and voice all run on your own GPU server."
 requires-python = ">=3.11"
 dependencies = [
     "livekit-agents[openai,silero]>=1.8.5,<2.0",

@@ -23,9 +23,9 @@ INSTRUCTIONS = _module.INSTRUCTIONS + (
     "answer covers several questions, record each before asking the next."
 )
 GREETING = (
-    f"Say you are the {_module.HOSPITAL} post-surgery check-in line, that this is a "
-    "simulation with made-up details, and that the call stays on the hospital's own "
-    "servers. Ask for their name."
+    f"Say you are the {_module.HOSPITAL} clinical trial check-in line, that this is "
+    "a simulation with made-up details, and that the call stays on the hospital's "
+    "own servers. Ask for their participant number or name."
 )
 
 

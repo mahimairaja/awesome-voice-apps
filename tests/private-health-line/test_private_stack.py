@@ -16,7 +16,7 @@ PORT = 8765
 async def _transcribe(request):
     assert request.headers["Authorization"] == "Bearer offline"
     await request.post()
-    return web.json_response({"text": "my pain is about an eight"})
+    return web.json_response({"text": "I missed two doses"})
 
 
 async def _chat(request):
@@ -65,7 +65,7 @@ async def _run(monkeypatch):
     try:
         clip = rtc.AudioFrame(b"\0\0" * 16000, 16000, 1, 16000)
         heard = await stack["stt"].recognize([clip])
-        assert heard.alternatives[0].text == "my pain is about an eight"
+        assert heard.alternatives[0].text == "I missed two doses"
 
         chat = llm.ChatContext()
         chat.add_message(role="user", content="hi")
@@ -98,9 +98,12 @@ def test_every_stage_goes_to_the_private_server_and_is_counted(monkeypatch):
     assert ledger.flows["tts"]["received"] == 48000
 
 
-def test_wound_and_fever_answers_raise_the_right_flags():
-    assert agent.check_answer("wound", "clean and dry")[1:] == ("clean", None)
-    assert agent.check_answer("wound", "a bit red and draining")[2] == "wound red"
-    assert agent.check_answer("fever", "38.4")[2] == "temperature 38.4 C"
-    assert agent.check_answer("fever", "no") == (True, "no", None)
-    assert not agent.check_answer("pain", "eleven")[0]
+def test_doses_severity_and_visits_raise_the_right_flags():
+    assert agent.check_answer("doses", "two") == (True, "2 of 7", "missed 2 doses")
+    assert agent.check_answer("doses", "0")[1:] == ("0 of 7", None)
+    assert not agent.check_answer("doses", "nine")[0]
+    assert agent.check_answer("severity", "mild, maybe severe")[2] == "severe symptoms"
+    assert agent.check_answer("severity", "moderate")[1:] == ("moderate", None)
+    assert agent.check_answer("symptoms", "no")[1] == "none"
+    assert agent.check_answer("hospital", "yes")[2] == "emergency or hospital visit"
+    assert agent.check_answer("medication", "no") == (True, "no", None)

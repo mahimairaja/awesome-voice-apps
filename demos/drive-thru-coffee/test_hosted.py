@@ -462,29 +462,30 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             await client.post("https://api.example.com/v1/audio/speech", content=b"z" * 10)
         self.assertEqual(ledger.elsewhere, 310)
 
-    async def test_onprem_checkin_flags_warning_signs_and_stays_isolated(self):
+    async def test_onprem_checkin_flags_adverse_events_and_stays_isolated(self):
         agent = self.onprem_agent()
         first, second = agent.initial_state(), agent.initial_state()
         self.assertIsNot(first["answers"], second["answers"])
         agent.bind(first)
         context = SimpleNamespace(userdata=first)
         with patch.object(hosted_onprem._module, "publish_ui_event") as publish:
-            self.assertIn("rejected", await agent.record_answer(context, "pain", "eleven"))
+            self.assertIn("rejected", await agent.record_answer(context, "doses", "nine"))
             self.assertIn("missing", await agent.complete_checkin(context))
             answers = {
-                "patient": "Sam Taylor",
-                "procedure": "knee arthroscopy",
-                "pain": "8",
-                "fever": "37.2",
-                "wound": "clean and dry, a bit red",
-                "medication": "yes",
+                "participant": "KB-0412",
+                "doses": "one",
+                "symptoms": "a rash on my arms",
+                "severity": "mild, maybe moderate",
+                "hospital": "yes",
+                "medication": "no",
             }
             for field, value in answers.items():
                 self.assertIn(f"recorded {field}", await agent.record_answer(context, field, value))
             outcome = await agent.complete_checkin(context)
-        self.assertIn("nurse will call back", outcome)
-        self.assertEqual(first["flags"], {"pain": "pain 8/10", "wound": "wound red"})
-        self.assertEqual((first["outcome"], second["outcome"]), ("nurse", None))
+        self.assertIn("study coordinator will call back", outcome)
+        self.assertEqual(first["answers"]["severity"], "moderate")
+        self.assertEqual(first["flags"], {"hospital": "emergency or hospital visit"})
+        self.assertEqual((first["outcome"], second["outcome"]), ("coordinator", None))
         self.assertRegex(first["ref"], r"^KB-[0-9A-F]{6}$")
         props = publish.call_args.args[2]
         self.assertEqual(publish.call_args.args[1], "PrivateLine")
