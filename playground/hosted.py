@@ -344,7 +344,7 @@ class HostedGuard:
             "llm": openai.LLM(
                 model="gpt-4o-mini", max_completion_tokens=180, max_retries=0, store=False
             ),
-            "tts": cartesia.TTS(model="sonic-2"),
+            "tts": cartesia.TTS(model="sonic-3"),  # sonic-2 is being retired
         }
 
     def __init__(self) -> None:
@@ -785,7 +785,7 @@ class HostedBuilder(HostedGuard, ConfigurableAgent):
 
     def __init__(self) -> None:
         super().__init__()
-        self.update_options(tts=cartesia.TTS(model="sonic-2", voice=VOICES[self.config.voice]))
+        self.update_options(tts=cartesia.TTS(model="sonic-3", voice=VOICES[self.config.voice]))
 
     def initial_config(self):
         # The site validated this config and signed it into the dispatch; check it again.

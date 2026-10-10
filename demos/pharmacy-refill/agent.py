@@ -175,7 +175,7 @@ async def entrypoint(ctx: JobContext) -> None:
         userdata=refill.initial_state(),
         stt=make_stt(),
         llm=openai.LLM(model="gpt-4o-mini"),
-        tts=cartesia.TTS(model="sonic-2"),
+        tts=cartesia.TTS(model="sonic-3"),
         vad=ctx.proc.userdata["vad"],
     )
     agent = RefillLine(ctx.room)

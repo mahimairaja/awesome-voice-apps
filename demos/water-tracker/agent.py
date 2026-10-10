@@ -212,7 +212,7 @@ async def entrypoint(ctx: JobContext) -> None:
         userdata=userdata,
         stt=deepgram.STT(model="nova-3"),
         llm=openai.LLM(model="gpt-4o-mini"),
-        tts=cartesia.TTS(model="sonic-2"),
+        tts=cartesia.TTS(model="sonic-3"),
         vad=ctx.proc.userdata["vad"],
         turn_detection=inference.TurnDetector(),
     )

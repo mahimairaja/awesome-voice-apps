@@ -233,7 +233,7 @@ def make_stt() -> deepgram.STT:
 
 
 def make_tts(lang: str = "en") -> cartesia.TTS:
-    return cartesia.TTS(model="sonic-2", voice=LANGUAGES[lang]["voice"], language=lang)
+    return cartesia.TTS(model="sonic-3", voice=LANGUAGES[lang]["voice"], language=lang)
 
 
 def language_line(lang: str) -> str:

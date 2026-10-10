@@ -55,7 +55,7 @@ def bounded_builder(stop, spawn):
                 llm=openai.LLM(
                     model="gpt-4o-mini", max_completion_tokens=120, max_retries=0, store=False
                 ),
-                tts=cartesia.TTS(model="sonic-2"),
+                tts=cartesia.TTS(model="sonic-3"),
             )
             self._llm_requests = 0
             self._tts_bytes = 0
