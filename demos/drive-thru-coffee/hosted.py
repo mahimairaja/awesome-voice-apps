@@ -207,41 +207,6 @@ async def authorize(req: JobRequest) -> None:
         raise
 
 
-class EvalTools:
-    """Tools the agent called on an eval call, reported for the eval judge.
-
-    Only calls the site marked as evals (scripted callers, no visitor) report.
-    Arguments are capped, and a failed report never affects the call.
-    """
-
-    LIMIT = 64
-
-    def __init__(self, reservation: str):
-        self.reservation = reservation
-        self.calls: list[dict] = []
-        self.lock = asyncio.Lock()
-
-    def record(self, event) -> None:
-        for call in event.function_calls:
-            if len(self.calls) >= self.LIMIT:
-                return
-            try:
-                arguments = json.loads(call.arguments or "{}")
-            except (TypeError, ValueError):
-                arguments = {}
-            if len(json.dumps(arguments)) > 1000:
-                arguments = {"truncated": True}
-            self.calls.append({"name": str(call.name)[:64], "arguments": arguments})
-        spawn(self.report())
-
-    async def report(self) -> None:
-        async with self.lock:
-            try:
-                await control("eval_tools", self.reservation, tools=list(self.calls))
-            except (httpx.HTTPError, ValueError):
-                logger.warning("Eval tool report failed")
-
-
 class PlaygroundSink(RemoteCollectorSink):
     """Attribute VoiceGateway costs to this reservation, never the shared account."""
 
@@ -299,6 +264,10 @@ class PlaygroundSink(RemoteCollectorSink):
         await self.report()
 
 
+# Transcribed words a caller must say over the agent before it stops talking.
+INTERRUPT_MIN_WORDS = 2
+
+
 class HostedGuard:
     """Call limits shared by every STT, LLM and TTS demo.
 
@@ -310,8 +279,20 @@ class HostedGuard:
     greeting = ""
     # LLM requests allowed in a full two-minute call; shorter calls scale down.
     llm_budget = 12
-    # Session turn-taking; a demo about interruptions brings its own.
-    turn_handling = {"turn_detection": "vad", "interruption": {"mode": "vad"}}
+    # Session turn-taking; a demo about interruptions brings its own. Raw voice activity
+    # alone (a cough, a TV, the agent's own voice leaking back through laptop speakers)
+    # used to cut a reply after its first word. Now it takes two transcribed words to
+    # interrupt, and a stray sound that never becomes words lets the reply resume.
+    turn_handling = {
+        "turn_detection": "vad",
+        "interruption": {
+            "mode": "vad",
+            "min_duration": 0.6,
+            "min_words": INTERRUPT_MIN_WORDS,
+            "resume_false_interruption": True,
+            "false_interruption_timeout": 1.5,
+        },
+    }
 
     def initial_state(self) -> dict:
         raise NotImplementedError
@@ -387,9 +368,6 @@ class HostedGuard:
                 dead_air=False,
             )
             self.publish_initial()
-            if self.approval.get("source") == "eval":
-                tools = EvalTools(self.approval["id"])
-                self.session.on("function_tools_executed", tools.record)
             # Outbound demos wait for the callee to speak first.
             if self.greeting:
                 await self.session.generate_reply(instructions=self.greeting)
