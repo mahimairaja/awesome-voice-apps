@@ -215,3 +215,49 @@ def test_scripted_call_end_to_end_against_a_fake_agent():
     assert computed, record["scores"]
     for score in computed:
         assert 0 <= score["score"] <= 1 and isinstance(score["passed"], bool)
+
+
+def test_connector_drops_the_callers_transcript():
+    from agent_connector import AgentConnector
+
+    connector = AgentConnector(url="wss://example.invalid", token="t")
+    connector._room = SimpleNamespace(
+        local_participant=SimpleNamespace(track_publications={"TR_caller": object()})
+    )
+    seen = []
+
+    class Task:
+        def add_done_callback(self, _callback):
+            pass
+
+    def create_task(coro):
+        seen.append(coro)
+        coro.close()
+        return Task()
+
+    connector._loop = SimpleNamespace(create_task=create_task)
+
+    def reader(track):
+        return SimpleNamespace(info=SimpleNamespace(attributes={"lk.transcribed_track_id": track}))
+
+    connector._on_transcript_stream(reader("TR_agent"), "agent")
+    connector._on_transcript_stream(reader("TR_caller"), "agent")
+    assert len(seen) == 1
+
+
+def test_integrity_reason_names_the_defects():
+    from deepeval.metrics import AudioIntegrityMetric
+    from report import scores
+
+    metric = AudioIntegrityMetric()
+    metric.score, metric.success = 0.4, False
+    metric.reason = "Audio integrity was 0.40; 3 defect event(s) were detected."
+    metric.score_breakdown = {
+        "events": [
+            {"type": "abrupt_cutoff"},
+            {"type": "audio_dropout", "count": 2},
+            {"type": "abrupt_cutoff"},
+        ]
+    }
+    [score] = scores([metric])
+    assert score["reason"].endswith("(abrupt_cutoff x2, audio_dropout x2)")

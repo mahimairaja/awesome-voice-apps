@@ -14,11 +14,23 @@ def metric_key(metric) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
 
 
+def events(metric) -> str:
+    """'abrupt_cutoff x2, audio_dropout x3': what an audio-integrity score counted."""
+    found = (getattr(metric, "score_breakdown", None) or {}).get("events") or []
+    counts: dict[str, int] = {}
+    for event in found:
+        if isinstance(event, dict) and event.get("type"):
+            counts[event["type"]] = counts.get(event["type"], 0) + int(event.get("count", 1))
+    return ", ".join(f"{kind} x{n}" for kind, n in counts.items())
+
+
 def scores(metrics) -> list[dict]:
     out = []
     for metric in metrics:
         score = getattr(metric, "score", None)
         reason = getattr(metric, "reason", None) or getattr(metric, "error", None)
+        if reason and events(metric):
+            reason = f"{reason} ({events(metric)})"
         out.append(
             {
                 "metric": metric_key(metric),
