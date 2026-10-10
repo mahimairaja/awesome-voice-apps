@@ -4,12 +4,9 @@ name: Demo evals
 # with DeepEval's local voice metrics. Results go to mahimai.ca. Each call is
 # paid from the site's capped eval budget, so only maintainers can start one:
 # on a schedule, by hand, or after a change that redeploys the demo worker.
+# On hold: the schedule and the push trigger are off until the worker stops a
+# call's cost tracker when the call ends (each live call kept writing to D1).
 on:
-  schedule:
-    - cron: "0 14 1,15 * *"
-  push:
-    branches: [main]
-    paths: ["demos/**", "playground/**", "deployment/**"]
   workflow_dispatch:
     inputs:
       demos:
