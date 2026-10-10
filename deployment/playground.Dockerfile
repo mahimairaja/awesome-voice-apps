@@ -2,12 +2,15 @@ FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
 # libopus: the concierge's Spatius avatar sends the agent's audio as Ogg Opus.
+# git: OpenRTC installs from a pinned commit; it is removed after the install.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libopus0 \
+    && apt-get install -y --no-install-recommends libopus0 git \
     && rm -rf /var/lib/apt/lists/*
-COPY demos/drive-thru-coffee/requirements-hosted.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-COPY demos/drive-thru-coffee/*.py /app/demos/drive-thru-coffee/
+COPY playground/requirements-hosted.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && apt-get purge -y --auto-remove git
+COPY playground/*.py /app/playground/
+COPY demos/drive-thru-coffee/agent.py /app/demos/drive-thru-coffee/
 COPY demos/talk-to-our-team/agent.py demos/talk-to-our-team/booking.py /app/demos/talk-to-our-team/
 COPY demos/water-tracker/agent.py /app/demos/water-tracker/
 COPY demos/tenant-rights/agent.py demos/tenant-rights/rag.py demos/tenant-rights/build_index.py /app/demos/tenant-rights/
@@ -47,4 +50,4 @@ COPY demos/hotel-concierge/agent.py /app/demos/hotel-concierge/
 RUN useradd --create-home worker
 USER worker
 RUN python -m livekit.agents download-files
-CMD ["python", "demos/drive-thru-coffee/hosted.py", "start"]
+CMD ["python", "playground/hosted.py", "start"]
