@@ -1,0 +1,93 @@
+[
+  {
+    "name": "coffee-change-order",
+    "scenario": "A drive-thru customer orders a large latte and a blueberry muffin, switches the latte to an iced latte, then gives their name.",
+    "expected_outcome": "The cart ends with one iced latte and one blueberry muffin (no hot latte), the order is submitted under the name Sam, and the agent reads back the order and total.",
+    "persona": {
+      "characteristics": "A regular customer in a hurry who speaks in short sentences.",
+      "speaks_first": false,
+      "voice": "am_michael"
+    },
+    "additional_metadata": {
+      "demo": "coffee",
+      "seconds": 90,
+      "expected_tools": ["add_item", "remove_item", "submit_order"],
+      "script": [
+        "Hi, can I get a large latte and a blueberry muffin?",
+        "Actually, make that latte an iced latte instead.",
+        "No, that's everything.",
+        "It's Sam."
+      ]
+    }
+  },
+  {
+    "name": "coffee-off-menu",
+    "scenario": "A drive-thru customer asks for a matcha latte, which is not on the menu, then settles for a cold brew.",
+    "expected_outcome": "The agent says matcha is not on the menu without inventing it, adds one cold brew, and submits the order under the name Priya.",
+    "persona": {
+      "characteristics": "A polite customer trying the place for the first time.",
+      "speaks_first": false,
+      "voice": "af_heart"
+    },
+    "additional_metadata": {
+      "demo": "coffee",
+      "seconds": 90,
+      "expected_tools": ["add_item", "submit_order"],
+      "script": [
+        "Hi there. Do you have a matcha latte?",
+        "Okay, then I'll just have a cold brew.",
+        "That's all, thanks.",
+        "Priya."
+      ]
+    }
+  },
+  {
+    "name": "pharmacy-refill",
+    "scenario": "A patient refills the prescription shown on their bottle label, reading out the medication, Rx number, date of birth and postal code, and picks the King Street West store.",
+    "expected_outcome": "The agent captures and reads back each of the five fields, confirms each only after the caller says yes, never reveals what is on file, and places the refill with a reference and pickup time.",
+    "persona": {
+      "characteristics": "A calm patient reading details off a pill bottle.",
+      "speaks_first": false,
+      "voice": "af_sarah"
+    },
+    "additional_metadata": {
+      "demo": "pharmacy",
+      "seconds": 120,
+      "turn_detection": "patient",
+      "expected_tools": ["capture", "confirm", "place_refill"],
+      "script": [
+        "Hi, I'd like to refill my {Refill.label.drug|lower}.",
+        "Yes, that's right.",
+        "The Rx number is {Refill.label.rx|spell}.",
+        "Yes.",
+        "My date of birth is {Refill.label.dob|date}.",
+        "Yes, correct.",
+        "The postal code is {Refill.label.postal|spell}.",
+        "Yes.",
+        "I'll pick it up at the King Street West store.",
+        "Yes, that's it."
+      ]
+    }
+  },
+  {
+    "name": "mortgage-questions",
+    "scenario": "A homeowner listens to the renewal advisor, acknowledges with mm-hm, then asks for the monthly payment on the five-year fixed and on the variable.",
+    "expected_outcome": "The agent keeps explaining after the acknowledgement, then answers each question directly with the monthly payment from compare_option, and does not give financial advice beyond the options.",
+    "persona": {
+      "characteristics": "A homeowner whose fixed-rate mortgage renews next month.",
+      "speaks_first": false,
+      "voice": "bf_emma"
+    },
+    "additional_metadata": {
+      "demo": "mortgage",
+      "seconds": 90,
+      "expected_tools": ["compare_option"],
+      "script": [
+        "Mm-hm.",
+        "What would the five-year fixed cost me each month?",
+        "And the five-year variable?",
+        "Okay, thanks. I'll think about the fixed one."
+      ]
+    }
+  }
+]

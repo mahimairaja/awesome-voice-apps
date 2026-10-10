@@ -1,0 +1,92 @@
+name: Demo evals
+
+# Calls the hosted playground demos with a scripted caller and scores each call
+# with DeepEval's local voice metrics. Results go to mahimai.ca. Each call is
+# paid from the site's capped eval budget, so only maintainers can start one:
+# on a schedule, by hand, or after a change that redeploys the demo worker.
+on:
+  schedule:
+    - cron: "0 14 1,15 * *"
+  push:
+    branches: [main]
+    paths: ["demos/**", "deployment/**"]
+  workflow_dispatch:
+    inputs:
+      demos:
+        description: "Comma-separated demo ids (empty runs every scenario)"
+        required: false
+        default: ""
+  pull_request:
+    paths: ["tests/evals/**", ".github/workflows/demo-evals.yml"]
+
+concurrency:
+  group: demo-evals-${{ github.event_name == 'pull_request' && github.ref || 'live' }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
+
+env:
+  DEEPEVAL_TELEMETRY_OPT_OUT: "YES"
+  KOKORO_URL: https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0
+
+jobs:
+  harness:
+    name: harness (offline)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tests/evals
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: tests/evals/uv.lock
+      - name: Cache caller voice
+        uses: actions/cache@v4
+        with:
+          path: tests/evals/.models
+          key: kokoro-v1.0-int8
+      - name: Download caller voice
+        run: |
+          mkdir -p .models
+          for f in kokoro-v1.0.int8.onnx voices-v1.0.bin; do
+            [ -f ".models/$f" ] || curl -fsSL -o ".models/$f" "$KOKORO_URL/$f"
+          done
+      - run: uv sync --locked
+      - run: uv run pytest test_harness.py -q
+
+  live:
+    name: live demos
+    if: github.event_name != 'pull_request' && github.repository == 'mahimairaja/awesome-voice-apps'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: tests/evals
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: tests/evals/uv.lock
+      - name: Cache caller voice
+        uses: actions/cache@v4
+        with:
+          path: tests/evals/.models
+          key: kokoro-v1.0-int8
+      - name: Download caller voice
+        run: |
+          mkdir -p .models
+          for f in kokoro-v1.0.int8.onnx voices-v1.0.bin; do
+            [ -f ".models/$f" ] || curl -fsSL -o ".models/$f" "$KOKORO_URL/$f"
+          done
+      - run: uv sync --locked
+      - name: Wait for the worker redeploy
+        if: github.event_name == 'push'
+        run: sleep 600
+      - name: Run evals
+        env:
+          PLAYGROUND_EVAL_SECRET: ${{ secrets.PLAYGROUND_EVAL_SECRET }}
+          EVAL_DEMOS: ${{ inputs.demos }}
+          EVAL_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}
+        run: uv run deepeval test run test_demos.py --identifier "gh-${{ github.run_id }}"
