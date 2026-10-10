@@ -3,14 +3,14 @@
 Maintainer-owned integration for mahimai.ca. Contributors only need a runnable demo.
 
 Build from the repository root with `deployment/playground.Dockerfile`. The single
-worker accepts a server-approved reservation for any demo in `CASCADE_AGENTS` (see
-`hosted.py`) or a GPT Live demo in `REALTIME_DEMOS`. Keep the
+worker (`playground/hosted.py`, an OpenRTC `AgentPool`) accepts a server-approved
+reservation for any demo in `CASCADE_AGENTS` or a GPT Live demo in `REALTIME_AGENTS`. Keep the
 existing `mahimai-playground-coffee` dispatch name for compatibility.
 
-To host another STT, LLM and TTS demo: add a small adapter beside `hosted.py`
+To host another STT, LLM and TTS demo: add a small adapter in `playground/`
 that loads the contributed agent by path (see `hosted_water.py`), mix it with
 `HostedGuard` and register it in `CASCADE_AGENTS`, copy its files in the
-Dockerfile, and add its folder to the Railway watch paths. The site must list the
+Dockerfile, and add its folder to the Railway watch paths, which also cover `/playground/**`. The site must list the
 same id before it can reserve a call. Provider keys and pricing must already be
 supported by `PlaygroundSink`; unknown pricing ends the call. A demo built on other
 providers keeps its own code: the adapter swaps the stack (see `hosted_claim.py`,

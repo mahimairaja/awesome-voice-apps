@@ -17,5 +17,6 @@ Use your microphone and speakers. Run `uv run python agent.py dev` instead to
 connect a LiveKit client. Optional UI events need a compatible client; the voice
 conversation runs without website metadata. Provider usage may cost money.
 
-The optional maintained hosted worker is documented in [HOSTED.md](HOSTED.md).
+The optional maintained hosted worker is documented in
+[playground/README.md](../../playground/README.md).
 It is not needed to run or contribute a standalone example.

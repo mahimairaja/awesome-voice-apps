@@ -1,0 +1,9 @@
+# Hosted worker pins, independently runnable from the original demo.
+livekit-agents[deepgram,openai,cartesia,silero,spatius]==1.8.5
+voicegateway[livekit]==0.27.0
+python-dotenv==1.2.2
+httpx==0.28.1
+# OpenRTC runs every demo in one worker. Pinned to the commit with turn_detector=False
+# until it ships in a release.
+openrtc @ git+https://github.com/mahimailabs/openrtc-runtime@2abc4b9affb726e6159848fdfe24b2bb07eb1902
+uvloop==0.22.1
