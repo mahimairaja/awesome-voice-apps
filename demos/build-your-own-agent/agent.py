@@ -353,7 +353,7 @@ async def entrypoint(ctx: JobContext) -> None:
     session = AgentSession(
         stt=deepgram.STT(model="nova-3"),
         llm=openai.LLM(model="gpt-4o-mini"),
-        tts=cartesia.TTS(model="sonic-2", voice=VOICES[config.voice]),
+        tts=cartesia.TTS(model="sonic-3", voice=VOICES[config.voice]),
         vad=ctx.proc.userdata["vad"],
     )
     await session.start(agent=ConfigurableAgent(ctx.room, config), room=ctx.room)

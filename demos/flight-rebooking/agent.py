@@ -170,7 +170,7 @@ def build_llm(outage: Outage, **kwargs) -> llm.FallbackAdapter:
 
 def build_tts(outage: Outage) -> tts.FallbackAdapter:
     return tts.FallbackAdapter(
-        [FlakyTTS(outage=outage, model="sonic-2"), openai.TTS(model="tts-1", voice="alloy")],
+        [FlakyTTS(outage=outage, model="sonic-3"), openai.TTS(model="tts-1", voice="alloy")],
         max_retry_per_tts=0,
     )
 

@@ -245,7 +245,7 @@ async def entrypoint(ctx: JobContext) -> None:
     session = AgentSession(
         stt=deepgram.STT(model="nova-3"),
         llm=openai.LLM(model="gpt-4o-mini"),
-        tts=cartesia.TTS(model="sonic-2"),
+        tts=cartesia.TTS(model="sonic-3"),
         vad=ctx.proc.userdata["vad"],
     )
     await ctx.connect()

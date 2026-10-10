@@ -70,7 +70,7 @@ class CascadeInterviewer(Agent):
             instructions=instructions(label, question),
             stt=stt or deepgram.STT(model="nova-3"),
             llm=llm or openai.LLM(model="gpt-4o-mini", max_completion_tokens=120),
-            tts=tts or cartesia.TTS(model="sonic-2"),
+            tts=tts or cartesia.TTS(model="sonic-3"),
             turn_handling={"turn_detection": "vad"},
         )
         self.seat = label

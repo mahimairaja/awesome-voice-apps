@@ -316,7 +316,7 @@ async def entrypoint(ctx: JobContext) -> None:
         userdata=initial_state(),
         stt=outage_stt(),
         llm=openai.LLM(model="gpt-4o-mini"),
-        tts=cartesia.TTS(model="sonic-2"),
+        tts=cartesia.TTS(model="sonic-3"),
         vad=ctx.proc.userdata["vad"],
         turn_handling={"turn_detection": "vad"},
     )
