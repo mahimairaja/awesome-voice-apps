@@ -213,6 +213,41 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(ValueError):
                 await sink.log_request(record("bad", "cartesia", float("nan")))
 
+    async def test_unchanged_costs_are_not_reported_again(self):
+        # Each report is a D1 write, and the base sink flushes every 2 s.
+        with patch.dict(
+            hosted.os.environ,
+            {"VOICEGW_COLLECTOR_URL": "http://localhost:8080", "VOICEGW_API_KEY": "offline"},
+        ):
+            sink = hosted.PlaygroundSink(ID)
+        sink.records["one"] = ("openai", hosted.Decimal("0.000002"))
+        with (
+            patch.object(hosted.RemoteCollectorSink, "flush", new_callable=AsyncMock),
+            patch.object(hosted, "control", new_callable=AsyncMock) as control,
+        ):
+            await sink.flush()
+            sent = control.await_count
+            self.assertGreater(sent, 0)
+            await sink.flush()
+            await sink.flush()
+            self.assertEqual(control.await_count, sent)
+            sink.records["two"] = ("openai", hosted.Decimal("0.000002"))
+            await sink.flush()
+            control.assert_awaited_with("usage", ID, service="openai", microusd=4)
+
+    async def test_close_stops_the_periodic_flush(self):
+        with patch.dict(
+            hosted.os.environ,
+            {"VOICEGW_COLLECTOR_URL": "http://localhost:8080", "VOICEGW_API_KEY": "offline"},
+        ):
+            sink = hosted.PlaygroundSink(ID)
+        with patch.object(hosted, "control", new_callable=AsyncMock):
+            sink._maybe_start_flusher()
+            self.assertIsNotNone(sink._flusher)
+            await sink.close()
+        self.assertIsNone(sink._flusher)
+        self.assertTrue(sink._closed)
+
     async def test_server_constructs_with_real_livekit(self):
         env = {
             key: "offline-test-only"
@@ -405,7 +440,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             hosted_tenant.TenantGuide.__init__(agent, SimpleNamespace())
             await agent.load_index()
         self.assertEqual(agent._index["vectors"].shape, (len(texts), len(texts)))
-        agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+        agent.sink = SimpleNamespace(records={}, report=AsyncMock(), close=AsyncMock())
         turn = MagicMock()
         cases = [(vectors[deposits], "deposit question"), ([0.0] * len(texts), "hello")]
         with patch.object(hosted_tenant._module, "publish_ui_event") as publish:
@@ -512,7 +547,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         agent._deadline_task = None
         agent._active_session = MagicMock()
         agent.room = SimpleNamespace(disconnect=AsyncMock())
-        agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+        agent.sink = SimpleNamespace(records={}, report=AsyncMock(), close=AsyncMock())
         state = hosted_recall.initial_state()
         agent._state = state
         context = SimpleNamespace(userdata=state)
@@ -1365,7 +1400,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             agent = hosted.HostedReturns()
         self.assertEqual(agent.qa.max_grades, 7)
         agent.record_qa_usage(1000, 100)  # before the sink exists: ignored, not raised
-        agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+        agent.sink = SimpleNamespace(records={}, report=AsyncMock(), close=AsyncMock())
         agent.record_qa_usage(1000, 100)
         await asyncio.sleep(0)
         ((provider, cost),) = agent.sink.records.values()
@@ -1740,7 +1775,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         texts, labels = hosted_cost.router.index_texts()
         vectors = [[1.0 if i == n else 0.0 for i in range(len(texts))] for n in range(len(texts))]
         agent._index = {"vectors": vectors, "labels": labels}
-        agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+        agent.sink = SimpleNamespace(records={}, report=AsyncMock(), close=AsyncMock())
         roaming = labels.index(("faq", "roaming"))
         agent.embed = AsyncMock(return_value=(vectors[roaming], 9))
         ctx = ChatContext.empty()
@@ -1761,7 +1796,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         (agent,) = self.cost_agents()
         agent.meter_embedding(600)
         self.assertEqual(agent._unbilled_tokens, 600)
-        agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+        agent.sink = SimpleNamespace(records={}, report=AsyncMock(), close=AsyncMock())
         agent.meter_embedding(0)
         await asyncio.sleep(0)
         self.assertEqual(len(agent.sink.records), 1)
@@ -2055,7 +2090,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         first, second = agent.initial_state(), agent.initial_state()
         self.assertIsNot(first["lines"], second["lines"])
         self.assertIsNot(first["history"], second["history"])
-        agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+        agent.sink = SimpleNamespace(records={}, report=AsyncMock(), close=AsyncMock())
         agent.meter_router(1000, 1)
         await asyncio.sleep(0)
         self.assertEqual(
@@ -2124,7 +2159,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(KeyError):
             hosted_copilot.cost("gpt-5", 10, 10)
         agent = object.__new__(hosted.HostedCopilot)
-        agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+        agent.sink = SimpleNamespace(records={}, report=AsyncMock(), close=AsyncMock())
         agent.meter_copilot("gpt-4o-mini", 1_000_000, 100_000)
         agent.meter_copilot("text-embedding-3-small", 500_000, 0)
         await asyncio.sleep(0)
@@ -2143,7 +2178,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             hosted_copilot.Prospect.__init__(agent, room)
             agent._activity = None
             agent.approval = {"seconds": 120}
-            agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+            agent.sink = SimpleNamespace(records={}, report=AsyncMock(), close=AsyncMock())
             return agent
 
         first, second = make(SimpleNamespace()), make(SimpleNamespace())
@@ -2426,7 +2461,7 @@ class InterviewDemo(unittest.IsolatedAsyncioTestCase):
         agent = object.__new__(hosted.HostedStressTest)
         agent._sim_usd = hosted.Decimal(0)
         agent._report_pending = False
-        agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+        agent.sink = SimpleNamespace(records={}, report=AsyncMock(), close=AsyncMock())
         metrics = SimpleNamespace(
             prompt_tokens=10_000, prompt_cached_tokens=2_000, completion_tokens=1_000
         )
@@ -2524,7 +2559,7 @@ class InterviewDemo(unittest.IsolatedAsyncioTestCase):
         agent._billing_task = None
         agent._deadline_task = None
         agent._avatar_started = time.monotonic() - 30
-        agent.sink = SimpleNamespace(records={}, report=AsyncMock())
+        agent.sink = SimpleNamespace(records={}, report=AsyncMock(), close=AsyncMock())
         agent._active_session = MagicMock()
         agent.approval = {"id": ID}
         agent._room = SimpleNamespace(disconnect=AsyncMock())

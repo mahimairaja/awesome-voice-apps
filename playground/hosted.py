@@ -254,6 +254,10 @@ class PlaygroundSink(RemoteCollectorSink):
         self.records = {}
         self.insights = InsideCall()
         self.report_lock = asyncio.Lock()
+        # What the site already holds. The base class flushes every 2 s, and each
+        # report is a D1 write, so only changed totals are sent.
+        self.sent: dict[str, int] = {}
+        self.sent_insights = None
 
     async def log_request(self, record):
         if record.project == "mahimai-playground" and record.modality == "eou":
@@ -287,18 +291,32 @@ class PlaygroundSink(RemoteCollectorSink):
             for provider, cost in self.records.values():
                 totals[provider] = totals.get(provider, Decimal(0)) + cost
             for provider, cost in totals.items():
-                await control(
-                    "usage",
-                    self.reservation,
-                    service=provider,
-                    microusd=int((cost * 1_000_000).to_integral_value(rounding=ROUND_CEILING)),
-                )
+                microusd = int((cost * 1_000_000).to_integral_value(rounding=ROUND_CEILING))
+                if self.sent.get(provider) == microusd:
+                    continue
+                await control("usage", self.reservation, service=provider, microusd=microusd)
+                self.sent[provider] = microusd
 
-            await control("insights", self.reservation, summary=self.insights.snapshot())
+            summary = self.insights.snapshot()
+            if summary != self.sent_insights:
+                await control("insights", self.reservation, summary=summary)
+                self.sent_insights = summary
 
     async def flush(self):
         await super().flush()
         await self.report()
+
+    async def close(self):
+        """Send the final report and stop the periodic flusher.
+
+        One worker process serves every call, so a sink left open keeps
+        flushing (and reporting) for as long as the process lives.
+        """
+        try:
+            async with asyncio.timeout(8):
+                await self.aclose()
+        except Exception:  # noqa: BLE001 - the site keeps the reservation on failure
+            logger.warning("Final cost report pending")
 
 
 # Transcribed words a caller must say over the agent before it stops talking.
@@ -426,6 +444,8 @@ class HostedGuard:
         if self._deadline_task and self._deadline_task is not asyncio.current_task():
             self._deadline_task.cancel()
         self._active_session.shutdown(drain=False)
+        if getattr(self, "sink", None) is not None:
+            await self.sink.close()
         try:
             await control("finish", self.approval["id"])
         except (httpx.HTTPError, ValueError):
@@ -730,9 +750,9 @@ class HostedInterview(HostedGuard, Lobby):
                 if capture:
                     await capture.reconcile(session)
                     await capture.drain()
-                await self.sink.flush()
         except Exception:  # noqa: BLE001 - the site keeps the reservation on failure
             logger.warning("Interview final metering pending; reservation retained")
+        await self.sink.close()
         try:
             await control("finish", self.approval["id"])
         except (httpx.HTTPError, ValueError):
@@ -1582,9 +1602,9 @@ class RealtimeCall:
                         if capture:
                             await capture.reconcile(session)
                             await capture.drain()
-                    await self.sink.flush()
             except Exception:
                 logger.warning("Realtime final metering pending; reservation retained")
+            await self.sink.close()
             await control("finish", self.approval["id"])
         except (httpx.HTTPError, ValueError):
             logger.warning("Realtime room cleanup pending server recovery")
