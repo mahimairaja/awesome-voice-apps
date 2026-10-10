@@ -11,6 +11,7 @@ from decimal import ROUND_CEILING, Decimal
 from typing import ClassVar
 
 import httpx
+import model_menu
 import status
 import voicegateway
 from hosted_coffee import DriveThruAttendant, _publish_cart, _publish_menu
@@ -141,7 +142,7 @@ from livekit.agents import (
 )
 from livekit.agents.voice.agent_session import SessionConnectOptions
 from livekit.agents.voice.room_io import RoomOptions
-from livekit.plugins import cartesia, deepgram, openai
+from livekit.plugins import cartesia, openai
 from openrtc import AgentPool
 from trivia import QUESTIONS, HostedTriviaHost, publish_trivia
 from trivia import initial_state as trivia_state
@@ -332,6 +333,11 @@ class HostedGuard:
 
     demo = "coffee"
     greeting = ""
+    # The visitor may swap this demo's STT, LLM or TTS for another model in model_menu.py.
+    # Only for demos on the plain voice_stack: a demo tuned to one provider (keyterms,
+    # voices, languages) overrides voice_stack and keeps its own clients.
+    switchable = False
+    picked_models: ClassVar[dict[str, str]] = {}
     # LLM requests allowed in a full two-minute call; shorter calls scale down.
     llm_budget = 12
     # Session turn-taking; a demo about interruptions brings its own. Raw voice activity
@@ -357,13 +363,15 @@ class HostedGuard:
 
     def voice_stack(self) -> dict:
         """The metered cloud stack. A demo that wraps its own clients returns those."""
-        return {
-            "stt": deepgram.STT(model="nova-3"),
-            "llm": openai.LLM(
-                model="gpt-4o-mini", max_completion_tokens=180, max_retries=0, store=False
-            ),
-            "tts": cartesia.TTS(model="sonic-3"),  # sonic-2 is being retired
-        }
+        return model_menu.build({**model_menu.DEFAULT, **self.picked_models})
+
+    @staticmethod
+    def model_choice(ctx) -> dict[str, str]:
+        # The site validated the pick and signed it into the dispatch; check it again.
+        try:
+            return model_menu.parse_choice(json.loads(ctx.job.metadata).get("models"))
+        except (ValueError, TypeError, AttributeError):
+            return {}
 
     def __init__(self) -> None:
         ctx = get_job_context()
@@ -372,6 +380,7 @@ class HostedGuard:
             raise RuntimeError("Call has no approved reservation")
         super().__init__(ctx.room)
         # Per-agent clients keep component metrics isolated between concurrent calls.
+        self.picked_models = self.model_choice(ctx) if self.switchable else {}
         self.update_options(**self.voice_stack())
         self._llm_requests = 0
         self._tts_bytes = 0
@@ -455,6 +464,7 @@ class HostedGuard:
 
 
 class HostedCoffee(HostedGuard, DriveThruAttendant):
+    switchable = True
     greeting = (
         "Say this is a coffee-ordering simulation, no real order or payment. "
         "Ask what they would like."

@@ -50,6 +50,16 @@ This telemetry is separate from the site's conservative admission ledger. Provid
 billing, network costs and hosting charges still require reconciliation. A budget
 alert is not a guaranteed invoice cap.
 
+## Model switcher
+
+A demo with `switchable = True` (the coffee counter, for now) runs the STT, LLM and TTS
+the visitor picked on the demo page. The site validates the pick and signs it into the
+agent dispatch as `models: {stt, llm, tts}`; the worker keeps only ids listed in
+`model_menu.py` and falls back to the default stack for anything else. Every model on
+the menu must be priced by VoiceGateway and billed by a provider the sink accepts
+(`test_model_menu.py` checks both). The site lists the same ids in
+`src/config/playground-models.ts`.
+
 ## Status heartbeat
 
 `hosted.py start` also runs `status.py` on a daemon thread. Once a minute it posts
