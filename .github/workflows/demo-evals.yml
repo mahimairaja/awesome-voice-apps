@@ -9,7 +9,7 @@ on:
     - cron: "0 14 1,15 * *"
   push:
     branches: [main]
-    paths: ["demos/**", "deployment/**"]
+    paths: ["demos/**", "playground/**", "deployment/**"]
   workflow_dispatch:
     inputs:
       demos:
