@@ -26,7 +26,10 @@ def events(metric) -> str:
     counts: dict[str, int] = {}
     for event in found:
         if isinstance(event, dict) and event.get("type"):
-            counts[event["type"]] = counts.get(event["type"], 0) + int(event.get("count", 1))
+            count = event.get("count", 1)
+            counts[event["type"]] = counts.get(event["type"], 0) + (
+                count if isinstance(count, int) else 1
+            )
     return ", ".join(f"{kind} x{n}" for kind, n in counts.items())
 
 
@@ -35,8 +38,9 @@ def scores(metrics) -> list[dict]:
     for metric in metrics:
         score = getattr(metric, "score", None)
         reason = getattr(metric, "reason", None) or getattr(metric, "error", None)
-        if reason and events(metric):
-            reason = f"{reason} ({events(metric)})"
+        counted = events(metric)
+        if reason and counted:
+            reason = f"{reason} ({counted})"
         out.append(
             {
                 "metric": metric_key(metric),

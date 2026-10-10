@@ -15,6 +15,8 @@ TRANSCRIBED_TRACK = "lk.transcribed_track_id"
 
 
 class AgentConnector(LiveKitConnector):
+    """LiveKitConnector that ignores the agent's transcripts of our own tracks."""
+
     def _on_transcript_stream(self, reader, participant_identity: str) -> None:
         attributes = getattr(getattr(reader, "info", None), "attributes", None) or {}
         if attributes.get(TRANSCRIBED_TRACK) in self._own_tracks():
