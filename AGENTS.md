@@ -20,6 +20,9 @@ Keep READMEs practical: what it does, credentials, commands, and any extra
 setup. Preserve working agent behavior when cleaning documentation. Existing
 UI data events are optional integrations, not contribution requirements.
 
+To add a demo from someone's idea, follow `.claude/skills/add-voice-app/SKILL.md`
+and finish with `python3 scripts/check_demo.py demos/<slug> --json`.
+
 Use lowercase feat/ or fix/ branch names and conventional commit subjects.
 No AI co-author trailers or generated-by footers. No em dashes in prose.
 Hosting configuration is maintainer-owned and is not part of a new example.
