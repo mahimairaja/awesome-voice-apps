@@ -963,7 +963,10 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             hosted.HostedMortgage.turn_handling["interruption"],
             {"mode": "vad", "min_words": hosted_mortgage._module.GATE_MIN_WORDS},
         )
-        self.assertNotIn("min_words", hosted.HostedGuard.turn_handling["interruption"])
+        guard = hosted.HostedGuard.turn_handling["interruption"]
+        self.assertEqual(guard["min_words"], hosted.INTERRUPT_MIN_WORDS)
+        self.assertLess(guard["min_words"], hosted_mortgage._module.GATE_MIN_WORDS)
+        self.assertTrue(guard["resume_false_interruption"])
         payment = hosted_mortgage._module.monthly_payment
         self.assertEqual(payment(1.89, 480_000, 25), 2007)
         self.assertEqual(payment(4.19), 2464)
