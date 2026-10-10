@@ -9,7 +9,7 @@ RUN apt-get update \
 COPY playground/requirements-hosted.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt \
     && apt-get purge -y --auto-remove git
-COPY playground/*.py /app/playground/
+COPY playground/*.py playground/model-menus.json /app/playground/
 COPY demos/drive-thru-coffee/agent.py /app/demos/drive-thru-coffee/
 COPY demos/talk-to-our-team/agent.py demos/talk-to-our-team/booking.py /app/demos/talk-to-our-team/
 COPY demos/water-tracker/agent.py /app/demos/water-tracker/

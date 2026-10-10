@@ -1,0 +1,41 @@
+{
+  "layers": [
+    "stt",
+    "llm",
+    "tts"
+  ],
+  "default": {
+    "stt": [
+      "deepgram-nova-3",
+      "openai-gpt-4o-mini-transcribe"
+    ],
+    "llm": [
+      "openai-gpt-4o-mini",
+      "openai-gpt-4.1-mini",
+      "openai-gpt-4.1-nano"
+    ],
+    "tts": [
+      "cartesia-sonic-3",
+      "deepgram-aura-2",
+      "openai-tts-1"
+    ]
+  },
+  "demos": {
+    "postop-checkin": {
+      "stt": [
+        "deepgram-nova-3-medical",
+        "deepgram-nova-3"
+      ],
+      "llm": [
+        "openai-gpt-4o-mini",
+        "openai-gpt-4.1-mini",
+        "openai-gpt-4.1-nano"
+      ],
+      "tts": [
+        "cartesia-sonic-3",
+        "deepgram-aura-2",
+        "openai-tts-1"
+      ]
+    }
+  }
+}

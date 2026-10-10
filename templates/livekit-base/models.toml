@@ -1,0 +1,9 @@
+# Optional. Delete this file if your demo works with any model.
+#
+# Which models the hosted playground offers for this demo, best first. The first
+# id in a list is the default; a single id locks that layer. A layer you leave
+# out offers the general models in the catalog (playground/model_menu.py).
+#
+# stt = ["deepgram-nova-3-medical", "deepgram-nova-3"]
+# llm = ["openai-gpt-4.1-mini"]
+# tts = ["cartesia-sonic-3", "deepgram-aura-2"]

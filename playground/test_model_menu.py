@@ -1,7 +1,9 @@
 """Offline tests for the model switcher; never call provider APIs."""
 
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -53,6 +55,41 @@ class ModelMenu(unittest.TestCase):
 
     def test_default_is_on_the_menu(self):
         self.assertEqual(model_menu.parse_choice(model_menu.DEFAULT), model_menu.DEFAULT)
+        self.assertEqual(model_menu.defaults(), model_menu.DEFAULT)
+
+    def test_committed_menus_are_current(self):
+        # Run `python playground/model_menu.py` after editing a models.toml or the catalog.
+        self.assertEqual(model_menu.collect(), json.loads(model_menu.MENUS.read_text()))
+
+    def test_a_demo_orders_and_locks_its_layers(self):
+        menu = model_menu.menu_for("postop-checkin")
+        self.assertEqual(menu["stt"], ["deepgram-nova-3-medical", "deepgram-nova-3"])
+        self.assertEqual(menu["llm"], model_menu.default_menu()["llm"])
+        self.assertEqual(model_menu.defaults("postop-checkin")["stt"], "deepgram-nova-3-medical")
+        # Off this demo's menu, so it keeps the default.
+        self.assertEqual(
+            model_menu.parse_choice({"stt": "openai-gpt-4o-mini-transcribe"}, "postop-checkin"), {}
+        )
+        # A specialist model shows only where a demo asks for it.
+        self.assertNotIn("deepgram-nova-3-medical", model_menu.default_menu()["stt"])
+        self.assertEqual(model_menu.parse_choice({"stt": "deepgram-nova-3-medical"}), {})
+
+    def test_bad_models_toml_explains_itself(self):
+        for text, message in (
+            ('stt = ["whisper-large"]', "not in the catalog"),
+            ('vision = ["openai-gpt-4.1-mini"]', "unknown layer"),
+            ("stt = []", "non-empty list"),
+            ('llm = ["openai-gpt-4o-mini", "openai-gpt-4o-mini"]', "twice"),
+        ):
+            with self.subTest(text=text), tempfile.TemporaryDirectory() as folder:
+                path = Path(folder) / "models.toml"
+                path.write_text(text)
+                with self.assertRaisesRegex(ValueError, message):
+                    model_menu.read_priority(path)
+
+    def test_the_template_parses_to_the_default(self):
+        template = model_menu.ROOT / "templates" / "livekit-base" / "models.toml"
+        self.assertEqual(model_menu.read_priority(template), model_menu.default_menu())
 
     def test_every_model_is_priced_and_billed_by_an_accepted_provider(self):
         # An unpriced row stops the call; an unknown provider fails the sink.

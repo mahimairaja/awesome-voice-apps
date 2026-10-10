@@ -337,6 +337,8 @@ class HostedGuard:
     # Only for demos on the plain voice_stack: a demo tuned to one provider (keyterms,
     # voices, languages) overrides voice_stack and keeps its own clients.
     switchable = False
+    # The demo's folder under demos/, whose optional models.toml orders its menu.
+    source = ""
     picked_models: ClassVar[dict[str, str]] = {}
     # LLM requests allowed in a full two-minute call; shorter calls scale down.
     llm_budget = 12
@@ -363,13 +365,13 @@ class HostedGuard:
 
     def voice_stack(self) -> dict:
         """The metered cloud stack. A demo that wraps its own clients returns those."""
-        return model_menu.build({**model_menu.DEFAULT, **self.picked_models})
+        return model_menu.build({**model_menu.defaults(self.source), **self.picked_models})
 
-    @staticmethod
-    def model_choice(ctx) -> dict[str, str]:
+    def model_choice(self, ctx) -> dict[str, str]:
         # The site validated the pick and signed it into the dispatch; check it again.
         try:
-            return model_menu.parse_choice(json.loads(ctx.job.metadata).get("models"))
+            raw = json.loads(ctx.job.metadata).get("models")
+            return model_menu.parse_choice(raw, self.source)
         except (ValueError, TypeError, AttributeError):
             return {}
 
@@ -465,6 +467,7 @@ class HostedGuard:
 
 class HostedCoffee(HostedGuard, DriveThruAttendant):
     switchable = True
+    source = "drive-thru-coffee"
     greeting = (
         "Say this is a coffee-ordering simulation, no real order or payment. "
         "Ask what they would like."
