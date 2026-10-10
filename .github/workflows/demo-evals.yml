@@ -90,3 +90,26 @@ jobs:
           EVAL_DEMOS: ${{ inputs.demos }}
           EVAL_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}
         run: uv run deepeval test run test_demos.py --identifier "gh-${{ github.run_id }}"
+
+  judge:
+    # Claude reads each new call's transcript and tools and scores goal, relevance,
+    # tool use and policy (tests/evals/JUDGE.md). Runs on the Claude subscription.
+    name: judge calls
+    needs: live
+    if: always() && needs.live.result != 'skipped' && needs.live.result != 'cancelled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anthropics/claude-code-action@537ffff2eff706bd7e3e1c3daf2d4b39067a9f85  # v1
+        env:
+          PLAYGROUND_EVAL_SECRET: ${{ secrets.PLAYGROUND_EVAL_SECRET }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: Follow tests/evals/JUDGE.md and judge every pending eval call.
+          claude_args: >-
+            --model claude-sonnet-4-6
+            --allowed-tools Read,Bash(curl:*)
