@@ -23,9 +23,10 @@ this: it calls the live hosted demos and is run by maintainers.
    DeepEval counts the normal pauses between words as dropouts, even on clean
    TTS audio (see `INFORMATIONAL` in `report.py`).
 5. The transcript, timings and scores are stored on mahimai.ca. The worker
-   reports the tools the agent called. A scheduled Claude routine then judges
-   goal, relevance, tool use and policy from the transcript, and the scores
-   are shown on the playground.
+   reports the tools the agent called. The workflow's `judge` job then runs
+   Claude Code on the maintainer's Claude subscription (`CLAUDE_CODE_OAUTH_TOKEN`)
+   to judge goal, relevance, tool use and policy, following `JUDGE.md`, and the
+   scores are shown on the playground.
 
 The goldens are written by hand rather than with `deepeval generate`, which
 needs a paid model.
