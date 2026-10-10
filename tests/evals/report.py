@@ -7,6 +7,12 @@ import re
 from deepeval.dataset import ConversationalGolden
 from deepeval.test_case import ConversationalTestCase
 
+# Stored and shown, but never fail a call. DeepEval counts any quiet gap of
+# 200 ms or less between voiced frames as a dropout, so the ordinary pauses
+# between words in clean TTS (8 to 13 per sentence from Kokoro, offline) read
+# as defects, and Voice Reliability averages that score in.
+INFORMATIONAL = {"audio_integrity", "voice_reliability"}
+
 
 def metric_key(metric) -> str:
     """'VoiceNaturalnessMetric' -> 'voice_naturalness'."""
@@ -35,7 +41,9 @@ def scores(metrics) -> list[dict]:
             {
                 "metric": metric_key(metric),
                 "score": None if score is None else round(min(max(float(score), 0.0), 1.0), 4),
-                "passed": None if score is None else bool(getattr(metric, "success", False)),
+                "passed": None
+                if score is None or metric_key(metric) in INFORMATIONAL
+                else bool(getattr(metric, "success", False)),
                 "reason": str(reason)[:400] if reason else None,
             }
         )

@@ -22,7 +22,7 @@ from deepeval import assert_test
 from deepeval.dataset import EvaluationDataset
 from deepeval.simulator import ConversationSimulator
 from deepeval.voice import VoiceConfig
-from metrics import voice_metrics
+from metrics import gating_metrics, voice_metrics
 from playground_api import EvalBusy, Site
 from report import call_record
 from speech import KokoroTTS, NoLLM, WhisperSTT
@@ -115,4 +115,4 @@ def test_demo(golden, site, speech):
                 )
             )
 
-    assert_test(test_case=case, metrics=voice_metrics(), run_async=False)
+    assert_test(test_case=case, metrics=gating_metrics(), run_async=False)
