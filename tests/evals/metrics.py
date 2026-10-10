@@ -14,6 +14,7 @@ from deepeval.metrics import (
     VoiceNaturalnessMetric,
     VoiceReliabilityMetric,
 )
+from report import INFORMATIONAL, metric_key
 
 
 def voice_metrics():
@@ -27,6 +28,11 @@ def voice_metrics():
         AgentResponsivenessMetric(),
         VoiceReliabilityMetric(),
     ]
+
+
+def gating_metrics():
+    """The metrics a call must pass (see INFORMATIONAL in report.py)."""
+    return [m for m in voice_metrics() if metric_key(m) not in INFORMATIONAL]
 
 
 VOICE_METRICS = voice_metrics()

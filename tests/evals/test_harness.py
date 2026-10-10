@@ -16,7 +16,7 @@ from deepeval.dataset import ConversationalGolden, EvaluationDataset
 from deepeval.simulator.controller.types import Decision
 from metrics import voice_metrics
 from playground_api import EvalBusy, Site
-from report import call_record, metric_key
+from report import INFORMATIONAL, call_record, metric_key, scores
 from speech import KOKORO_MODEL, MODELS, NoLLM
 
 HERE = Path(__file__).parent
@@ -214,4 +214,62 @@ def test_scripted_call_end_to_end_against_a_fake_agent():
     computed = [s for s in record["scores"] if s["score"] is not None]
     assert computed, record["scores"]
     for score in computed:
-        assert 0 <= score["score"] <= 1 and isinstance(score["passed"], bool)
+        assert 0 <= score["score"] <= 1
+        assert ("passed" in score) == (score["metric"] not in INFORMATIONAL)
+
+
+def test_connector_drops_the_callers_transcript():
+    from agent_connector import AgentConnector
+
+    connector = AgentConnector(url="wss://example.invalid", token="t")
+    connector._room = SimpleNamespace(
+        local_participant=SimpleNamespace(track_publications={"TR_caller": object()})
+    )
+    seen = []
+
+    class Task:
+        def add_done_callback(self, _callback):
+            pass
+
+    def create_task(coro):
+        seen.append(coro)
+        coro.close()
+        return Task()
+
+    connector._loop = SimpleNamespace(create_task=create_task)
+
+    def reader(track):
+        return SimpleNamespace(info=SimpleNamespace(attributes={"lk.transcribed_track_id": track}))
+
+    connector._on_transcript_stream(reader("TR_agent"), "agent")
+    connector._on_transcript_stream(reader("TR_caller"), "agent")
+    assert len(seen) == 1
+
+
+def test_integrity_reason_names_the_defects():
+    from deepeval.metrics import AudioIntegrityMetric
+
+    metric = AudioIntegrityMetric()
+    metric.score, metric.success = 0.4, False
+    metric.reason = "Audio integrity was 0.40; 3 defect event(s) were detected."
+    metric.score_breakdown = {
+        "events": [
+            {"type": "abrupt_cutoff"},
+            {"type": "audio_dropout", "count": 2},
+            {"type": "abrupt_cutoff"},
+        ]
+    }
+    [score] = scores([metric])
+    assert score["reason"].endswith("(abrupt_cutoff x2, audio_dropout x2)")
+
+
+def test_audio_integrity_never_fails_a_call():
+    from metrics import gating_metrics
+
+    keys = {metric_key(m) for m in gating_metrics()}
+    assert "audio_integrity" not in keys and "voice_reliability" not in keys
+    metrics = voice_metrics()
+    for metric in metrics:
+        metric.score, metric.success, metric.reason = 0.0, False, "low"
+    passed = {s["metric"]: s.get("passed") for s in scores(metrics)}
+    assert passed["audio_integrity"] is None and passed["voice_naturalness"] is False

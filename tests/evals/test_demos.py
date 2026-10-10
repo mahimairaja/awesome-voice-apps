@@ -16,12 +16,13 @@ from pathlib import Path
 
 import deepeval
 import pytest
+from agent_connector import AgentConnector
 from caller import UiState, caller_graph, script, stop_after_script
 from deepeval import assert_test
 from deepeval.dataset import EvaluationDataset
 from deepeval.simulator import ConversationSimulator
-from deepeval.voice import LiveKitConnector, VoiceConfig
-from metrics import voice_metrics
+from deepeval.voice import VoiceConfig
+from metrics import gating_metrics, voice_metrics
 from playground_api import EvalBusy, Site
 from report import call_record
 from speech import KokoroTTS, NoLLM, WhisperSTT
@@ -62,7 +63,7 @@ def simulate(golden, call, speech):
 
         room = rtc.Room()
         ui.attach(room)
-        return LiveKitConnector(
+        return AgentConnector(
             url=call.url,
             token=call.token,
             room=room,
@@ -114,4 +115,4 @@ def test_demo(golden, site, speech):
                 )
             )
 
-    assert_test(test_case=case, metrics=voice_metrics(), run_async=False)
+    assert_test(test_case=case, metrics=gating_metrics(), run_async=False)

@@ -19,6 +19,9 @@ this: it calls the live hosted demos and is run by maintainers.
    fallback. The only paid part is the demo itself.
 4. The seven local voice metrics in `metrics.py` score the call audio.
    `TranscriptionAccuracyMetric` is left out because it needs an LLM judge.
+   Audio Integrity and Voice Reliability are stored but never fail a call:
+   DeepEval counts the normal pauses between words as dropouts, even on clean
+   TTS audio (see `INFORMATIONAL` in `report.py`).
 5. The transcript, timings and scores are stored on mahimai.ca. The worker
    reports the tools the agent called. A scheduled Claude routine then judges
    goal, relevance, tool use and policy from the transcript, and the scores
