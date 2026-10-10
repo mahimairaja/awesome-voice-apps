@@ -58,7 +58,7 @@ agent dispatch as `models: {stt, llm, tts}`; the worker keeps only ids listed in
 `model_menu.py` and falls back to the default stack for anything else. Every model on
 the menu must be priced by VoiceGateway and billed by a provider the sink accepts
 (`test_model_menu.py` checks both). The site lists the same ids in
-`src/config/playground-models.ts`.
+`src/lib/playground/models.ts`.
 
 ## Status heartbeat
 
