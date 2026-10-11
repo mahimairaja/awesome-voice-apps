@@ -4,9 +4,12 @@ name: Demo evals
 # with DeepEval's local voice metrics. Results go to mahimai.ca. Each call is
 # paid from the site's capped eval budget, so only maintainers can start one:
 # on a schedule, by hand, or after a change that redeploys the demo worker.
-# On hold: the schedule and the push trigger are off until the worker stops a
-# call's cost tracker when the call ends (each live call kept writing to D1).
 on:
+  schedule:
+    - cron: "0 14 1,15 * *"
+  push:
+    branches: [main]
+    paths: ["demos/**", "playground/**", "deployment/**"]
   workflow_dispatch:
     inputs:
       demos:
@@ -117,15 +120,14 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - uses: anthropics/claude-code-action@537ffff2eff706bd7e3e1c3daf2d4b39067a9f85  # v1
+      # The Claude Code CLI rather than claude-code-action, which rejects push
+      # and schedule events.
+      - name: Judge pending calls
         env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           PLAYGROUND_EVAL_SECRET: ${{ secrets.PLAYGROUND_EVAL_SECRET }}
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # The job only reads files and calls mahimai.ca, so the workflow token
-          # is enough; no Claude GitHub App token is minted.
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          prompt: Follow tests/evals/JUDGE.md and judge every pending eval call.
-          claude_args: >-
-            --model claude-sonnet-4-6
-            --allowed-tools Read,Bash(curl:*)
+        run: >-
+          npx --yes @anthropic-ai/claude-code@2.1.283
+          -p "Follow tests/evals/JUDGE.md and judge every pending eval call."
+          --model claude-sonnet-4-6
+          --allowedTools "Read,Bash(curl:*)"
