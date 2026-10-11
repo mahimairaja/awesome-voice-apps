@@ -1,0 +1,89 @@
+name: Agent simulations
+
+# Trial of LiveKit Agent Simulations as a second caller next to the scripted
+# demo evals. Maintainer-triggered only: it runs the demo's real agent with our
+# provider keys. Scenarios live in tests/simulations/<demo>.yaml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      demo:
+        description: Demo folder under demos/ with a tests/simulations/<demo>.yaml file
+        default: drive-thru-coffee
+      mode:
+        description: text (LLM and tools only) or audio (full STT-LLM-TTS)
+        type: choice
+        options: [text, audio]
+        default: text
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-simulations
+  cancel-in-progress: false
+
+jobs:
+  simulate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DEMO: ${{ inputs.demo }}
+      MODE: ${{ inputs.mode }}
+      LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
+      LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
+      LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
+      # Text mode never calls TTS, but the plugin wants a key at construction.
+      CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY || 'unused-in-text-mode' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check inputs and secrets
+        run: |
+          [[ "$DEMO" =~ ^[a-z0-9-]+$ ]] || { echo "bad demo name"; exit 1; }
+          test -f "demos/$DEMO/agent.py" || { echo "no demos/$DEMO/agent.py"; exit 1; }
+          test -f "tests/simulations/$DEMO.yaml" || { echo "no tests/simulations/$DEMO.yaml"; exit 1; }
+          for name in LIVEKIT_URL LIVEKIT_API_KEY LIVEKIT_API_SECRET; do
+            [ -n "${!name}" ] || { echo "missing repo secret $name"; exit 1; }
+          done
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install the demo
+        working-directory: demos/${{ inputs.demo }}
+        run: |
+          uv sync --frozen
+          # Simulations need livekit-agents 1.6.6+. Upgrade only this runner's
+          # venv to the version the hosted worker runs; the demo lock stays as is.
+          uv pip install "livekit-agents[deepgram,openai,cartesia]==1.8.5"
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Install the LiveKit CLI
+        run: |
+          curl -sSL https://get.livekit.io/cli | bash
+          lk --version
+
+      - name: Run simulations
+        working-directory: demos/${{ inputs.demo }}
+        env:
+          # If the CLI starts the agent with `uv run`, keep the upgraded venv.
+          UV_NO_SYNC: "1"
+        run: |
+          lk agent simulate "$MODE" \
+            --scenarios "$GITHUB_WORKSPACE/tests/simulations/$DEMO.yaml" \
+            --concurrency 5 agent.py
+
+      - name: Export the run
+        if: always()
+        run: |
+          run_id=$(lk agent simulate list --limit 1 --json | python3 -c 'import json,sys; d=json.load(sys.stdin); d=d.get("runs", d) if isinstance(d, dict) else d; print(d[0].get("id") or d[0].get("run_id") or "")' || true)
+          [ -n "$run_id" ] && lk agent simulate export "$run_id" > simulation-run.json || echo "no run to export"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: simulation-${{ inputs.demo }}-${{ inputs.mode }}
+          path: simulation-run.json
+          if-no-files-found: ignore
