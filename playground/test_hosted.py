@@ -41,7 +41,9 @@ import hosted_stresstest
 import hosted_tenant
 import hosted_water
 import httpx
+from livekit.agents.ipc.job_executor import JobStatus
 from livekit.agents.llm import ChatContext, ChatMessage
+from openrtc.runtime.coroutine_runtime import CoroutineJobExecutor
 from trivia import HostedTriviaHost, initial_state
 
 ID = "598cd768-86d4-42a1-bb44-adc44fba4207"
@@ -152,6 +154,99 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sum(map(len, spoken)), 1900)
         await asyncio.sleep(0)
         agent._finish.assert_awaited_once()
+
+    def openrtc_job(self, ctx):
+        """A real OpenRTC coroutine executor running one held-open call for ctx."""
+        executor = CoroutineJobExecutor(
+            entrypoint_fnc=AsyncMock(), context_factory=lambda _info: ctx
+        )
+        return executor
+
+    def job_context(self):
+        class Context:
+            def __init__(self):
+                self.room = SimpleNamespace(on=MagicMock())
+                self._primary_agent_session = SimpleNamespace(aclose=AsyncMock())
+                self._on_shutdown = None
+
+            def is_fake_job(self):
+                return False
+
+            def shutdown(self, reason="user requested"):
+                self._on_shutdown(reason)
+
+        return Context()
+
+    async def test_leaving_the_room_first_counts_the_call_as_failed(self):
+        # LiveKit terminates the job once the agent leaves; OpenRTC cancels it.
+        executor = self.openrtc_job(self.job_context())
+        await executor.launch_job(SimpleNamespace())
+        await asyncio.sleep(0)
+        await executor.aclose()
+        self.assertIs(executor.status, JobStatus.FAILED)
+
+    async def test_ending_the_job_first_counts_the_call_as_a_success(self):
+        ctx = self.job_context()
+        executor = self.openrtc_job(ctx)
+        await executor.launch_job(SimpleNamespace())
+        await asyncio.sleep(0)
+        await hosted.end_job(ctx, executor._task)
+        self.assertTrue(executor._task.done())
+        await executor.aclose()
+        self.assertIs(executor.status, JobStatus.SUCCESS)
+
+    async def test_finish_closes_the_job_before_the_room_goes(self):
+        order = []
+        ctx = SimpleNamespace(shutdown=lambda reason: order.append("shutdown"))
+
+        async def job():
+            await asyncio.sleep(0.01)
+            order.append("job closed")
+
+        agent = object.__new__(hosted.HostedCoffee)
+        agent._closing = False
+        agent._deadline_task = None
+        agent._active_session = MagicMock()
+        agent.approval = {"id": ID}
+        agent._job_ctx, agent._job_task = ctx, asyncio.create_task(job())
+        agent.room = SimpleNamespace(disconnect=AsyncMock(side_effect=lambda: order.append("left")))
+        finish = AsyncMock(side_effect=lambda *a: order.append("finish") or {})
+        with patch.object(hosted, "control", finish):
+            await agent._finish()
+        self.assertEqual(order, ["shutdown", "job closed", "finish", "left"])
+
+    async def test_end_job_inside_the_job_does_not_wait_on_itself(self):
+        ctx = SimpleNamespace(shutdown=MagicMock())
+
+        async def job():
+            await hosted.end_job(ctx, asyncio.current_task())
+
+        await asyncio.wait_for(job(), timeout=1)
+        ctx.shutdown.assert_called_once()
+        await hosted.end_job(None, None)
+
+    async def test_realtime_cleanup_during_finish_does_not_wait_on_the_job(self):
+        ctx = SimpleNamespace(
+            room=SimpleNamespace(disconnect=AsyncMock()), add_shutdown_callback=MagicMock()
+        )
+        env = {"VOICEGW_COLLECTOR_URL": "http://x", "VOICEGW_API_KEY": "k"}
+        with patch.dict(hosted.os.environ, env):
+            call = hosted.RealtimeCall(ctx, {"id": ID, "deadline": time.time() + 60})
+        call.sink = SimpleNamespace(close=AsyncMock())
+        stopping = asyncio.Event()
+
+        async def job():
+            # OpenRTC's teardown runs the shutdown callback inside the job.
+            await stopping.wait()
+            await call.cleanup()
+
+        call.job = asyncio.create_task(job())
+        ctx.shutdown = lambda reason: stopping.set()
+        with patch.object(hosted, "control", new_callable=AsyncMock) as control:
+            await asyncio.wait_for(call.finish(), timeout=2)
+        self.assertTrue(call.job.done())
+        control.assert_awaited_once_with("finish", ID)
+        ctx.room.disconnect.assert_awaited_once()
 
     async def test_concurrent_agents_do_not_share_provider_clients(self):
         room_a, room_b = SimpleNamespace(name=ROOM), SimpleNamespace(name="playground-second")
@@ -416,6 +511,21 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("livekit.plugins.nvidia", sys.modules)
         self.assertNotIn("livekit.plugins.turn_detector.multilingual", sys.modules)
         self.assertIs(hosted_tenant._module.embed_query, hosted_tenant.embed_query)
+
+    async def test_tenant_agent_exposes_its_room(self):
+        room = SimpleNamespace(name=ROOM)
+        hosted.claims[ROOM] = {"id": ID}
+        env = {"DEEPGRAM_API_KEY": "offline", "OPENAI_API_KEY": "offline"}
+        env["CARTESIA_API_KEY"] = "offline"
+        with (
+            patch.dict(hosted.os.environ, env),
+            patch.object(hosted, "get_job_context", return_value=SimpleNamespace(room=room)),
+        ):
+            agent = hosted.HostedTenant()
+        self.assertIs(agent.room, room)
+        self.assertIs(agent._room, room)
+        await agent.llm.aclose()
+        await agent._embeddings.close()
 
     async def test_tenant_index_retries_after_failure(self):
         hosted_tenant._index = None

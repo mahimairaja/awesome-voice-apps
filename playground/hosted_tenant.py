@@ -134,6 +134,9 @@ class TenantGuide(_module.RentersGuide):
 
     def __init__(self, room) -> None:
         super().__init__(room, _unindexed(), FLOOR)
+        # RentersGuide keeps the room as `_room`; HostedGuard and the playground
+        # UI events read `self.room`, as every other hosted demo provides it.
+        self.room = room
         from openai import AsyncOpenAI
 
         self._embeddings = AsyncOpenAI(max_retries=0, timeout=5)

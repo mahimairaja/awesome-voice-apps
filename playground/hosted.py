@@ -161,6 +161,37 @@ def spawn(coro) -> asyncio.Task:
     return task
 
 
+# Seconds a finished call waits for OpenRTC to close its job before leaving the room anyway.
+JOB_END_TIMEOUT = 15
+
+
+def job_task() -> asyncio.Task | None:
+    """The call's OpenRTC job task. OpenRTC builds each agent inside that task."""
+    try:
+        return asyncio.current_task()
+    except RuntimeError:
+        return None
+
+
+async def end_job(ctx, job: asyncio.Task | None) -> None:
+    """Close the call's job while the agent is still in the room.
+
+    When the agent leaves a room, LiveKit sends the worker a JobTermination
+    (AGENT_LEFT_ROOM), and so does deleting the room. OpenRTC's coroutine
+    executor answers it by cancelling the job task, a cancelled job counts as
+    a failed session, and five in a row make OpenRTC close the worker. So a
+    finished call shuts its job down first: OpenRTC runs its teardown and marks
+    the job a success, and the termination that follows finds no job to cancel.
+    A job that does not close in time is left to the termination, as before.
+    """
+    if ctx is None:
+        return
+    ctx.shutdown("call finished")
+    if job is None or job.done() or job is asyncio.current_task():
+        return
+    await asyncio.wait({job}, timeout=JOB_END_TIMEOUT)
+
+
 async def control(action: str, reservation: str, **fields) -> dict:
     origin = os.environ["PLAYGROUND_ORIGIN"].rstrip("/")
     if not origin.startswith(("https://", "http://127.0.0.1:")):
@@ -340,6 +371,9 @@ class HostedGuard:
     # The demo's folder under demos/, whose optional models.toml orders its menu.
     source = ""
     picked_models: ClassVar[dict[str, str]] = {}
+    # The call's job, closed before the room goes (see end_job).
+    _job_ctx = None
+    _job_task: asyncio.Task | None = None
     # LLM requests allowed in a full two-minute call; shorter calls scale down.
     llm_budget = 12
     # Session turn-taking; a demo about interruptions brings its own. Raw voice activity
@@ -380,6 +414,8 @@ class HostedGuard:
         self.approval = claims.pop(ctx.room.name, None)
         if not self.approval:
             raise RuntimeError("Call has no approved reservation")
+        self._job_ctx = ctx
+        self._job_task = job_task()
         super().__init__(ctx.room)
         # Per-agent clients keep component metrics isolated between concurrent calls.
         self.picked_models = self.model_choice(ctx) if self.switchable else {}
@@ -457,6 +493,7 @@ class HostedGuard:
         self._active_session.shutdown(drain=False)
         if getattr(self, "sink", None) is not None:
             await self.sink.close()
+        await end_job(self._job_ctx, self._job_task)
         try:
             await control("finish", self.approval["id"])
         except (httpx.HTTPError, ValueError):
@@ -766,6 +803,7 @@ class HostedInterview(HostedGuard, Lobby):
         except Exception:  # noqa: BLE001 - the site keeps the reservation on failure
             logger.warning("Interview final metering pending; reservation retained")
         await self.sink.close()
+        await end_job(self._job_ctx, self._job_task)
         try:
             await control("finish", self.approval["id"])
         except (httpx.HTTPError, ValueError):
@@ -1573,9 +1611,12 @@ class RealtimeCall:
         self.approval = approval
         self.session = None
         self.closing = False
+        # Set once the final usage is reported, before finish() ends the job.
+        self.metered = asyncio.Event()
         self.finished = asyncio.Event()
         self.sink = PlaygroundSink(approval["id"], stop=self.finish)
         self.timer = None
+        self.job = job_task()
 
     def bind(self, session: AgentSession, agent) -> None:
         self.session = session
@@ -1594,6 +1635,11 @@ class RealtimeCall:
     async def cleanup(self) -> None:
         if self.timer:
             self.timer.cancel()
+        if self.closing:
+            # finish() is already running and waits for this job to close, so
+            # wait only for its metering here, not for the whole finish.
+            await self.metered.wait()
+            return
         await self.finish()
 
     async def finish(self) -> None:
@@ -1618,10 +1664,13 @@ class RealtimeCall:
             except Exception:
                 logger.warning("Realtime final metering pending; reservation retained")
             await self.sink.close()
+            self.metered.set()
+            await end_job(self.ctx, self.job)
             await control("finish", self.approval["id"])
         except (httpx.HTTPError, ValueError):
             logger.warning("Realtime room cleanup pending server recovery")
         finally:
+            self.metered.set()
             try:
                 await self.ctx.room.disconnect()
             finally:
