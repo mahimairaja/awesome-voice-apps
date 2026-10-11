@@ -7,11 +7,17 @@ See docs/playground-evals.md in the website repository.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import time
 from dataclasses import dataclass
 
 import httpx
+
+
+# The eval secret goes only to the site or one of its Cloudflare previews.
+SITES = re.compile(r"https://(mahimai\.ca|[a-z0-9-]+-mahimai\.mahimairaja3\.workers\.dev)")
 
 
 class EvalBusy(Exception):
@@ -34,7 +40,16 @@ class Site:
         secret: str | None = None,
         client: httpx.Client | None = None,
     ):
-        self.base = (base or os.environ.get("EVAL_SITE", "https://mahimai.ca")).rstrip("/")
+        if base is None:
+            base = (os.environ.get("EVAL_SITE") or "https://mahimai.ca").rstrip("/")
+            if not SITES.fullmatch(base):
+                raise RuntimeError(
+                    f"EVAL_SITE must be mahimai.ca or one of its previews, not {base}."
+                )
+        self.base = base.rstrip("/")
+        # EVAL_MODELS='{"stt": "...", "llm": "...", "tts": "..."}' runs switchable demos
+        # on those models instead of the demo's defaults.
+        self.models = json.loads(os.environ.get("EVAL_MODELS") or "null")
         secret = secret or os.environ.get("PLAYGROUND_EVAL_SECRET", "")
         if not secret:
             raise RuntimeError("Set PLAYGROUND_EVAL_SECRET to run the demo evals.")
@@ -50,7 +65,11 @@ class Site:
 
     def start(self, demo: str, seconds: int | None = None, *, tries: int = 3, wait: float = 60):
         """Reserve an eval call, waiting for a free slot a few times."""
-        body = {"demo": demo, **({"seconds": seconds} if seconds else {})}
+        body = {
+            "demo": demo,
+            **({"seconds": seconds} if seconds else {}),
+            **({"models": self.models} if self.models else {}),
+        }
         for attempt in range(tries):
             try:
                 data = self._send("POST", "/api/playground/eval-session", body)

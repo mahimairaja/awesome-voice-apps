@@ -13,6 +13,14 @@ on:
         description: "Comma-separated demo ids (empty runs every scenario)"
         required: false
         default: ""
+      models:
+        description: 'Models for switchable demos, as JSON: {"stt": "...", "llm": "...", "tts": "..."} (empty runs the defaults)'
+        required: false
+        default: ""
+      site:
+        description: "Site to call: https://mahimai.ca (default) or one of its workers.dev previews"
+        required: false
+        default: ""
       judge_only:
         description: "Only judge the calls already recorded (no new calls)"
         type: boolean
@@ -90,6 +98,8 @@ jobs:
         env:
           PLAYGROUND_EVAL_SECRET: ${{ secrets.PLAYGROUND_EVAL_SECRET }}
           EVAL_DEMOS: ${{ inputs.demos }}
+          EVAL_MODELS: ${{ inputs.models }}
+          EVAL_SITE: ${{ inputs.site }}
           EVAL_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}
         run: uv run deepeval test run test_demos.py --identifier "gh-${{ github.run_id }}"
 
