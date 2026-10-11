@@ -123,20 +123,26 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      # Claude Code needs bubblewrap to scrub its token from the commands it runs.
-      - run: sudo apt-get install -y --no-install-recommends bubblewrap
+      # Transcripts are untrusted, so Claude never holds the eval secret and can
+      # only read files: the steps around it fetch the calls and post the scores.
+      - name: Fetch pending calls
+        env:
+          PLAYGROUND_EVAL_SECRET: ${{ secrets.PLAYGROUND_EVAL_SECRET }}
+        run: python3 tests/evals/judge_api.py pending > pending.json
       # The Claude Code CLI rather than claude-code-action, which rejects push
       # and schedule events.
-      - name: Judge pending calls
-        # Transcripts are untrusted, so the judge cannot run curl: its only way
-        # out is judge_api.py, which talks to mahimai.ca alone. The OAuth token
-        # is scrubbed from the commands it runs.
+      - name: Judge
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
-          PLAYGROUND_EVAL_SECRET: ${{ secrets.PLAYGROUND_EVAL_SECRET }}
         run: >-
           npx --yes @anthropic-ai/claude-code@2.1.283
-          -p "Follow tests/evals/JUDGE.md and judge every pending eval call."
+          -p "Follow tests/evals/JUDGE.md to judge the calls in pending.json."
           --model claude-sonnet-4-6
-          --allowedTools "Read,Bash(python3 tests/evals/judge_api.py:*)"
+          --output-format json
+          --allowedTools Read
+          --disallowedTools "Bash,Edit,Write,WebFetch,WebSearch"
+          > judged.json
+      - name: Post scores
+        env:
+          PLAYGROUND_EVAL_SECRET: ${{ secrets.PLAYGROUND_EVAL_SECRET }}
+        run: python3 tests/evals/judge_api.py post judged.json
