@@ -273,3 +273,40 @@ def test_audio_integrity_never_fails_a_call():
         metric.score, metric.success, metric.reason = 0.0, False, "low"
     passed = {s["metric"]: s.get("passed") for s in scores(metrics)}
     assert passed["audio_integrity"] is None and passed["voice_naturalness"] is False
+
+
+def test_site_sends_models_for_a_switchable_demo(monkeypatch):
+    monkeypatch.setenv("EVAL_MODELS", '{"llm": "openai-gpt-4.1-nano"}')
+    seen = []
+
+    def handler(request: httpx.Request):
+        seen.append(json.loads(request.content))
+        return httpx.Response(
+            200, json={"id": "c1", "url": "wss://x", "token": "t", "deadline": 9, "seconds": 90}
+        )
+
+    site_with(handler).start("coffee", 90)
+    assert seen == [{"demo": "coffee", "seconds": 90, "models": {"llm": "openai-gpt-4.1-nano"}}]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://evil.example",
+        "http://mahimai.ca",
+        "https://mahimai.ca.evil.dev",
+        "https://x.workers.dev",
+    ],
+)
+def test_the_secret_only_goes_to_the_site(monkeypatch, url):
+    monkeypatch.setenv("PLAYGROUND_EVAL_SECRET", "s" * 32)
+    monkeypatch.setenv("EVAL_SITE", url)
+    with pytest.raises(RuntimeError, match="EVAL_SITE"):
+        Site()
+
+
+def test_a_preview_site_is_allowed(monkeypatch):
+    monkeypatch.setenv("PLAYGROUND_EVAL_SECRET", "s" * 32)
+    preview = "https://feat-x-mahimai.mahimairaja3.workers.dev"
+    monkeypatch.setenv("EVAL_SITE", preview)
+    assert Site().base == preview

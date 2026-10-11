@@ -22,3 +22,6 @@ jobs:
 
       - name: Compile examples
         run: python -m compileall -q demos templates
+
+      - name: Model menus (demos/*/models.toml)
+        run: python3 playground/model_menu.py --check
