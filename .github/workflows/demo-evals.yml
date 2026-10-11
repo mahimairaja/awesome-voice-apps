@@ -32,6 +32,9 @@ on:
   pull_request:
     paths: ["tests/evals/**", ".github/workflows/demo-evals.yml"]
 
+permissions:
+  contents: read
+
 concurrency:
   group: demo-evals-${{ github.event_name == 'pull_request' && github.ref || 'live' }}
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
@@ -123,11 +126,15 @@ jobs:
       # The Claude Code CLI rather than claude-code-action, which rejects push
       # and schedule events.
       - name: Judge pending calls
+        # Transcripts are untrusted, so the judge cannot run curl: its only way
+        # out is judge_api.py, which talks to mahimai.ca alone. The OAuth token
+        # is scrubbed from the commands it runs.
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
           PLAYGROUND_EVAL_SECRET: ${{ secrets.PLAYGROUND_EVAL_SECRET }}
         run: >-
           npx --yes @anthropic-ai/claude-code@2.1.283
           -p "Follow tests/evals/JUDGE.md and judge every pending eval call."
           --model claude-sonnet-4-6
-          --allowedTools "Read,Bash(curl:*)"
+          --allowedTools "Read,Bash(python3 tests/evals/judge_api.py:*)"
