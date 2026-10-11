@@ -123,6 +123,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      # Claude Code needs bubblewrap to scrub its token from the commands it runs.
+      - run: sudo apt-get install -y --no-install-recommends bubblewrap
       # The Claude Code CLI rather than claude-code-action, which rejects push
       # and schedule events.
       - name: Judge pending calls
