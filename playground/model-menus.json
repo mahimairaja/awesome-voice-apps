@@ -7,17 +7,50 @@
   "default": {
     "stt": [
       "deepgram-nova-3",
-      "openai-gpt-4o-mini-transcribe"
+      "cartesia-ink-2",
+      "cartesia-ink-whisper",
+      "deepgram-base",
+      "deepgram-enhanced",
+      "deepgram-flux",
+      "deepgram-nova-2",
+      "deepgram-nova-2-atc",
+      "deepgram-nova-2-automotive",
+      "deepgram-nova-2-conversationalai",
+      "deepgram-nova-2-drivethru",
+      "deepgram-nova-2-finance",
+      "deepgram-nova-2-meeting",
+      "deepgram-nova-2-phonecall",
+      "deepgram-nova-2-video",
+      "deepgram-nova-2-voicemail",
+      "openai-gpt-4o-mini-transcribe",
+      "openai-gpt-4o-transcribe",
+      "openai-gpt-live-transcribe",
+      "openai-gpt-realtime-whisper",
+      "openai-gpt-transcribe",
+      "openai-whisper-1"
     ],
     "llm": [
       "openai-gpt-4o-mini",
+      "openai-gpt-4.1",
       "openai-gpt-4.1-mini",
-      "openai-gpt-4.1-nano"
+      "openai-gpt-4.1-nano",
+      "openai-gpt-4o",
+      "openai-gpt-5",
+      "openai-gpt-5-mini",
+      "openai-gpt-5-nano",
+      "openai-gpt-5.1",
+      "openai-gpt-5.2",
+      "openai-gpt-5.4",
+      "openai-gpt-5.4-mini",
+      "openai-gpt-5.5"
     ],
     "tts": [
       "cartesia-sonic-3",
+      "cartesia-sonic-turbo",
+      "deepgram-aura",
       "deepgram-aura-2",
-      "openai-tts-1"
+      "openai-tts-1",
+      "openai-tts-1-hd"
     ]
   },
   "demos": {
@@ -28,13 +61,26 @@
       ],
       "llm": [
         "openai-gpt-4o-mini",
+        "openai-gpt-4.1",
         "openai-gpt-4.1-mini",
-        "openai-gpt-4.1-nano"
+        "openai-gpt-4.1-nano",
+        "openai-gpt-4o",
+        "openai-gpt-5",
+        "openai-gpt-5-mini",
+        "openai-gpt-5-nano",
+        "openai-gpt-5.1",
+        "openai-gpt-5.2",
+        "openai-gpt-5.4",
+        "openai-gpt-5.4-mini",
+        "openai-gpt-5.5"
       ],
       "tts": [
         "cartesia-sonic-3",
+        "cartesia-sonic-turbo",
+        "deepgram-aura",
         "deepgram-aura-2",
-        "openai-tts-1"
+        "openai-tts-1",
+        "openai-tts-1-hd"
       ]
     }
   }
