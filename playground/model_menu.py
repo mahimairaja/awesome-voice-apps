@@ -34,34 +34,68 @@ LLM_LIMITS = {"max_completion_tokens": 180, "max_retries": 0, "store": False}
 
 # Each id is (livekit plugin, class, keyword arguments). Plugins import only when a
 # call builds a client, so `python playground/model_menu.py --check` needs no install.
-# Within a layer, ids are listed alphabetically by provider: a demo with no
-# models.toml shows them in this order, with DEFAULT first.
+# Within a layer, ids are grouped alphabetically by provider, newest model first: a
+# demo with no models.toml shows them in this order, with DEFAULT first.
+# Every model the installed plugin offers that VoiceGateway prices, except dated
+# snapshots and retired generations. Deepgram's nova-3 multilingual mode is left
+# out because it is priced as plain nova-3, and gpt-4o-mini-tts because
+# VoiceGateway has no price for it.
+NOVA_2 = ("atc", "automotive", "conversationalai", "drivethru", "finance", "meeting")
+NOVA_2 += ("medical", "phonecall", "video", "voicemail")
+OPENAI_LLMS = ("gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.2", "gpt-5.1", "gpt-5")
+OPENAI_LLMS += ("gpt-5-mini", "gpt-5-nano", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano")
+OPENAI_LLMS += ("gpt-4o", "gpt-4o-mini")
+
 MODELS: dict[str, dict[str, tuple[str, str, dict]]] = {
     "stt": {
+        "cartesia-ink-2": ("cartesia", "STT", {"model": "ink-2"}),
+        "cartesia-ink-whisper": ("cartesia", "STT", {"model": "ink-whisper"}),
         "deepgram-nova-3": ("deepgram", "STT", {"model": "nova-3"}),
         "deepgram-nova-3-medical": ("deepgram", "STT", {"model": "nova-3-medical"}),
+        "deepgram-flux": ("deepgram", "STTv2", {"model": "flux-general-en"}),
+        "deepgram-nova-2": ("deepgram", "STT", {"model": "nova-2-general"}),
+        **{
+            f"deepgram-nova-2-{domain}": ("deepgram", "STT", {"model": f"nova-2-{domain}"})
+            for domain in NOVA_2
+        },
+        "deepgram-enhanced": ("deepgram", "STT", {"model": "enhanced-general"}),
+        "deepgram-base": ("deepgram", "STT", {"model": "base"}),
+        "openai-gpt-live-transcribe": ("openai", "STT", {"model": "gpt-live-transcribe"}),
+        # Served only by the transcriptions endpoint; the session VAD segments it.
+        "openai-gpt-transcribe": ("openai", "STT", {"model": "gpt-transcribe"}),
+        "openai-gpt-4o-transcribe": (
+            "openai",
+            "STT",
+            {"model": "gpt-4o-transcribe", "use_realtime": True},
+        ),
         "openai-gpt-4o-mini-transcribe": (
             "openai",
             "STT",
             {"model": "gpt-4o-mini-transcribe", "use_realtime": True},
         ),
+        "openai-gpt-realtime-whisper": ("openai", "STT", {"model": "gpt-realtime-whisper"}),
+        "openai-whisper-1": ("openai", "STT", {"model": "whisper-1", "use_realtime": True}),
     },
+    # The plugin sets reasoning to none or minimal for gpt-5 models, so the
+    # completion cap is spent on the reply.
     "llm": {
-        "openai-gpt-4.1-mini": ("openai", "LLM", {"model": "gpt-4.1-mini", **LLM_LIMITS}),
-        "openai-gpt-4.1-nano": ("openai", "LLM", {"model": "gpt-4.1-nano", **LLM_LIMITS}),
-        "openai-gpt-4o-mini": ("openai", "LLM", {"model": "gpt-4o-mini", **LLM_LIMITS}),
+        f"openai-{model}": ("openai", "LLM", {"model": model, **LLM_LIMITS})
+        for model in OPENAI_LLMS
     },
     "tts": {
         # sonic-2 is being retired.
         "cartesia-sonic-3": ("cartesia", "TTS", {"model": "sonic-3"}),
+        "cartesia-sonic-turbo": ("cartesia", "TTS", {"model": "sonic-turbo"}),
         "deepgram-aura-2": ("deepgram", "TTS", {"model": "aura-2-thalia-en"}),
+        "deepgram-aura": ("deepgram", "TTS", {"model": "aura-asteria-en"}),
         "openai-tts-1": ("openai", "TTS", {"model": "tts-1", "voice": "alloy"}),
+        "openai-tts-1-hd": ("openai", "TTS", {"model": "tts-1-hd", "voice": "alloy"}),
     },
 }
 
 
 # Domain models only a demo's models.toml can offer; a general demo never shows them.
-SPECIALIST = frozenset({"deepgram-nova-3-medical"})
+SPECIALIST = frozenset({"deepgram-nova-2-medical", "deepgram-nova-3-medical"})
 
 
 def default_menu() -> dict[str, list[str]]:
