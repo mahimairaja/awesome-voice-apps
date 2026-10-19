@@ -7,9 +7,10 @@ Two parts:
   VoiceGateway (an unpriced row stops the call) and billed by a provider
   PlaygroundSink accepts.
 - demos/<folder>/models.toml, optional and contributor-owned: which catalog
-  models suit that demo, best first. A medical line can put a medical STT first,
-  or list a single STT to lock it. Layers it leaves out offer the catalog's
-  general models (SPECIALIST ones only appear where a demo asks for them).
+  models suit that demo, best first. Those lead the menu as the demo's picks and
+  every other general model follows, so a visitor can still try any of them. A
+  medical line can put a medical STT first, or list a single model to lock that
+  layer. SPECIALIST models only appear where a demo asks for them.
 
 `python playground/model_menu.py` writes playground/model-menus.json, the merged
 menus. The worker reads that file, the site fetches it at build time, and a test
@@ -20,6 +21,7 @@ never name a model or provider we did not choose.
 
 import importlib
 import json
+import os
 import sys
 import tomllib
 from functools import cache
@@ -75,6 +77,19 @@ MODELS: dict[str, dict[str, tuple[str, str, dict]]] = {
         ),
         "openai-gpt-realtime-whisper": ("openai", "STT", {"model": "gpt-realtime-whisper"}),
         "openai-whisper-1": ("openai", "STT", {"model": "whisper-1", "use_realtime": True}),
+        # Sponsored by Speechmatics. The service closes its own turns ("vad" mode), so
+        # the plugin loads no second Silero model per call; the global endpoint routes
+        # each call to the nearest region. Priced in hosted.PlaygroundSink.
+        "speechmatics-linden-1": (
+            "speechmatics",
+            "STT",
+            {
+                "model": "linden-1",
+                "turn_detection_mode": "vad",
+                "enable_diarization": False,
+                "base_url": "wss://global.rt.speechmatics.com/v2/agent",
+            },
+        ),
     },
     # The plugin sets reasoning to none or minimal for gpt-5 models, so the
     # completion cap is spent on the reply.
@@ -93,6 +108,10 @@ MODELS: dict[str, dict[str, tuple[str, str, dict]]] = {
     },
 }
 
+
+# Sponsor keys the worker may not hold yet. Until a key is set in Railway, that
+# provider's models are skipped: the demo runs its next model instead of failing.
+OPTIONAL_KEYS = {"speechmatics": "SPEECHMATICS_API_KEY"}
 
 # Domain models only a demo's models.toml can offer; a general demo never shows them.
 SPECIALIST = frozenset({"deepgram-nova-2-medical", "deepgram-nova-3-medical"})
@@ -126,17 +145,27 @@ def read_priority(path: Path) -> dict[str, list[str]]:
                 f"{path}: {layer} has {missing}, not in the catalog. "
                 f"Pick from {sorted(MODELS[layer])}, or ask a maintainer to add one."
             )
-        menu[layer] = ids
+        # One id locks the layer; otherwise the picks lead and the rest follow.
+        menu[layer] = ids if len(ids) == 1 else ids + [i for i in menu[layer] if i not in ids]
     return menu
+
+
+def read_picks(path: Path) -> dict[str, list[str]]:
+    """The models a demo's models.toml puts first, shown as its picks on the page."""
+    data = tomllib.loads(path.read_text())
+    return {layer: data.get(layer, [DEFAULT[layer]]) for layer in LAYERS}
 
 
 def collect(root: Path = ROOT) -> dict:
     """The merged menus: the catalog default plus every demo that has a models.toml."""
-    demos = {
-        path.parent.name: read_priority(path)
-        for path in sorted((root / "demos").glob("*/models.toml"))
+    paths = sorted((root / "demos").glob("*/models.toml"))
+    return {
+        "layers": list(LAYERS),
+        "default": default_menu(),
+        "demos": {path.parent.name: read_priority(path) for path in paths},
+        # What each demo puts first, for the page's "picked for this use case" group.
+        "picks": {path.parent.name: read_picks(path) for path in paths},
     }
-    return {"layers": list(LAYERS), "default": default_menu(), "demos": demos}
 
 
 @cache
@@ -150,6 +179,12 @@ def menu_for(source: str) -> dict[str, list[str]]:
     return data["demos"].get(source, data["default"])
 
 
+def runnable(layer: str, model_id: str) -> bool:
+    """False when the model's provider needs a key this worker does not hold."""
+    key = OPTIONAL_KEYS.get(MODELS[layer][model_id][0])
+    return key is None or bool(os.environ.get(key))
+
+
 def parse_choice(raw, source: str = "") -> dict[str, str]:
     """The valid part of a dispatched choice; anything else keeps the demo's default."""
     if not isinstance(raw, dict):
@@ -158,12 +193,18 @@ def parse_choice(raw, source: str = "") -> dict[str, str]:
     return {
         layer: raw[layer]
         for layer in LAYERS
-        if isinstance(raw.get(layer), str) and raw[layer] in menu[layer]
+        if isinstance(raw.get(layer), str)
+        and raw[layer] in menu[layer]
+        and runnable(layer, raw[layer])
     }
 
 
 def defaults(source: str = "") -> dict[str, str]:
-    return {layer: ids[0] for layer, ids in menu_for(source).items()}
+    """The first model on each layer's menu that this worker can run."""
+    return {
+        layer: next((i for i in ids if runnable(layer, i)), ids[0])
+        for layer, ids in menu_for(source).items()
+    }
 
 
 def client(layer: str, model_id: str):

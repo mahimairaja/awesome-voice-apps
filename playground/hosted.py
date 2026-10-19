@@ -276,6 +276,26 @@ class EvalTools:
                 logger.warning("Eval tool report failed")
 
 
+# Speechmatics Agent STT (linden-1) list price, $0.30 per audio hour. voice-prices only
+# rates it as a LiveKit Inference model, so the sink prices plugin calls itself until
+# the catalog has a direct row. Speechmatics sponsors these calls; the figure still
+# counts toward the playground budget so the cap math does not change.
+SPEECHMATICS_USD_PER_MINUTE = Decimal("0.005")
+BILLED_PROVIDERS = {"openai", "deepgram", "cartesia", "speechmatics"}
+
+
+def price_speechmatics(record) -> None:
+    """Rate a Speechmatics STT record in place; input_units are audio minutes."""
+    if record.provider != "speechmatics" or record.modality != "stt":
+        return
+    minutes = Decimal(str(record.input_units or 0))
+    if not minutes.is_finite() or minutes < 0:
+        raise ValueError("Invalid metered audio")
+    record.cost_usd = float(minutes * SPEECHMATICS_USD_PER_MINUTE)
+    record.pricing_source = "playground:speechmatics-list"
+    record.metadata = {**(getattr(record, "metadata", None) or {}), "pricing_complete": True}
+
+
 class PlaygroundSink(RemoteCollectorSink):
     """Attribute VoiceGateway costs to this reservation, never the shared account."""
 
@@ -295,12 +315,9 @@ class PlaygroundSink(RemoteCollectorSink):
         if record.project == "mahimai-playground" and record.modality == "eou":
             await super().log_request(record)
             return
-        if record.project != "mahimai-playground" or record.provider not in {
-            "openai",
-            "deepgram",
-            "cartesia",
-        }:
+        if record.project != "mahimai-playground" or record.provider not in BILLED_PROVIDERS:
             raise ValueError("Unexpected playground cost attribution")
+        price_speechmatics(record)
         self.insights.record(record)
         cost = Decimal(str(record.cost_usd))
         if not cost.is_finite() or cost < 0:
@@ -566,6 +583,8 @@ class HostedTenant(HostedGuard, TenantGuide):
 
 class HostedClinic(HostedGuard, ClinicScheduler):
     demo = "clinic"
+    switchable = True
+    source = "clinic-scheduler"
     greeting = (
         "Say this is a scheduling simulation for a demo clinic and no real appointment is made. "
         "Say the open slots are on screen and ask who the appointment is for and why."
@@ -580,6 +599,8 @@ class HostedClinic(HostedGuard, ClinicScheduler):
 
 class HostedClaim(HostedGuard, ClaimIntake):
     demo = "claim"
+    switchable = True
+    source = "claim-intake"
     # Eight fields, a read-back and filing: each answer is a tool call plus a reply.
     llm_budget = 24
     greeting = (
@@ -600,6 +621,8 @@ class HostedClaim(HostedGuard, ClaimIntake):
 
 class HostedPanel(HostedGuard, SoloPanelScribe):
     demo = "panel"
+    switchable = True
+    source = "panel-scribe"
     greeting = PANEL_GREETING
 
     def __init__(self) -> None:
@@ -814,6 +837,8 @@ class HostedInterview(HostedGuard, Lobby):
 
 class HostedMortgage(HostedGuard, MortgageAdvisor):
     demo = "mortgage"
+    switchable = True
+    source = "mortgage-renewal"
     # The advisor talks in paragraphs and every barge-in is a new reply.
     llm_budget = 16
     greeting = MORTGAGE_GREETING
