@@ -51,7 +51,11 @@
       "deepgram-aura-2",
       "deepgram-aura",
       "openai-tts-1",
-      "openai-tts-1-hd"
+      "openai-tts-1-hd",
+      "speechmatics-sarah",
+      "speechmatics-theo",
+      "speechmatics-megan",
+      "speechmatics-jack"
     ]
   },
   "demos": {
@@ -98,6 +102,10 @@
       ],
       "tts": [
         "cartesia-sonic-3",
+        "speechmatics-sarah",
+        "speechmatics-theo",
+        "speechmatics-megan",
+        "speechmatics-jack",
         "cartesia-sonic-turbo",
         "deepgram-aura-2",
         "deepgram-aura",
@@ -148,6 +156,10 @@
       ],
       "tts": [
         "cartesia-sonic-3",
+        "speechmatics-sarah",
+        "speechmatics-theo",
+        "speechmatics-megan",
+        "speechmatics-jack",
         "cartesia-sonic-turbo",
         "deepgram-aura-2",
         "deepgram-aura",
@@ -198,6 +210,10 @@
       ],
       "tts": [
         "cartesia-sonic-3",
+        "speechmatics-sarah",
+        "speechmatics-theo",
+        "speechmatics-megan",
+        "speechmatics-jack",
         "cartesia-sonic-turbo",
         "deepgram-aura-2",
         "deepgram-aura",
@@ -236,6 +252,10 @@
       ],
       "tts": [
         "cartesia-sonic-3",
+        "speechmatics-sarah",
+        "speechmatics-theo",
+        "speechmatics-megan",
+        "speechmatics-jack",
         "cartesia-sonic-turbo",
         "deepgram-aura-2",
         "deepgram-aura",
@@ -291,7 +311,11 @@
         "deepgram-aura-2",
         "deepgram-aura",
         "openai-tts-1",
-        "openai-tts-1-hd"
+        "openai-tts-1-hd",
+        "speechmatics-sarah",
+        "speechmatics-theo",
+        "speechmatics-megan",
+        "speechmatics-jack"
       ]
     }
   },
@@ -305,7 +329,11 @@
         "openai-gpt-4o-mini"
       ],
       "tts": [
-        "cartesia-sonic-3"
+        "cartesia-sonic-3",
+        "speechmatics-sarah",
+        "speechmatics-theo",
+        "speechmatics-megan",
+        "speechmatics-jack"
       ]
     },
     "clinic-scheduler": {
@@ -317,7 +345,11 @@
         "openai-gpt-4o-mini"
       ],
       "tts": [
-        "cartesia-sonic-3"
+        "cartesia-sonic-3",
+        "speechmatics-sarah",
+        "speechmatics-theo",
+        "speechmatics-megan",
+        "speechmatics-jack"
       ]
     },
     "mortgage-renewal": {
@@ -329,7 +361,11 @@
         "openai-gpt-4o-mini"
       ],
       "tts": [
-        "cartesia-sonic-3"
+        "cartesia-sonic-3",
+        "speechmatics-sarah",
+        "speechmatics-theo",
+        "speechmatics-megan",
+        "speechmatics-jack"
       ]
     },
     "panel-scribe": {
@@ -341,7 +377,11 @@
         "openai-gpt-4o-mini"
       ],
       "tts": [
-        "cartesia-sonic-3"
+        "cartesia-sonic-3",
+        "speechmatics-sarah",
+        "speechmatics-theo",
+        "speechmatics-megan",
+        "speechmatics-jack"
       ]
     },
     "postop-checkin": {

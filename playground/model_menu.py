@@ -47,6 +47,9 @@ NOVA_2 += ("medical", "phonecall", "video", "voicemail")
 OPENAI_LLMS = ("gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.2", "gpt-5.1", "gpt-5")
 OPENAI_LLMS += ("gpt-5-mini", "gpt-5-nano", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano")
 OPENAI_LLMS += ("gpt-4o", "gpt-4o-mini")
+# The plugin's Agent STT runs only linden-1 (it swaps any other model name for it), so
+# Melia-1, Enhanced and Standard are not reachable from LiveKit yet.
+SPEECHMATICS_VOICES = ("sarah", "theo", "megan", "jack")
 
 MODELS: dict[str, dict[str, tuple[str, str, dict]]] = {
     "stt": {
@@ -105,6 +108,12 @@ MODELS: dict[str, dict[str, tuple[str, str, dict]]] = {
         "deepgram-aura": ("deepgram", "TTS", {"model": "aura-asteria-en"}),
         "openai-tts-1": ("openai", "TTS", {"model": "tts-1", "voice": "alloy"}),
         "openai-tts-1-hd": ("openai", "TTS", {"model": "tts-1-hd", "voice": "alloy"}),
+        # Sponsored by Speechmatics: its preview TTS, one model with four English voices.
+        # Priced in hosted.PlaygroundSink.
+        **{
+            f"speechmatics-{voice}": ("speechmatics", "TTS", {"voice": voice})
+            for voice in SPEECHMATICS_VOICES
+        },
     },
 }
 
