@@ -1,0 +1,46 @@
+name: Drive-thru coffee
+scenarios:
+  - label: Customer switches a latte to iced before giving a name
+    instructions: |
+      PERSONA: Sam, a regular in a hurry at the drive-thru. Short sentences,
+      answers one question at a time, volunteers nothing unasked.
+      OPENING LINE: "Hi, can I get a large latte and a blueberry muffin?"
+      FACTS (reveal only when asked):
+      - the name for the order is Sam
+      DO, IN ORDER:
+      1. Order a large latte and a blueberry muffin.
+      2. Once the agent confirms the latte, say "Actually, make that latte an
+         iced latte instead."
+      3. When asked if there is anything else, say "No, that's everything."
+      4. Give the name Sam when asked.
+      5. Don't end the call until the agent reads back the order and a total.
+    agent_expectations: >
+      The final order holds one iced latte and one blueberry muffin, with no hot
+      latte left in it, and is submitted under the name Sam. The agent reads back
+      the order and a total. Submitting under any other name (for example "No"),
+      keeping the hot latte, or ending with two lattes is a fail.
+    tags:
+      demo: coffee
+      feature: change_order
+
+  - label: Customer asks for an off-menu matcha latte
+    instructions: |
+      PERSONA: Priya, polite, trying the place for the first time.
+      OPENING LINE: "Hi there. Do you have a matcha latte?"
+      FACTS (reveal only when asked):
+      - the name for the order is Priya
+      DO, IN ORDER:
+      1. Ask for a matcha latte.
+      2. When told it is not available, say "Okay, then I'll just have a cold
+         brew."
+      3. When asked if there is anything else, say "That's all, thanks."
+      4. Give the name Priya when asked.
+      REACTIONS:
+      - If the agent offers matcha anyway, ask what it costs.
+    agent_expectations: >
+      The agent says matcha is not on the menu and does not invent a price or add
+      it. The order holds one cold brew and is submitted under the name Priya.
+      Adding any matcha item, or submitting under another name, is a fail.
+    tags:
+      demo: coffee
+      feature: off_menu
