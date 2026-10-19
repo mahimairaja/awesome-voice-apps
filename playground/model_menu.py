@@ -210,6 +210,11 @@ def defaults(source: str = "") -> dict[str, str]:
 def client(layer: str, model_id: str):
     plugin, name, options = MODELS[layer][model_id]
     module = importlib.import_module(f"livekit.plugins.{plugin}")
+    if "turn_detection_mode" in options:
+        # The Speechmatics plugin reads `.value` off its own enum; a bare string fails
+        # when the stream opens, not when the client is built.
+        mode = module.TurnDetectionMode(options["turn_detection_mode"])
+        options = {**options, "turn_detection_mode": mode}
     return getattr(module, name)(**options)
 
 

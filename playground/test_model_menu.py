@@ -178,6 +178,17 @@ class SwitchableDemo(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(identity(agent)["stt"], "deepgram/nova-3")
                 await agent.llm.aclose()
 
+    async def test_speechmatics_gets_its_own_turn_mode_enum(self):
+        # A bare "vad" string built fine but failed as each stream opened.
+        from livekit.plugins.speechmatics import TurnDetectionMode
+        from livekit.plugins.speechmatics import stt as sm_stt
+
+        with patch.dict("os.environ", {"SPEECHMATICS_API_KEY": "k"}):
+            client = model_menu.client("stt", "speechmatics-linden-1")
+        mode = client._stt_options.turn_detection_mode
+        self.assertIs(mode, TurnDetectionMode.VAD)
+        sm_stt._handle_turn_detection_mode(mode)
+
     async def test_other_demos_ignore_a_pick(self):
         agent = build(hosted.HostedTrivia, {"agent": "trivia", "models": {"tts": "openai-tts-1"}})
         self.assertEqual(identity(agent)["tts"], "cartesia/sonic-3")
