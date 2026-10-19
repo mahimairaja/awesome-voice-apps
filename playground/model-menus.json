@@ -27,7 +27,8 @@
       "openai-gpt-4o-transcribe",
       "openai-gpt-4o-mini-transcribe",
       "openai-gpt-realtime-whisper",
-      "openai-whisper-1"
+      "openai-whisper-1",
+      "speechmatics-linden-1"
     ],
     "llm": [
       "openai-gpt-4o-mini",
@@ -54,6 +55,110 @@
     ]
   },
   "demos": {
+    "claim-intake": {
+      "stt": [
+        "speechmatics-linden-1",
+        "deepgram-nova-3"
+      ],
+      "llm": [
+        "openai-gpt-4o-mini",
+        "openai-gpt-5.5",
+        "openai-gpt-5.4",
+        "openai-gpt-5.4-mini",
+        "openai-gpt-5.2",
+        "openai-gpt-5.1",
+        "openai-gpt-5",
+        "openai-gpt-5-mini",
+        "openai-gpt-5-nano",
+        "openai-gpt-4.1",
+        "openai-gpt-4.1-mini",
+        "openai-gpt-4.1-nano",
+        "openai-gpt-4o"
+      ],
+      "tts": [
+        "cartesia-sonic-3",
+        "cartesia-sonic-turbo",
+        "deepgram-aura-2",
+        "deepgram-aura",
+        "openai-tts-1",
+        "openai-tts-1-hd"
+      ]
+    },
+    "clinic-scheduler": {
+      "stt": [
+        "speechmatics-linden-1",
+        "deepgram-nova-3"
+      ],
+      "llm": [
+        "openai-gpt-4o-mini",
+        "openai-gpt-5.5",
+        "openai-gpt-5.4",
+        "openai-gpt-5.4-mini",
+        "openai-gpt-5.2",
+        "openai-gpt-5.1",
+        "openai-gpt-5",
+        "openai-gpt-5-mini",
+        "openai-gpt-5-nano",
+        "openai-gpt-4.1",
+        "openai-gpt-4.1-mini",
+        "openai-gpt-4.1-nano",
+        "openai-gpt-4o"
+      ],
+      "tts": [
+        "cartesia-sonic-3",
+        "cartesia-sonic-turbo",
+        "deepgram-aura-2",
+        "deepgram-aura",
+        "openai-tts-1",
+        "openai-tts-1-hd"
+      ]
+    },
+    "mortgage-renewal": {
+      "stt": [
+        "speechmatics-linden-1",
+        "deepgram-nova-3"
+      ],
+      "llm": [
+        "openai-gpt-4o-mini",
+        "openai-gpt-5.5",
+        "openai-gpt-5.4",
+        "openai-gpt-5.4-mini",
+        "openai-gpt-5.2",
+        "openai-gpt-5.1",
+        "openai-gpt-5",
+        "openai-gpt-5-mini",
+        "openai-gpt-5-nano",
+        "openai-gpt-4.1",
+        "openai-gpt-4.1-mini",
+        "openai-gpt-4.1-nano",
+        "openai-gpt-4o"
+      ],
+      "tts": [
+        "cartesia-sonic-3",
+        "cartesia-sonic-turbo",
+        "deepgram-aura-2",
+        "deepgram-aura",
+        "openai-tts-1",
+        "openai-tts-1-hd"
+      ]
+    },
+    "panel-scribe": {
+      "stt": [
+        "speechmatics-linden-1",
+        "deepgram-nova-3"
+      ],
+      "llm": [
+        "openai-gpt-4o-mini"
+      ],
+      "tts": [
+        "cartesia-sonic-3",
+        "cartesia-sonic-turbo",
+        "deepgram-aura-2",
+        "deepgram-aura",
+        "openai-tts-1",
+        "openai-tts-1-hd"
+      ]
+    },
     "postop-checkin": {
       "stt": [
         "deepgram-nova-3-medical",

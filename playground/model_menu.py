@@ -20,6 +20,7 @@ never name a model or provider we did not choose.
 
 import importlib
 import json
+import os
 import sys
 import tomllib
 from functools import cache
@@ -75,6 +76,19 @@ MODELS: dict[str, dict[str, tuple[str, str, dict]]] = {
         ),
         "openai-gpt-realtime-whisper": ("openai", "STT", {"model": "gpt-realtime-whisper"}),
         "openai-whisper-1": ("openai", "STT", {"model": "whisper-1", "use_realtime": True}),
+        # Sponsored by Speechmatics. The service closes its own turns ("vad" mode), so
+        # the plugin loads no second Silero model per call; the global endpoint routes
+        # each call to the nearest region. Priced in hosted.PlaygroundSink.
+        "speechmatics-linden-1": (
+            "speechmatics",
+            "STT",
+            {
+                "model": "linden-1",
+                "turn_detection_mode": "vad",
+                "enable_diarization": False,
+                "base_url": "wss://global.rt.speechmatics.com/v2/agent",
+            },
+        ),
     },
     # The plugin sets reasoning to none or minimal for gpt-5 models, so the
     # completion cap is spent on the reply.
@@ -93,6 +107,10 @@ MODELS: dict[str, dict[str, tuple[str, str, dict]]] = {
     },
 }
 
+
+# Sponsor keys the worker may not hold yet. Until a key is set in Railway, that
+# provider's models are skipped: the demo runs its next model instead of failing.
+OPTIONAL_KEYS = {"speechmatics": "SPEECHMATICS_API_KEY"}
 
 # Domain models only a demo's models.toml can offer; a general demo never shows them.
 SPECIALIST = frozenset({"deepgram-nova-2-medical", "deepgram-nova-3-medical"})
@@ -150,6 +168,12 @@ def menu_for(source: str) -> dict[str, list[str]]:
     return data["demos"].get(source, data["default"])
 
 
+def runnable(layer: str, model_id: str) -> bool:
+    """False when the model's provider needs a key this worker does not hold."""
+    key = OPTIONAL_KEYS.get(MODELS[layer][model_id][0])
+    return key is None or bool(os.environ.get(key))
+
+
 def parse_choice(raw, source: str = "") -> dict[str, str]:
     """The valid part of a dispatched choice; anything else keeps the demo's default."""
     if not isinstance(raw, dict):
@@ -158,12 +182,18 @@ def parse_choice(raw, source: str = "") -> dict[str, str]:
     return {
         layer: raw[layer]
         for layer in LAYERS
-        if isinstance(raw.get(layer), str) and raw[layer] in menu[layer]
+        if isinstance(raw.get(layer), str)
+        and raw[layer] in menu[layer]
+        and runnable(layer, raw[layer])
     }
 
 
 def defaults(source: str = "") -> dict[str, str]:
-    return {layer: ids[0] for layer, ids in menu_for(source).items()}
+    """The first model on each layer's menu that this worker can run."""
+    return {
+        layer: next((i for i in ids if runnable(layer, i)), ids[0])
+        for layer, ids in menu_for(source).items()
+    }
 
 
 def client(layer: str, model_id: str):

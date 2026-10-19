@@ -52,13 +52,20 @@ alert is not a guaranteed invoice cap.
 
 ## Model switcher
 
-A demo with `switchable = True` (the coffee counter, for now) runs the STT, LLM and TTS
+A demo with `switchable = True` (coffee, claim, clinic, mortgage and panel) runs the STT, LLM and TTS
 the visitor picked on the demo page. The site validates the pick and signs it into the
 agent dispatch as `models: {stt, llm, tts}`; the worker keeps only ids listed in
 `model_menu.py` and falls back to the default stack for anything else. Every model on
 the menu must be priced by VoiceGateway and billed by a provider the sink accepts
 (`test_model_menu.py` checks both). The site lists the same ids in
 `src/lib/playground/models.ts`.
+
+Speechmatics sponsors the `speechmatics-linden-1` STT, the first choice on the claim,
+clinic, mortgage and panel menus. It needs `SPEECHMATICS_API_KEY` on the worker; without
+it those demos run their next model (Deepgram). voice-prices has no direct rate for
+linden-1 yet, so `PlaygroundSink` prices it at the $0.30/hour list price. Each call's
+STT provider, model and audio minutes land in the site's `playground_insights` summary,
+which the admin's Speechmatics report reads; no extra writes.
 
 ## Status heartbeat
 

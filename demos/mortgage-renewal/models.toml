@@ -1,0 +1,5 @@
+# Optional: the models the hosted playground offers for this demo, best first.
+# Ids come from playground/model_menu.py. One id locks that layer; a layer left
+# out offers the general models in the catalog.
+# Rates, terms and dollar amounts have to land exactly; Speechmatics leads, Deepgram is the alternative.
+stt = ["speechmatics-linden-1", "deepgram-nova-3"]

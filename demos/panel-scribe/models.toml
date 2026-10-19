@@ -1,0 +1,7 @@
+# Optional: the models the hosted playground offers for this demo, best first.
+# Ids come from playground/model_menu.py. One id locks that layer; a layer left
+# out offers the general models in the catalog.
+# A scribe is only as good as its transcript; Speechmatics leads, Deepgram is the alternative.
+stt = ["speechmatics-linden-1", "deepgram-nova-3"]
+# The recap needs a longer reply than the menu allows, so the hosted demo sets its own LLM.
+llm = ["openai-gpt-4o-mini"]

@@ -308,6 +308,34 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(ValueError):
                 await sink.log_request(record("bad", "cartesia", float("nan")))
 
+    async def test_speechmatics_is_priced_by_the_sink(self):
+        # voice-prices has no direct linden-1 row; an unpriced row would stop the call.
+        with patch.dict(
+            hosted.os.environ,
+            {"VOICEGW_COLLECTOR_URL": "http://localhost:8080", "VOICEGW_API_KEY": "offline"},
+        ):
+            sink = hosted.PlaygroundSink(ID, stop=AsyncMock())
+        row = SimpleNamespace(
+            id="stt-one",
+            provider="speechmatics",
+            cost_usd=0.0,
+            model_id="speechmatics/linden-1",
+            input_units=1.5,  # audio minutes
+            output_units=0,
+            modality="stt",
+            project="mahimai-playground",
+            metadata={"pricing_complete": False},
+        )
+        with (
+            patch.object(hosted.RemoteCollectorSink, "log_request", new_callable=AsyncMock),
+            patch.object(hosted, "control", new_callable=AsyncMock) as control,
+        ):
+            await sink.log_request(row)
+        self.assertEqual(row.cost_usd, 0.0075)
+        self.assertTrue(row.metadata["pricing_complete"])
+        sink.stop.assert_not_called()
+        control.assert_any_await("usage", ID, service="speechmatics", microusd=7500)
+
     async def test_unchanged_costs_are_not_reported_again(self):
         # Each report is a D1 write, and the base sink flushes every 2 s.
         with patch.dict(
