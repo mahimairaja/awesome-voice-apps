@@ -1,5 +1,5 @@
 # Optional: the models the hosted playground offers for this demo, best first.
-# Ids come from playground/model_menu.py. One id locks that layer; a layer left
-# out offers the general models in the catalog.
+# Ids come from playground/model_menu.py. These lead the menu and every other
+# model follows; one id locks that layer. A layer left out offers the catalog.
 # Names, plates and policy numbers have to land exactly; Speechmatics leads, Deepgram is the alternative.
 stt = ["speechmatics-linden-1", "deepgram-nova-3"]

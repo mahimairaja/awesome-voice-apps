@@ -68,13 +68,22 @@ class ModelMenu(unittest.TestCase):
 
     def test_a_demo_orders_and_locks_its_layers(self):
         menu = model_menu.menu_for("postop-checkin")
-        self.assertEqual(menu["stt"], ["deepgram-nova-3-medical", "deepgram-nova-3"])
+        self.assertEqual(menu["stt"][:2], ["deepgram-nova-3-medical", "deepgram-nova-3"])
         self.assertEqual(menu["llm"], model_menu.default_menu()["llm"])
         self.assertEqual(model_menu.defaults("postop-checkin")["stt"], "deepgram-nova-3-medical")
-        # Off this demo's menu, so it keeps the default.
+        # Its picks lead, and every other general model still follows.
+        self.assertEqual(sorted(menu["stt"][2:]), sorted(model_menu.default_menu()["stt"][1:]))
         self.assertEqual(
-            model_menu.parse_choice({"stt": "openai-gpt-4o-mini-transcribe"}, "postop-checkin"), {}
+            model_menu.parse_choice({"stt": "openai-gpt-4o-mini-transcribe"}, "postop-checkin"),
+            {"stt": "openai-gpt-4o-mini-transcribe"},
         )
+        self.assertEqual(
+            model_menu.menus()["picks"]["postop-checkin"]["stt"],
+            ["deepgram-nova-3-medical", "deepgram-nova-3"],
+        )
+        # One id locks the layer.
+        self.assertEqual(model_menu.menu_for("panel-scribe")["llm"], ["openai-gpt-4o-mini"])
+        self.assertEqual(model_menu.parse_choice({"llm": "openai-gpt-5"}, "panel-scribe"), {})
         # A specialist model shows only where a demo asks for it.
         self.assertNotIn("deepgram-nova-3-medical", model_menu.default_menu()["stt"])
         self.assertEqual(model_menu.parse_choice({"stt": "deepgram-nova-3-medical"}), {})

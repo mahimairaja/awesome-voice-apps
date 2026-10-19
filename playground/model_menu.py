@@ -7,9 +7,10 @@ Two parts:
   VoiceGateway (an unpriced row stops the call) and billed by a provider
   PlaygroundSink accepts.
 - demos/<folder>/models.toml, optional and contributor-owned: which catalog
-  models suit that demo, best first. A medical line can put a medical STT first,
-  or list a single STT to lock it. Layers it leaves out offer the catalog's
-  general models (SPECIALIST ones only appear where a demo asks for them).
+  models suit that demo, best first. Those lead the menu as the demo's picks and
+  every other general model follows, so a visitor can still try any of them. A
+  medical line can put a medical STT first, or list a single model to lock that
+  layer. SPECIALIST models only appear where a demo asks for them.
 
 `python playground/model_menu.py` writes playground/model-menus.json, the merged
 menus. The worker reads that file, the site fetches it at build time, and a test
@@ -144,17 +145,27 @@ def read_priority(path: Path) -> dict[str, list[str]]:
                 f"{path}: {layer} has {missing}, not in the catalog. "
                 f"Pick from {sorted(MODELS[layer])}, or ask a maintainer to add one."
             )
-        menu[layer] = ids
+        # One id locks the layer; otherwise the picks lead and the rest follow.
+        menu[layer] = ids if len(ids) == 1 else ids + [i for i in menu[layer] if i not in ids]
     return menu
+
+
+def read_picks(path: Path) -> dict[str, list[str]]:
+    """The models a demo's models.toml puts first, shown as its picks on the page."""
+    data = tomllib.loads(path.read_text())
+    return {layer: data.get(layer, [DEFAULT[layer]]) for layer in LAYERS}
 
 
 def collect(root: Path = ROOT) -> dict:
     """The merged menus: the catalog default plus every demo that has a models.toml."""
-    demos = {
-        path.parent.name: read_priority(path)
-        for path in sorted((root / "demos").glob("*/models.toml"))
+    paths = sorted((root / "demos").glob("*/models.toml"))
+    return {
+        "layers": list(LAYERS),
+        "default": default_menu(),
+        "demos": {path.parent.name: read_priority(path) for path in paths},
+        # What each demo puts first, for the page's "picked for this use case" group.
+        "picks": {path.parent.name: read_picks(path) for path in paths},
     }
-    return {"layers": list(LAYERS), "default": default_menu(), "demos": demos}
 
 
 @cache

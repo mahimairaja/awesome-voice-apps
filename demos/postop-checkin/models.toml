@@ -1,5 +1,5 @@
 # Optional: the models the hosted playground offers for this demo, best first.
-# Ids come from playground/model_menu.py. One id locks that layer; a layer left
-# out offers the general models in the catalog.
+# Ids come from playground/model_menu.py. These lead the menu and every other
+# model follows; one id locks that layer. A layer left out offers the catalog.
 # Medication names and symptoms read better with a medical speech model.
 stt = ["deepgram-nova-3-medical", "deepgram-nova-3"]
