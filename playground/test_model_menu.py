@@ -168,6 +168,16 @@ class SwitchableDemo(unittest.IsolatedAsyncioTestCase):
                 )
                 self.assertEqual(identity(agent)["stt"], "deepgram/nova-3")
                 await agent.llm.aclose()
+                # The voice stays on Cartesia, with the Speechmatics voices next in line.
+                agent = build(
+                    agent_class,
+                    {"agent": agent_class.demo, "models": {"tts": "speechmatics-theo"}},
+                )
+                self.assertEqual(agent.tts._opts.voice, "theo")
+                await agent.llm.aclose()
+                tts = model_menu.menus()["picks"][agent_class.source]["tts"]
+                self.assertEqual(tts[0], "cartesia-sonic-3")
+                self.assertTrue(all(i.startswith("speechmatics-") for i in tts[1:]))
 
     async def test_a_missing_sponsor_key_falls_back(self):
         # Before SPEECHMATICS_API_KEY is set in Railway, the demo runs Deepgram.

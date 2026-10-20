@@ -276,22 +276,26 @@ class EvalTools:
                 logger.warning("Eval tool report failed")
 
 
-# Speechmatics Agent STT (linden-1) list price, $0.30 per audio hour. voice-prices only
-# rates it as a LiveKit Inference model, so the sink prices plugin calls itself until
-# the catalog has a direct row. Speechmatics sponsors these calls; the figure still
-# counts toward the playground budget so the cap math does not change.
+# Speechmatics list prices: Agent STT (linden-1) $0.30 per audio hour, TTS $11 per
+# million characters. voice-prices only rates linden-1 as a LiveKit Inference model and
+# has no Speechmatics TTS row, so the sink prices plugin calls itself until the catalog
+# has direct rows. Speechmatics sponsors these calls; the figure still counts toward
+# the playground budget so the cap math does not change.
 SPEECHMATICS_USD_PER_MINUTE = Decimal("0.005")
+SPEECHMATICS_USD_PER_CHARACTER = Decimal("0.000011")
 BILLED_PROVIDERS = {"openai", "deepgram", "cartesia", "speechmatics"}
 
 
 def price_speechmatics(record) -> None:
-    """Rate a Speechmatics STT record in place; input_units are audio minutes."""
-    if record.provider != "speechmatics" or record.modality != "stt":
+    """Rate a Speechmatics record in place; input_units are audio minutes (STT) or
+    characters (TTS)."""
+    rate = {"stt": SPEECHMATICS_USD_PER_MINUTE, "tts": SPEECHMATICS_USD_PER_CHARACTER}
+    if record.provider != "speechmatics" or record.modality not in rate:
         return
-    minutes = Decimal(str(record.input_units or 0))
-    if not minutes.is_finite() or minutes < 0:
-        raise ValueError("Invalid metered audio")
-    record.cost_usd = float(minutes * SPEECHMATICS_USD_PER_MINUTE)
+    units = Decimal(str(record.input_units or 0))
+    if not units.is_finite() or units < 0:
+        raise ValueError("Invalid metered usage")
+    record.cost_usd = float(units * rate[record.modality])
     record.pricing_source = "playground:speechmatics-list"
     record.metadata = {**(getattr(record, "metadata", None) or {}), "pricing_complete": True}
 

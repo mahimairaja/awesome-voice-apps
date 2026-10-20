@@ -3,3 +3,5 @@
 # model follows; one id locks that layer. A layer left out offers the catalog.
 # Rates, terms and dollar amounts have to land exactly; Speechmatics leads, Deepgram is the alternative.
 stt = ["speechmatics-linden-1", "deepgram-nova-3"]
+# The voice stays on Cartesia; the Speechmatics voices follow it.
+tts = ["cartesia-sonic-3", "speechmatics-sarah", "speechmatics-theo", "speechmatics-megan", "speechmatics-jack"]
