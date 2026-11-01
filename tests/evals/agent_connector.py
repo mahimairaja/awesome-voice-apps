@@ -49,6 +49,28 @@ class AgentConnector(LiveKitConnector):
         self.waits: list[float] = []
         # Transcript streams the agent sent about its own speech.
         self.agent_streams = 0
+        # (seconds since join, identity, lk.agent.state) as the agent changes state.
+        self.states: list[tuple[float, str, str]] = []
+        self.tracks: list[str] = []
+        self._joined_at = time.perf_counter()
+
+    async def connect(self) -> None:
+        self._joined_at = time.perf_counter()
+        self._room.on("participant_attributes_changed", self._on_attributes)
+        self._room.on("track_subscribed", self._on_any_track)
+        await super().connect()
+
+    def _on_attributes(self, changed, participant) -> None:
+        state = (changed or {}).get("lk.agent.state")
+        if state:
+            at = round(time.perf_counter() - self._joined_at, 2)
+            self.states.append((at, participant.identity, state))
+
+    def _on_any_track(self, track, publication, participant) -> None:
+        self.tracks.append(
+            f"{participant.identity}:{getattr(publication, 'name', '')}:{track.kind}"
+            f" muted={getattr(publication, 'muted', None)}"
+        )
 
     # 1. What the agent heard -------------------------------------------------
 

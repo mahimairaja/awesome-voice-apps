@@ -105,6 +105,7 @@ def describe(name, case, connector) -> None:
         connector.heard,
         [round(w, 2) for w in connector.waits],
     )
+    log.warning("%s: tracks=%s agent states=%s", name, connector.tracks, connector.states)
     for i, turn in enumerate(case.turns):
         line = f"{name} #{i} {turn.role}: {turn.content!r}"
         audio = getattr(turn, "audio", None)
