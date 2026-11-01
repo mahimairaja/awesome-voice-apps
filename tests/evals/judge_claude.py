@@ -30,6 +30,8 @@ METRICS = ("goal", "relevance", "tools", "policy")
 
 
 class Score(BaseModel):
+    """One metric's verdict for a call, in the shape the site stores."""
+
     metric: Literal["goal", "relevance", "tools", "policy"]
     score: float | None = Field(
         description="0 to 1, or null when the transcript is broken by the harness"
@@ -39,6 +41,8 @@ class Score(BaseModel):
 
 
 class Verdict(BaseModel):
+    """Every metric's verdict for one call (the structured output)."""
+
     scores: list[Score]
 
 
@@ -64,11 +68,20 @@ def call_payload(call: dict) -> str:
 
 
 def clean(scores: list[Score], has_tools: bool) -> list[dict]:
+    """Turn the model's scores into the site's rows.
+
+    Clamps each score to 0..1, sets passed at 0.7, trims the reason, and drops
+    a null tools score when the call had no tools. Returns the rows to post.
+    """
     out = []
     for s in scores:
         if s.metric == "tools" and not has_tools and s.score is None:
             continue
-        item = {"metric": s.metric, "score": s.score, "reason": s.reason.replace("—", ", ")[:400]}
+        item = {
+            "metric": s.metric,
+            "score": s.score,
+            "reason": s.reason.replace("\u2014", ", ")[:400],
+        }
         if s.score is not None:
             item["score"] = round(min(max(s.score, 0.0), 1.0), 4)
             item["passed"] = item["score"] >= 0.7
@@ -77,6 +90,10 @@ def clean(scores: list[Score], has_tools: bool) -> list[dict]:
 
 
 def judge(client: anthropic.Anthropic, call: dict, spend: dict) -> list[dict] | None:
+    """Score one call with Claude and add its cost to ``spend["usd"]``.
+
+    Returns the cleaned rows, or None when the model gave no verdict.
+    """
     # If the safety classifier declines a transcript, the API reruns the same
     # request on a fallback model inside this call instead of returning nothing.
     response = client.beta.messages.parse(

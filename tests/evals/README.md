@@ -69,7 +69,9 @@ points at another deployment, such as a preview.
 
 The `Demo evals` workflow runs on the 1st and 15th of each month, after a push
 that redeploys the worker, and by hand. It needs the `PLAYGROUND_EVAL_SECRET`
-repository secret.
+repository secret. The judge job uses `ANTHROPIC_API_KEY` when that secret is
+set; without it, it falls back to Claude Code with `CLAUDE_CODE_OAUTH_TOKEN`
+(see `JUDGE_CLI.md`). Set one of the two, or the calls stay unjudged.
 
 ## Add a scenario
 

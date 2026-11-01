@@ -136,6 +136,12 @@ def voice_metrics():
 
 
 def word_metrics(said: list[str], heard: list[str], stt):
+    """Word-level metrics for one call.
+
+    ``said`` is the caller's script, ``heard`` the agent's transcripts of the
+    caller, and ``stt`` the whisper model used to transcribe the agent's audio.
+    Returns a TranscriptionAccuracyMetric and an AgentIntelligibilityMetric.
+    """
     return [TranscriptionAccuracyMetric(said, heard), AgentIntelligibilityMetric(stt)]
 
 
