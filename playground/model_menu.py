@@ -118,9 +118,38 @@ MODELS: dict[str, dict[str, tuple[str, str, dict]]] = {
 }
 
 
-# Sponsor keys the worker may not hold yet. Until a key is set in the worker secrets, that
-# provider's models are skipped: the demo runs its next model instead of failing.
-OPTIONAL_KEYS = {"speechmatics": "SPEECHMATICS_API_KEY"}
+# The catalog models the worker runs on LiveKit Inference (inference_swap.py converts
+# the plugin client): no provider key, billed to the LiveKit project. Menus offer only
+# these, plus any other model a demo's models.toml names first.
+INFERENCE = {
+    "stt": frozenset(
+        {
+            "cartesia-ink-2",
+            "cartesia-ink-whisper",
+            "deepgram-nova-3",
+            "deepgram-nova-3-medical",
+            "deepgram-flux",
+            "deepgram-nova-2",
+            "deepgram-nova-2-conversationalai",
+            "deepgram-nova-2-medical",
+            "deepgram-nova-2-phonecall",
+        }
+    ),
+    "llm": frozenset(f"openai-{model}" for model in OPENAI_LLMS),
+    # Deepgram's first Aura is served by Inference but not priced there yet, so it stays off.
+    "tts": frozenset({"cartesia-sonic-3", "cartesia-sonic-turbo", "deepgram-aura-2"}),
+}
+
+# Keys for models that run on a provider's own plugin. Until a key is set in the worker
+# secrets, that provider's models are skipped: the demo runs its next model instead of
+# failing. A placeholder (see inference_swap.py) counts as no key.
+OPTIONAL_KEYS = {
+    "speechmatics": "SPEECHMATICS_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "deepgram": "DEEPGRAM_API_KEY",
+    "cartesia": "CARTESIA_API_KEY",
+}
+PLACEHOLDER = "livekit-inference-only"
 
 # Domain models only a demo's models.toml can offer; a general demo never shows them.
 SPECIALIST = frozenset({"deepgram-nova-2-medical", "deepgram-nova-3-medical"})
@@ -130,7 +159,11 @@ def default_menu() -> dict[str, list[str]]:
     return {
         layer: [
             DEFAULT[layer],
-            *(i for i in MODELS[layer] if i != DEFAULT[layer] and i not in SPECIALIST),
+            *(
+                i
+                for i in MODELS[layer]
+                if i != DEFAULT[layer] and i not in SPECIALIST and i in INFERENCE[layer]
+            ),
         ]
         for layer in LAYERS
     }
@@ -190,8 +223,10 @@ def menu_for(source: str) -> dict[str, list[str]]:
 
 def runnable(layer: str, model_id: str) -> bool:
     """False when the model's provider needs a key this worker does not hold."""
+    if model_id in INFERENCE[layer]:
+        return True
     key = OPTIONAL_KEYS.get(MODELS[layer][model_id][0])
-    return key is None or bool(os.environ.get(key))
+    return key is None or os.environ.get(key) not in (None, "", PLACEHOLDER)
 
 
 def parse_choice(raw, source: str = "") -> dict[str, str]:

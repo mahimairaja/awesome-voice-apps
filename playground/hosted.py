@@ -13,6 +13,7 @@ from typing import ClassVar
 
 import demo_config
 import httpx
+import inference_swap
 import model_menu
 import status
 import voicegateway
@@ -141,6 +142,8 @@ from livekit.agents import (
     APIConnectOptions,
     JobRequest,
     get_job_context,
+    inference,
+    utils,
 )
 from livekit.agents.voice.agent_session import SessionConnectOptions
 from livekit.agents.voice.room_io import RoomOptions
@@ -152,6 +155,9 @@ from voicegateway.services.inside_call import InsideCall
 from voicegateway.services.sinks import RemoteCollectorSink
 
 logger = logging.getLogger(__name__)
+# Demos build their own Deepgram and Cartesia clients; HostedGuard swaps each one for
+# LiveKit Inference, so the worker holds no key for either provider.
+inference_swap.install_placeholders()
 claims: dict[str, dict] = {}
 tasks: set[asyncio.Task] = set()
 
@@ -495,6 +501,18 @@ class HostedGuard:
             self.update_options(
                 **{k: demo_config.client(k, v, config.language) for k, v in models.items()}
             )
+
+    # A demo whose point is its own model client (one that inspects every request) keeps it.
+    own_llm = False
+
+    def update_options(self, **options) -> None:
+        """Run every speech and language client this demo sets on LiveKit Inference."""
+        for layer in ("stt", "llm", "tts"):
+            if layer in options:
+                if not (layer == "llm" and self.own_llm):
+                    options[layer] = inference_swap.convert(options[layer])
+                inference_swap.check(options[layer])
+        super().update_options(**options)
 
     def model_choice(self, ctx) -> dict[str, str]:
         # The site validated the pick and signed it into the dispatch; check it again.
@@ -963,6 +981,11 @@ class HostedBuilder(HostedGuard, ConfigurableAgent):
         super().__init__()
         self.update_options(tts=cartesia.TTS(model="sonic-3", voice=VOICES[self.config.voice]))
 
+    def _voice_tts(self):
+        # The voice is an Inference client here, which takes the same voice ids.
+        tts = self.tts if isinstance(self.tts, inference.TTS) else self.session.tts
+        return tts if isinstance(tts, inference.TTS) else None
+
     def initial_config(self):
         # The site validated this config and signed it into the dispatch; check it again.
         try:
@@ -1241,6 +1264,14 @@ class HostedDeescalate(HostedGuard, BillingDesk):
         super().__init__()
         self.update_options(tts=deescalate_voice())
 
+    def _voice(self, settings: dict) -> None:
+        # The voice is an Inference client here; Cartesia's speed and emotion go as extras.
+        tts = self.tts if utils.is_given(self.tts) and self.tts else self.session.tts
+        if isinstance(tts, inference.TTS):
+            tts.update_options(
+                extra_kwargs={"speed": settings["speed"], "emotion": settings["emotion"]}
+            )
+
     def initial_state(self) -> dict:
         return {}
 
@@ -1416,6 +1447,7 @@ class HostedOnprem(HostedGuard, PrivateHealthLine):
     """
 
     demo = "onprem"
+    own_llm = True
     # Five answers, each a tool call and a reply, plus the read-out at the end.
     llm_budget = 20
     greeting = ONPREM_GREETING

@@ -20,12 +20,19 @@ hosted class when a demo needs more than 12 model turns in two minutes. A demo
 that hands off to other agents must charge them to the same call caps (see
 `hosted_fraud.py`), or a handoff resets the limits.
 
+Every STT, LLM and TTS client a demo sets goes through `HostedGuard.update_options`,
+which swaps it for the LiveKit Inference client with the same model, voice and options
+(`playground/inference_swap.py`). The worker holds no Deepgram or Cartesia key, so a
+handoff agent built outside `update_options` must use Inference clients itself (see
+`hosted_fraud.py`). Usage is billed to the LiveKit project and priced as `livekit`.
+
 A demo that wraps its own provider clients overrides `voice_stack()` (see
 `HostedOnprem`): the private health line measures and inspects every language
 model request through its own OpenAI client, so it keeps that client instead of
-the default one. It uses the same Deepgram, OpenAI and Cartesia keys.
+the default one, and sets `own_llm` so the swap leaves it alone. It uses the
+worker's OpenAI key.
 
-Required environment: OpenAI, Deepgram and Cartesia keys, `PLAYGROUND_ORIGIN`,
+Required environment: the OpenAI key, `PLAYGROUND_ORIGIN`,
 and `PLAYGROUND_WORKER_SECRET`, plus the optional Speechmatics and Spatius keys and
 an optional VoiceGateway collector (`VOICEGW_COLLECTOR_URL`, `VOICEGW_API_KEY`). LiveKit Cloud supplies the LiveKit
 credentials itself. Keep credentials in LiveKit Cloud secrets, never this repository.

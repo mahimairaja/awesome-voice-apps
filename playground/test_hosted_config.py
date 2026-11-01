@@ -4,7 +4,7 @@ import json
 import time
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import demo_config
 import hosted
@@ -125,8 +125,9 @@ class PerCall(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(agent._config_greeting, CONFIG["greeting"])
         self.assertEqual(agent.llm.provider, "livekit")
         self.assertEqual(agent.tts.provider, "livekit")
-        # STT is not in the config, so the menu default stays.
-        self.assertNotEqual(agent.stt.provider, "livekit")
+        self.assertEqual(agent.llm.model, "openai/gpt-4.1-mini")
+        # STT is not in the config, so the menu default stays (also on Inference).
+        self.assertEqual(agent.stt.model, "deepgram/nova-3")
         # The class keeps its own greeting for calls without a config.
         self.assertNotEqual(hosted.HostedCoffee.greeting, CONFIG["greeting"])
         self.assertIn("livekit", hosted.BILLED_PROVIDERS)
@@ -135,7 +136,7 @@ class PerCall(unittest.IsolatedAsyncioTestCase):
         config = demo_config.parse(CONFIG, "coffee", 3)
         pick = next(iter(hosted.model_menu.menu_for("drive-thru-coffee")["llm"]))
         agent = self.build(config, {"llm": pick})
-        self.assertNotEqual(agent.llm.provider, "livekit")
+        self.assertEqual(agent.llm.model, f"openai/{pick.removeprefix('openai-')}")
         self.assertEqual(agent.tts.provider, "livekit")
 
     async def test_config_wins_over_a_demo_that_sets_its_own_prompt(self):
@@ -154,7 +155,40 @@ class PerCall(unittest.IsolatedAsyncioTestCase):
     async def test_no_config_keeps_the_demo(self):
         agent = self.build(None)
         self.assertIsNone(agent._config_greeting)
-        self.assertNotEqual(agent.llm.provider, "livekit")
+        self.assertEqual(agent.llm.model, "openai/gpt-4o-mini")
+
+
+class InferenceOnly(unittest.IsolatedAsyncioTestCase):
+    """Every cascade demo builds and speaks on LiveKit Inference with no Deepgram or
+    Cartesia key: a plugin client left on the placeholder key would fail the call."""
+
+    async def test_every_demo_runs_without_deepgram_or_cartesia_keys(self):
+        keys = {"OPENAI_API_KEY": "offline", "GOOGLE_API_KEY": "offline"}
+        keys |= {k: v for k, v in KEYS.items() if k.startswith("LIVEKIT_")}
+        for name, cls in hosted.CASCADE_AGENTS.items():
+            with self.subTest(demo=name):
+                hosted.claims[ROOM] = {"id": ID, "seconds": 60, "config": None, "demo": name}
+                metadata = json.dumps({"agent": name, "reservation": ID})
+                room = MagicMock()
+                room.name = ROOM
+                ctx = SimpleNamespace(room=room, job=SimpleNamespace(metadata=metadata))
+                env = {k: v for k, v in hosted.os.environ.items() if not k.endswith("_API_KEY")}
+                with (
+                    patch.dict(hosted.os.environ, env | keys, clear=True),
+                    patch.object(hosted, "get_job_context", return_value=ctx),
+                ):
+                    hosted.inference_swap.install_placeholders()
+                    agent = hosted.build_agent(cls, ctx)
+                for layer in ("stt", "llm", "tts"):
+                    client = getattr(agent, layer)
+                    for part in (
+                        getattr(client, "_llm_instances", None)
+                        or getattr(client, "_tts_instances", None)
+                        or [client]
+                    ):
+                        module = type(part).__module__
+                        self.assertFalse(module.startswith("livekit.plugins.deepgram"), layer)
+                        self.assertFalse(module.startswith("livekit.plugins.cartesia"), layer)
 
 
 if __name__ == "__main__":

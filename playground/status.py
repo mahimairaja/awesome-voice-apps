@@ -11,6 +11,7 @@ import threading
 import time
 
 import httpx
+from model_menu import PLACEHOLDER
 
 logger = logging.getLogger(__name__)
 INTERVAL_SECONDS = 60
@@ -34,6 +35,15 @@ PROBES = {
 }
 
 
+KEYS = {"openai": "OPENAI_API_KEY", "deepgram": "DEEPGRAM_API_KEY", "cartesia": "CARTESIA_API_KEY"}
+
+
+def held(provider: str, env=os.environ) -> bool:
+    """A provider key the worker really holds. Calls on LiveKit Inference need none,
+    and the site then reads that provider's own status page instead."""
+    return env.get(KEYS[provider]) not in (None, "", PLACEHOLDER)
+
+
 def probe(client: httpx.Client, provider: str, env=os.environ) -> dict:
     started = time.monotonic()
     try:
@@ -54,7 +64,7 @@ def beat(client: httpx.Client, demos, env=os.environ) -> None:
     body = {
         "action": "heartbeat",
         "demos": sorted(demos),
-        "probes": {name: probe(client, name, env) for name in PROBES},
+        "probes": {name: probe(client, name, env) for name in PROBES if held(name, env)},
     }
     if VERSION:
         body["version"] = VERSION

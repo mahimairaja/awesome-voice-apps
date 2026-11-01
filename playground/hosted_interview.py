@@ -3,8 +3,8 @@
 import importlib.util
 from pathlib import Path
 
-from livekit.agents import Agent
-from livekit.plugins import cartesia, deepgram, openai
+from livekit.agents import Agent, inference
+from livekit.plugins import openai
 
 # Keep the contributed demo self-contained; load it by path so its `agent`
 # module never shadows the coffee demo's `agent` module.
@@ -51,11 +51,11 @@ def bounded_builder(stop, spawn):
             super().__init__(
                 label,
                 question,
-                stt=deepgram.STT(model="nova-3"),
-                llm=openai.LLM(
-                    model="gpt-4o-mini", max_completion_tokens=120, max_retries=0, store=False
+                stt=inference.STT(model="deepgram/nova-3", language="en"),
+                llm=inference.LLM(
+                    model="openai/gpt-4o-mini", extra_kwargs={"max_completion_tokens": 120}
                 ),
-                tts=cartesia.TTS(model="sonic-3"),
+                tts=inference.TTS(model="cartesia/sonic-3"),
             )
             self._llm_requests = 0
             self._tts_bytes = 0

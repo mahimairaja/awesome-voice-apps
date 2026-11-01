@@ -18,7 +18,11 @@ state.
 Server secrets required:
 
 - LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET
-- DEEPGRAM_API_KEY, OPENAI_API_KEY, CARTESIA_API_KEY
+- OPENAI_API_KEY: only for the demos that call OpenAI beyond speech and chat
+  (embeddings, reading images, realtime voice, a demo's own counted client).
+  Every STT, LLM and TTS model runs on LiveKit Inference (inference_swap.py), so
+  the worker needs no Deepgram or Cartesia key. GOOGLE_API_KEY (optional) runs the
+  interpreter's Google realtime model.
 - PLAYGROUND_ORIGIN: approved site or preview HTTPS origin
 - PLAYGROUND_WORKER_SECRET: same random secret configured on the site
 - VOICEGW_COLLECTOR_URL, VOICEGW_API_KEY (optional): a VoiceGateway collector that
