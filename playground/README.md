@@ -35,7 +35,7 @@ reviewed against the $10 monthly allocation.
 ## Admission and cleanup
 
 The site reserves daily seconds, global capacity and monthly budget atomically.
-Only its room-scoped token dispatches `mahimai-playground-coffee`, with agent
+Only its room-scoped token dispatches `playground`, with agent
 metadata `coffee`. The worker claims the reservation once before accepting a job.
 A rejected, duplicated or expired claim cannot start provider inference.
 

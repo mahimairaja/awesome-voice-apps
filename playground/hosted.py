@@ -1825,7 +1825,7 @@ def build_pool() -> AgentPool:
     # multilingual turn detector stays unloaded: Silero VAD handles turn
     # boundaries, so livekit starts no inference process (about 250 MB).
     pool = AgentPool(
-        agent_name="mahimai-playground-coffee",
+        agent_name="playground",
         request_fnc=authorize,
         max_concurrent_sessions=2,
         turn_detector=False,

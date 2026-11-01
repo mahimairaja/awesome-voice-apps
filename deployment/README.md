@@ -6,7 +6,7 @@ The worker runs on LiveKit Cloud in the `voiceproject` project, not Railway.
 Deploy it with `deployment/livekit/deploy.sh` (see below). The single
 worker (`playground/hosted.py`, an OpenRTC `AgentPool`) accepts a server-approved
 reservation for any demo in `CASCADE_AGENTS` or a GPT Live demo in `REALTIME_AGENTS`. Keep the
-existing `mahimai-playground-coffee` dispatch name for compatibility.
+`playground` dispatch name; mahimai.ca dispatches calls to it.
 
 To host another STT, LLM and TTS demo: add a small adapter in `playground/`
 that loads the contributed agent by path (see `hosted_water.py`), mix it with
