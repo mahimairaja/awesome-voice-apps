@@ -10,6 +10,7 @@ import uuid
 from decimal import ROUND_CEILING, Decimal
 from typing import ClassVar
 
+import demo_config
 import httpx
 import model_menu
 import status
@@ -216,6 +217,24 @@ def parse_job(metadata: str, room: str) -> str:
     return reservation
 
 
+async def fetch_config(metadata: str, reservation: str) -> demo_config.DemoConfig | None:
+    """The demo config version the site signed into the dispatch, or None for none.
+
+    Fetched once at admission: a missing or invalid version rejects the call.
+    """
+    data = json.loads(metadata)
+    version = data.get("version")
+    if version is None:
+        return None
+    if type(version) is not int or version < 1:
+        raise ValueError("Invalid config version")
+    demo = data["agent"]
+    if demo in REALTIME_DEMOS:
+        raise ValueError("Realtime demos take no config yet")
+    found = await control("config", reservation, demo=demo, version=version)
+    return demo_config.parse(found.get("config"), demo, version)
+
+
 async def authorize(req: JobRequest) -> None:
     try:
         reservation = parse_job(req.job.metadata, req.room.name)
@@ -228,6 +247,7 @@ async def authorize(req: JobRequest) -> None:
         remaining = approved["deadline"] - time.time()
         if approved["room"] != req.room.name or not 0 < remaining <= 120:
             raise ValueError("Invalid reservation deadline")
+        approved["config"] = await fetch_config(req.job.metadata, reservation)
         claims[req.room.name] = approved
     except Exception:  # noqa: BLE001 - every failed admission must reject the job
         # Do not log provider credentials, metadata or HTTP response bodies.
@@ -283,7 +303,8 @@ class EvalTools:
 # the playground budget so the cap math does not change.
 SPEECHMATICS_USD_PER_MINUTE = Decimal("0.005")
 SPEECHMATICS_USD_PER_CHARACTER = Decimal("0.000011")
-BILLED_PROVIDERS = {"openai", "deepgram", "cartesia", "speechmatics"}
+# livekit: LiveKit Inference, the models a versioned demo config names.
+BILLED_PROVIDERS = {"openai", "deepgram", "cartesia", "livekit", "speechmatics"}
 
 
 def price_speechmatics(record) -> None:
@@ -419,8 +440,21 @@ class HostedGuard:
         raise NotImplementedError
 
     def voice_stack(self) -> dict:
-        """The metered cloud stack. A demo that wraps its own clients returns those."""
-        return model_menu.build({**model_menu.defaults(self.source), **self.picked_models})
+        """The metered cloud stack. A demo that wraps its own clients returns those.
+
+        A versioned config's LiveKit Inference models replace the menu default on
+        their layers; a model the visitor picked on the page still wins.
+        """
+        config = self.approval.get("config")
+        hosted = {
+            layer: model
+            for layer, model in (config.models if config else {}).items()
+            if layer not in self.picked_models
+        }
+        menu = {**model_menu.defaults(self.source), **self.picked_models}
+        stack = model_menu.build({k: v for k, v in menu.items() if k not in hosted})
+        language = config.language if config else None
+        return {**stack, **{k: demo_config.client(k, v, language) for k, v in hosted.items()}}
 
     def model_choice(self, ctx) -> dict[str, str]:
         # The site validated the pick and signed it into the dispatch; check it again.
@@ -438,6 +472,12 @@ class HostedGuard:
         self._job_ctx = ctx
         self._job_task = job_task()
         super().__init__(ctx.room)
+        # A versioned config from the site replaces the demo's prompt and greeting.
+        config = self.approval.get("config")
+        if config and config.instructions:
+            self._instructions = config.instructions
+        if config and config.greeting:
+            self.greeting = config.greeting
         # Per-agent clients keep component metrics isolated between concurrent calls.
         self.picked_models = self.model_choice(ctx) if self.switchable else {}
         self.update_options(**self.voice_stack())

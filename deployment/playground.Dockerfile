@@ -2,13 +2,11 @@ FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
 # libopus: the concierge's Spatius avatar sends the agent's audio as Ogg Opus.
-# git: OpenRTC installs from a pinned commit; it is removed after the install.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libopus0 git \
+    && apt-get install -y --no-install-recommends libopus0 \
     && rm -rf /var/lib/apt/lists/*
 COPY playground/requirements-hosted.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt \
-    && apt-get purge -y --auto-remove git
+RUN pip install --no-cache-dir -r requirements.txt
 COPY playground/*.py playground/model-menus.json /app/playground/
 COPY demos/drive-thru-coffee/agent.py /app/demos/drive-thru-coffee/
 COPY demos/talk-to-our-team/agent.py demos/talk-to-our-team/booking.py /app/demos/talk-to-our-team/
