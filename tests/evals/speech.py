@@ -110,6 +110,11 @@ class WhisperSTT(DeepEvalBaseSTT):
             # Linear resample is plenty for a fallback transcript.
             positions = np.linspace(0, len(samples) - 1, int(len(samples) * 16000 / rate))
             samples = np.interp(positions, np.arange(len(samples)), samples).astype(np.float32)
+        peak = float(np.max(np.abs(samples))) if len(samples) else 0.0
+        if 1e-4 < peak < 0.5:
+            # Quiet agent audio sits near whisper's log-mel floor and comes back
+            # as "you"; bring the loudest sample to about -1 dBFS first.
+            samples = samples * (0.9 / peak)
         segments, _ = self._model().transcribe(samples, language="en", beam_size=1)
         return " ".join(s.text.strip() for s in segments).strip(), 0.0
 

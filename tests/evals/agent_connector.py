@@ -47,6 +47,8 @@ class AgentConnector(LiveKitConnector):
         self.heard: list[str] = []
         # Seconds spent waiting for the agent to finish before each caller line.
         self.waits: list[float] = []
+        # Transcript streams the agent sent about its own speech.
+        self.agent_streams = 0
 
     # 1. What the agent heard -------------------------------------------------
 
@@ -57,6 +59,8 @@ class AgentConnector(LiveKitConnector):
             self._transcript_tasks.add(task)
             task.add_done_callback(self._transcript_tasks.discard)
             return
+        if participant_identity != self.identity:
+            self.agent_streams += 1
         super()._on_transcript_stream(reader, participant_identity)
 
     async def _read_heard(self, reader) -> None:

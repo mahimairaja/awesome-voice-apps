@@ -10,6 +10,7 @@ Run with: deepeval test run test_demos.py   (see README.md)
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from pathlib import Path
@@ -24,7 +25,9 @@ from deepeval.voice import VoiceConfig
 from metrics import gating_metrics, voice_metrics, word_metrics
 from playground_api import EvalBusy, Site
 from report import call_record
-from speech import KokoroTTS, NoLLM, WhisperSTT
+from speech import KokoroTTS, NoLLM, WhisperSTT, wav_samples
+
+log = logging.getLogger("evals")
 
 HERE = Path(__file__).parent
 dataset = EvaluationDataset()
@@ -88,7 +91,34 @@ def simulate(golden, call, speech):
     )
     [case] = simulator.simulate([golden], max_user_simulations=len(script(golden)) + 1)
     heard = connectors[-1].heard if connectors else []
+    if connectors:
+        describe(golden.name, case, connectors[-1])
     return case, heard
+
+
+def describe(name, case, connector) -> None:
+    """Log each turn's timing and loudness, to tell harness faults from agent faults."""
+    log.warning(
+        "%s: agent transcript streams=%d, heard=%r, waits=%s",
+        name,
+        connector.agent_streams,
+        connector.heard,
+        [round(w, 2) for w in connector.waits],
+    )
+    for i, turn in enumerate(case.turns):
+        line = f"{name} #{i} {turn.role}: {turn.content!r}"
+        audio = getattr(turn, "audio", None)
+        if audio is not None:
+            samples, rate = wav_samples(audio)
+            rms = float((samples**2).mean() ** 0.5) if len(samples) else 0.0
+            peak = float(abs(samples).max()) if len(samples) else 0.0
+            line += (
+                f" start={getattr(audio, 'start_time', None)} secs={len(samples) / rate:.2f}"
+                f" rate={rate} rms={rms:.4f} peak={peak:.3f}"
+            )
+        if turn.metadata:
+            line += f" meta={turn.metadata}"
+        log.warning(line)
 
 
 @pytest.mark.parametrize("golden", goldens, ids=[g.name for g in goldens])
