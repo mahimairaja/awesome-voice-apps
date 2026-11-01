@@ -14,7 +14,8 @@ import httpx
 
 logger = logging.getLogger(__name__)
 INTERVAL_SECONDS = 60
-VERSION = os.environ.get("RAILWAY_GIT_COMMIT_SHA", "")[:12] or None
+# Set by deployment/livekit/deploy.sh to the deployed commit.
+VERSION = os.environ.get("PLAYGROUND_VERSION", "")[:12] or None
 
 # (provider, url, headers from the environment). Only reads, never billed calls.
 PROBES = {

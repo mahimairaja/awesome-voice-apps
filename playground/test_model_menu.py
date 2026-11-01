@@ -180,7 +180,7 @@ class SwitchableDemo(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(all(i.startswith("speechmatics-") for i in tts[1:]))
 
     async def test_a_missing_sponsor_key_falls_back(self):
-        # Before SPEECHMATICS_API_KEY is set in Railway, the demo runs Deepgram.
+        # Before SPEECHMATICS_API_KEY is set in the worker secrets, the demo runs Deepgram.
         keys = {k: v for k, v in KEYS.items() if k != "SPEECHMATICS_API_KEY"}
         for metadata in ({"agent": "claim"}, {"models": {"stt": "speechmatics-linden-1"}}):
             with self.subTest(metadata=metadata):

@@ -118,7 +118,7 @@ MODELS: dict[str, dict[str, tuple[str, str, dict]]] = {
 }
 
 
-# Sponsor keys the worker may not hold yet. Until a key is set in Railway, that
+# Sponsor keys the worker may not hold yet. Until a key is set in the worker secrets, that
 # provider's models are skipped: the demo runs its next model instead of failing.
 OPTIONAL_KEYS = {"speechmatics": "SPEECHMATICS_API_KEY"}
 

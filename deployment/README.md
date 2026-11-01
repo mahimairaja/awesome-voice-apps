@@ -2,7 +2,8 @@
 
 Maintainer-owned integration for mahimai.ca. Contributors only need a runnable demo.
 
-Build from the repository root with `deployment/playground.Dockerfile`. The single
+The worker runs on LiveKit Cloud in the `voiceproject` project, not Railway.
+Deploy it with `deployment/livekit/deploy.sh` (see below). The single
 worker (`playground/hosted.py`, an OpenRTC `AgentPool`) accepts a server-approved
 reservation for any demo in `CASCADE_AGENTS` or a GPT Live demo in `REALTIME_AGENTS`. Keep the
 existing `mahimai-playground-coffee` dispatch name for compatibility.
@@ -10,7 +11,7 @@ existing `mahimai-playground-coffee` dispatch name for compatibility.
 To host another STT, LLM and TTS demo: add a small adapter in `playground/`
 that loads the contributed agent by path (see `hosted_water.py`), mix it with
 `HostedGuard` and register it in `CASCADE_AGENTS`, copy its files in the
-Dockerfile, and add its folder to the Railway watch paths, which also cover `/playground/**`. The site must list the
+Dockerfile (the deploy script stages exactly what the Dockerfile copies). The site must list the
 same id before it can reserve a call. Provider keys and pricing must already be
 supported by `PlaygroundSink`; unknown pricing ends the call. A demo built on other
 providers keeps its own code: the adapter swaps the stack (see `hosted_claim.py`,
@@ -24,9 +25,27 @@ A demo that wraps its own provider clients overrides `voice_stack()` (see
 model request through its own OpenAI client, so it keeps that client instead of
 the default one. It uses the same Deepgram, OpenAI and Cartesia keys.
 
-Required environment: LiveKit credentials, OpenAI, Deepgram and Cartesia keys,
-`PLAYGROUND_ORIGIN`, `PLAYGROUND_WORKER_SECRET`, `VOICEGW_COLLECTOR_URL`, and
-`VOICEGW_API_KEY`. Keep credentials in the hosting platform, never this repository.
+Required environment: OpenAI, Deepgram and Cartesia keys, `PLAYGROUND_ORIGIN`,
+`PLAYGROUND_WORKER_SECRET`, `VOICEGW_COLLECTOR_URL`, and `VOICEGW_API_KEY`, plus the
+optional Speechmatics and Spatius keys. LiveKit Cloud supplies the LiveKit
+credentials itself. Keep credentials in LiveKit Cloud secrets, never this repository.
+
+## Deploy to LiveKit Cloud
+
+```bash
+lk project set-default voiceproject
+# First time: secrets as KEY=value lines in a file outside the repository.
+deployment/livekit/deploy.sh create ~/secrets/playground.env
+git add deployment/livekit/livekit.toml   # so later deploys update the same agent
+# Every later deploy, from the commit you want live:
+deployment/livekit/deploy.sh
+```
+
+The script stages the files the Dockerfile copies into `deployment/livekit/build/`
+and stamps the commit for the /status heartbeat. Change secrets with
+`lk agent update-secrets`. The site's LiveKit keys must belong to the same project,
+or its dispatch never reaches this worker. Inference models in a demo config are
+billed to that project.
 
 The site enforces the shared daily allowance, concurrency and monthly reservation
 budget. SDR uses GPT Live with GPT-5.6 Luna, a 120-second deadline, 600 output tokens
