@@ -444,6 +444,31 @@ def test_judge_sends_the_call_as_data_and_tracks_spend():
     assert spend["usd"] == pytest.approx((1000 * 2 + 200 * 10 + 2000 * 0.2) / 1e6)
 
 
+def test_connector_watches_the_room_it_was_given(monkeypatch):
+    import asyncio
+
+    from agent_connector import AgentConnector
+    from deepeval.voice import LiveKitConnector
+
+    class Room:
+        def __init__(self):
+            self.events = []
+
+        def on(self, event, callback):
+            self.events.append(event)
+
+    async def joined(self):
+        return None
+
+    monkeypatch.setattr(LiveKitConnector, "connect", joined)
+    room = Room()
+    connector = AgentConnector(url="wss://example", token="t", room=room)
+    asyncio.run(connector.connect())
+    assert {"participant_attributes_changed", "track_subscribed"} <= set(room.events)
+    connector._on_attributes({"lk.agent.state": "speaking"}, SimpleNamespace(identity="agent"))
+    assert connector.states[-1][1:] == ("agent", "speaking")
+
+
 def test_judge_skips_a_rejected_call_and_judges_the_rest(tmp_path, monkeypatch, capsys):
     import anthropic
     import judge_claude

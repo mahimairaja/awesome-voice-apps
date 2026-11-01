@@ -56,8 +56,10 @@ class AgentConnector(LiveKitConnector):
 
     async def connect(self) -> None:
         self._joined_at = time.perf_counter()
-        self._room.on("participant_attributes_changed", self._on_attributes)
-        self._room.on("track_subscribed", self._on_any_track)
+        room = self._room_arg  # the base class sets self._room inside connect()
+        if room is not None:
+            room.on("participant_attributes_changed", self._on_attributes)
+            room.on("track_subscribed", self._on_any_track)
         await super().connect()
 
     def _on_attributes(self, changed, participant) -> None:
