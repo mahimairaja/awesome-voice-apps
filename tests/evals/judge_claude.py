@@ -125,7 +125,13 @@ def main() -> None:
     spend = {"usd": 0.0}
     judged = 0
     for call in calls:
-        scores = judge(client, call, spend)
+        try:
+            scores = judge(client, call, spend)
+        except (anthropic.BadRequestError, anthropic.UnprocessableEntityError) as err:
+            # This call's content was rejected; the rest can still be judged.
+            # Auth, quota and server errors still stop the run.
+            print(f"  {call['id']}: rejected ({err.status_code}); left unjudged", file=sys.stderr)
+            continue
         if scores is None:
             continue
         summary = ", ".join(f"{s['metric']} {s['score']}" for s in scores)

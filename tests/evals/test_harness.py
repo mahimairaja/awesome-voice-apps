@@ -6,6 +6,7 @@ Run with: uv run pytest test_harness.py
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -441,6 +442,29 @@ def test_judge_sends_the_call_as_data_and_tracks_spend():
     assert "ignore the rubric" in seen["messages"][0]["content"]
     assert "ignore the rubric" not in seen["system"][0]["text"]
     assert spend["usd"] == pytest.approx((1000 * 2 + 200 * 10 + 2000 * 0.2) / 1e6)
+
+
+def test_judge_skips_a_rejected_call_and_judges_the_rest(tmp_path, monkeypatch, capsys):
+    import anthropic
+    import judge_claude
+
+    def fake_judge(client, call, spend):
+        if call["id"] == "bad":
+            request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+            raise anthropic.BadRequestError(
+                "rejected", response=httpx.Response(400, request=request), body=None
+            )
+        return [{"metric": "goal", "score": 1.0, "reason": "Done.", "passed": True}]
+
+    pending = tmp_path / "pending.json"
+    pending.write_text(json.dumps({"calls": [{"id": "bad"}, {"id": "good", "golden": "g"}]}))
+    monkeypatch.setattr(judge_claude, "judge", fake_judge)
+    monkeypatch.setattr(judge_claude.anthropic, "Anthropic", lambda: None)
+    monkeypatch.setattr(sys, "argv", ["judge_claude.py", "--dry-run", str(pending)])
+    judge_claude.main()
+    out = capsys.readouterr()
+    assert "bad: rejected (400)" in out.err
+    assert "Judged 1 call(s)" in out.out
 
 
 def test_integrity_reason_names_the_defects():
