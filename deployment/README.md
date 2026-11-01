@@ -26,8 +26,8 @@ model request through its own OpenAI client, so it keeps that client instead of
 the default one. It uses the same Deepgram, OpenAI and Cartesia keys.
 
 Required environment: OpenAI, Deepgram and Cartesia keys, `PLAYGROUND_ORIGIN`,
-`PLAYGROUND_WORKER_SECRET`, `VOICEGW_COLLECTOR_URL`, and `VOICEGW_API_KEY`, plus the
-optional Speechmatics and Spatius keys. LiveKit Cloud supplies the LiveKit
+and `PLAYGROUND_WORKER_SECRET`, plus the optional Speechmatics and Spatius keys and
+an optional VoiceGateway collector (`VOICEGW_COLLECTOR_URL`, `VOICEGW_API_KEY`). LiveKit Cloud supplies the LiveKit
 credentials itself. Keep credentials in LiveKit Cloud secrets, never this repository.
 
 ## Deploy to LiveKit Cloud

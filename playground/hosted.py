@@ -332,10 +332,17 @@ def price_speechmatics(record) -> None:
 
 
 class PlaygroundSink(RemoteCollectorSink):
-    """Attribute VoiceGateway costs to this reservation, never the shared account."""
+    """Attribute VoiceGateway costs to this reservation, never the shared account.
+
+    VoiceGateway prices each record in process, and the site's ledger is the
+    record of what a call spent. A VoiceGateway collector is optional: with
+    VOICEGW_COLLECTOR_URL set, records are mirrored there too.
+    """
 
     def __init__(self, reservation: str, stop=None):
-        super().__init__(os.environ["VOICEGW_COLLECTOR_URL"], os.environ["VOICEGW_API_KEY"])
+        url = os.environ.get("VOICEGW_COLLECTOR_URL")
+        self.mirror = bool(url)
+        super().__init__(url or "http://127.0.0.1", os.environ.get("VOICEGW_API_KEY"))
         self.stop = stop
         self.reservation = reservation
         self.records = {}
@@ -348,7 +355,7 @@ class PlaygroundSink(RemoteCollectorSink):
 
     async def log_request(self, record):
         if record.project == "mahimai-playground" and record.modality == "eou":
-            await super().log_request(record)
+            await self._mirror(record)
             return
         if record.project != "mahimai-playground" or record.provider not in BILLED_PROVIDERS:
             raise ValueError("Unexpected playground cost attribution")
@@ -366,8 +373,24 @@ class PlaygroundSink(RemoteCollectorSink):
             or getattr(record, "metadata", {}).get("pricing_complete") is False
         ):
             spawn(self.stop())
-        await super().log_request(record)
+        await self._mirror(record)
         await self.report()
+
+    async def _mirror(self, record) -> None:
+        if self.mirror:
+            await super().log_request(record)
+
+    async def log_turns(self, rows) -> None:
+        if self.mirror:
+            await super().log_turns(rows)
+
+    async def log_dead_air(self, events) -> None:
+        if self.mirror:
+            await super().log_dead_air(events)
+
+    async def log_tool_calls(self, rows) -> None:
+        if self.mirror:
+            await super().log_tool_calls(rows)
 
     async def report(self):
         async with self.report_lock:
@@ -1813,12 +1836,7 @@ def build_agent(cls: type[HostedGuard], ctx) -> HostedGuard:
 
 
 def build_pool() -> AgentPool:
-    for key in (
-        "PLAYGROUND_WORKER_SECRET",
-        "PLAYGROUND_ORIGIN",
-        "VOICEGW_COLLECTOR_URL",
-        "VOICEGW_API_KEY",
-    ):
+    for key in ("PLAYGROUND_WORKER_SECRET", "PLAYGROUND_ORIGIN"):
         if not os.environ.get(key):
             raise RuntimeError(f"Missing {key}")
     # One process runs every call as a task and admits two calls at once. The

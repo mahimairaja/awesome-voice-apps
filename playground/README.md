@@ -21,7 +21,9 @@ Server secrets required:
 - DEEPGRAM_API_KEY, OPENAI_API_KEY, CARTESIA_API_KEY
 - PLAYGROUND_ORIGIN: approved site or preview HTTPS origin
 - PLAYGROUND_WORKER_SECRET: same random secret configured on the site
-- VOICEGW_COLLECTOR_URL, VOICEGW_API_KEY: private authenticated collector
+- VOICEGW_COLLECTOR_URL, VOICEGW_API_KEY (optional): a VoiceGateway collector that
+  mirrors each call's usage. Costs are priced in the worker and reported to the
+  site either way.
 - SPATIUS_APP_ID, SPATIUS_API_KEY, SPATIUS_AVATAR_ID: the concierge demo's
   avatar. The site needs the same SPATIUS_APP_ID and SPATIUS_AVATAR_ID (never
   the API key) so the browser can draw the face. Optional SPATIUS_USD_PER_MINUTE

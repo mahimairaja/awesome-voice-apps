@@ -308,6 +308,33 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(ValueError):
                 await sink.log_request(record("bad", "cartesia", float("nan")))
 
+    async def test_without_a_collector_costs_still_reach_the_site(self):
+        env = {k: v for k, v in hosted.os.environ.items() if not k.startswith("VOICEGW_")}
+        with patch.dict(hosted.os.environ, env, clear=True):
+            sink = hosted.PlaygroundSink(ID)
+        self.assertFalse(sink.mirror)
+        row = SimpleNamespace(
+            id="one",
+            provider="livekit",
+            cost_usd=0.000003,
+            model_id="openai/gpt-4.1-mini",
+            input_units=0,
+            output_units=0,
+            modality="llm",
+            project="mahimai-playground",
+        )
+        with (
+            patch.object(hosted.RemoteCollectorSink, "log_request", new_callable=AsyncMock) as up,
+            patch.object(hosted.RemoteCollectorSink, "_post", new_callable=AsyncMock) as post,
+            patch.object(hosted, "control", new_callable=AsyncMock) as control,
+        ):
+            await sink.log_request(row)
+            await sink.log_turns([object()])
+            await sink.close()
+        up.assert_not_awaited()
+        post.assert_not_awaited()
+        control.assert_any_await("usage", ID, service="livekit", microusd=3)
+
     async def test_speechmatics_is_priced_by_the_sink(self):
         # voice-prices has no direct linden-1 row; an unpriced row would stop the call.
         with patch.dict(
@@ -377,8 +404,6 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             for key in (
                 "PLAYGROUND_WORKER_SECRET",
                 "PLAYGROUND_ORIGIN",
-                "VOICEGW_COLLECTOR_URL",
-                "VOICEGW_API_KEY",
                 "DEEPGRAM_API_KEY",
                 "OPENAI_API_KEY",
                 "CARTESIA_API_KEY",
