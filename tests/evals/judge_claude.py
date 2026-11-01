@@ -140,14 +140,15 @@ def main() -> None:
 
     client = anthropic.Anthropic()
     spend = {"usd": 0.0}
-    judged = 0
+    judged = rejected = 0
     for call in calls:
         try:
             scores = judge(client, call, spend)
         except (anthropic.BadRequestError, anthropic.UnprocessableEntityError) as err:
             # This call's content was rejected; the rest can still be judged.
             # Auth, quota and server errors still stop the run.
-            print(f"  {call['id']}: rejected ({err.status_code}); left unjudged", file=sys.stderr)
+            print(f"  {call['id']}: rejected ({err.status_code}): {err}", file=sys.stderr)
+            rejected += 1
             continue
         if scores is None:
             continue
@@ -159,6 +160,9 @@ def main() -> None:
             send("POST", URL, {"action": "judge", "id": call["id"], "scores": scores})
         judged += 1
     print(f"Judged {judged} call(s) for ${spend['usd']:.4f}.")
+    if rejected and not judged:
+        # Every call rejected points at a shared request problem, not the calls.
+        raise SystemExit(f"All {rejected} call(s) were rejected; none judged.")
 
 
 if __name__ == "__main__":

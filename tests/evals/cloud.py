@@ -40,6 +40,14 @@ class CloudSite:
         return os.environ.get("EVAL_AGENT_NAME") or f"eval-{demo}"
 
     def start(self, demo: str, seconds: int | None = None) -> EvalCall:
+        """Mint a caller token whose room dispatches the demo's eval agent.
+
+        Refuses a demo with no eval agent (EVAL_CLOUD_DEMOS, default ``coffee``)
+        unless EVAL_AGENT_NAME names one, so no call waits on an absent agent.
+        """
+        served = os.environ.get("EVAL_CLOUD_DEMOS", "coffee").split(",")
+        if demo not in served and not os.environ.get("EVAL_AGENT_NAME"):
+            raise ValueError(f"No cloud eval agent serves {demo!r}; served: {served}.")
         call_id = f"eval-{demo}-{uuid.uuid4().hex[:10]}"
         seconds = seconds or CALL_SECONDS
         token = (

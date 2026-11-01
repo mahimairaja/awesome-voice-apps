@@ -22,7 +22,12 @@ env file outside the repo, then:
 ```
 
 Results land in `tests/evals/recordings/` (`calls.json` and the audio).
-Score them with `uv run python judge_claude.py --dry-run recordings/calls.json`.
+Score them from `tests/evals`:
+
+```sh
+cd ..   # tests/evals
+uv run python judge_claude.py --dry-run recordings/calls.json
+```
 
 ## Deploy
 
@@ -44,7 +49,8 @@ CLI there. The first deploy writes `livekit.toml`; commit it.
 
 Add the project's URL, key and secret as the repository secrets
 `EVAL_LIVEKIT_URL`, `EVAL_LIVEKIT_API_KEY` and `EVAL_LIVEKIT_API_SECRET`, then
-start the `Demo evals` workflow with target `cloud` and demos `coffee`. Locally:
+start the `Demo evals` workflow with target `cloud` and demos `coffee`. Locally,
+from `tests/evals`:
 
 ```sh
 EVAL_TARGET=cloud EVAL_DEMOS=coffee LIVEKIT_URL=... LIVEKIT_API_KEY=... \
@@ -53,3 +59,6 @@ EVAL_TARGET=cloud EVAL_DEMOS=coffee LIVEKIT_URL=... LIVEKIT_API_KEY=... \
 
 Cloud calls skip the site's budget and are written to `calls.json`
 (`EVAL_RECORDS`), which `judge_claude.py --dry-run calls.json` can score.
+They carry no tool events (`tools` is empty), so a dry run leaves out the
+tool-use score even though the Coffee agent calls its order tools. The agent
+serves only Coffee: other demos have no `eval-<demo>` agent to answer.

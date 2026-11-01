@@ -445,6 +445,7 @@ def test_judge_sends_the_call_as_data_and_tracks_spend():
 
 
 def test_connector_watches_the_room_it_was_given(monkeypatch):
+    """connect() hooks state and track events on the room passed in, before the base joins."""
     import asyncio
 
     from agent_connector import AgentConnector
@@ -470,6 +471,7 @@ def test_connector_watches_the_room_it_was_given(monkeypatch):
 
 
 def test_cloud_site_dispatches_the_eval_agent(tmp_path, monkeypatch):
+    """A cloud call's token dispatches eval-<demo>, and its record lands in the JSON file."""
     from cloud import CloudSite
     from livekit import api
 
@@ -484,12 +486,16 @@ def test_cloud_site_dispatches_the_eval_agent(tmp_path, monkeypatch):
     assert [a.agent_name for a in claims.room_config.agents] == ["eval-coffee"]
     assert call.seconds == 90 and call.url == "wss://example.livekit.cloud"
 
+    with pytest.raises(ValueError):
+        site.start("trivia")
+
     site.record({"id": call.id, "golden": "g", "turns": [{"role": "user", "text": "hi"}]})
     saved = json.loads((tmp_path / "calls.json").read_text())["calls"]
     assert saved[0]["transcript"] == [{"role": "user", "text": "hi"}]
 
 
 def test_judge_skips_a_rejected_call_and_judges_the_rest(tmp_path, monkeypatch, capsys):
+    """A 400 on one call is logged and skipped; the next call is still judged."""
     import anthropic
     import judge_claude
 

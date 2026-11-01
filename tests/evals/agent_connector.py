@@ -55,6 +55,11 @@ class AgentConnector(LiveKitConnector):
         self._joined_at = time.perf_counter()
 
     async def connect(self) -> None:
+        """Join the room and start recording the agent's state changes and tracks.
+
+        Listeners go on the room passed to the constructor, because the base class
+        only sets ``self._room`` inside its own ``connect()``. Returns ``None``.
+        """
         self._joined_at = time.perf_counter()
         room = self._room_arg  # the base class sets self._room inside connect()
         if room is not None:
