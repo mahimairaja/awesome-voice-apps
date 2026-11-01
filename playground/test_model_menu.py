@@ -159,6 +159,14 @@ class InferenceModels(unittest.TestCase):
                         self.assertGreater(cost, 0)
                         self.assertEqual(unrated, ())
 
+    def test_gpt5_keeps_its_low_reasoning_and_reply_cap(self):
+        with patch.dict(hosted.os.environ, KEYS):
+            client = inference_swap.convert(model_menu.client("llm", "openai-gpt-5-mini"))
+        extra = client._opts.extra_kwargs
+        self.assertEqual(extra["max_completion_tokens"], 180)
+        self.assertIn(extra["reasoning_effort"], ("none", "minimal"))
+        self.assertIs(extra["store"], False)
+
 
 class SwitchableDemo(unittest.IsolatedAsyncioTestCase):
     async def test_coffee_runs_the_visitors_pick(self):

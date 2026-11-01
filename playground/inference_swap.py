@@ -118,7 +118,17 @@ def _openai_llm(client: openai.LLM):
     o = client._opts
     extra = {
         name: getattr(o, name)
-        for name in ("max_completion_tokens", "temperature", "top_p", "parallel_tool_calls")
+        for name in (
+            "max_completion_tokens",
+            "temperature",
+            "top_p",
+            "parallel_tool_calls",
+            # The plugin sets gpt-5 reasoning to none or minimal so the reply gets the
+            # completion cap; Inference would otherwise use the model's default.
+            "reasoning_effort",
+            "verbosity",
+            "store",
+        )
         if _set(getattr(o, name))
     }
     return inference.LLM(model=f"openai/{o.model}", extra_kwargs=extra or None)
