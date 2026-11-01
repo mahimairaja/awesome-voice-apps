@@ -33,7 +33,12 @@ grep -qi "registered worker" "$log" || { echo "worker did not register"; tail -2
 echo "eval worker registered; calling it"
 
 cd "$here/.."
-mkdir -p recordings
+# The scripted caller's Kokoro voice (about 115 MB), fetched once.
+mkdir -p .models recordings
+for f in kokoro-v1.0.int8.onnx voices-v1.0.bin; do
+  [ -s ".models/$f" ] || curl -fsSL -o ".models/$f" \
+    "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/$f"
+done
 EVAL_TARGET=cloud EVAL_DEMOS="${EVAL_DEMOS:-coffee}" EVAL_RECORDS=recordings/calls.json \
   EVAL_AUDIO_DIR=recordings uv run deepeval test run test_demos.py
 echo "calls: $PWD/recordings/calls.json  worker log: $log"
