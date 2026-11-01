@@ -107,3 +107,24 @@ def stop_after_script(golden: ConversationalGolden, simulated_user_turns: int):
     if simulated_user_turns >= len(script(golden)):
         return end("The caller finished the script.")
     return proceed()
+
+
+def patient_simulator():
+    """ConversationSimulator that lets the agent finish before the caller speaks.
+
+    DeepEval collects whatever the agent said since its last turn right before
+    each caller line. This waits first, while the agent is still talking (see
+    ``AgentConnector.wait_until_quiet``), so that collection holds the whole
+    reply and the caller never talks over it. Built lazily so offline tests
+    that never place a call do not import the simulator.
+    """
+    from deepeval.simulator import ConversationSimulator
+
+    class PatientSimulator(ConversationSimulator):
+        async def _take_agent_backlog(self, session, turns, call_started_at):
+            wait = getattr(session.connector, "wait_until_quiet", None)
+            if wait is not None:
+                await wait()
+            return await super()._take_agent_backlog(session, turns, call_started_at)
+
+    return PatientSimulator

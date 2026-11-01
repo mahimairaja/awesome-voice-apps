@@ -12,6 +12,10 @@ from deepeval.test_case import ConversationalTestCase
 # between words in clean TTS (8 to 13 per sentence from Kokoro, offline) read
 # as defects, and Voice Reliability averages that score in.
 INFORMATIONAL = {"audio_integrity", "voice_reliability"}
+# Signal heuristics that mostly track how loud the audio arrives (see
+# metrics.py). Stored until saved recordings show they follow what a listener
+# hears; the word-level checks carry intelligibility meanwhile.
+INFORMATIONAL |= {"voice_naturalness", "speech_intelligibility"}
 
 
 def metric_key(metric) -> str:
@@ -61,8 +65,10 @@ def turns(case: ConversationalTestCase | None) -> list[dict]:
         item = {"role": turn.role, "text": (turn.content or "")[:2000]}
         if turn.audio is not None and turn.audio.start_time is not None:
             item["start_s"] = round(turn.audio.start_time, 3)
-        if turn.role == "assistant" and turn.latency_ms is not None:
-            item["latency_ms"] = round(min(max(turn.latency_ms, 0.0), 600000.0), 1)
+        # DeepEval floors a reply that began before the caller finished at 0.
+        # That is overlap, not a 0 ms response, so it is left out of latency.
+        if turn.role == "assistant" and turn.latency_ms is not None and turn.latency_ms > 0:
+            item["latency_ms"] = round(min(turn.latency_ms, 600000.0), 1)
         if getattr(turn, "interrupted", None):
             item["interrupted"] = True
         out.append(item)
