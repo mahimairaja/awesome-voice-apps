@@ -56,7 +56,9 @@ def parse(raw, demo: str, version: int) -> DemoConfig:
             raise ValueError(f"Invalid {name}")
         if value is not None and value != demo:
             raise ValueError(f"{name} {value!r} does not run as {demo!r}")
-    models = raw.get("models") or {}
+    models = raw.get("models")
+    if models is None:
+        models = {}
     if not isinstance(models, dict) or set(models) - set(LAYERS):
         # A realtime model needs a realtime demo; none of those take a config yet.
         raise ValueError("Invalid models")

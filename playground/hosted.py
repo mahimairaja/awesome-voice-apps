@@ -1,6 +1,7 @@
 """Hosted coffee simulation: LiveKit worker with server-authorized call limits."""
 
 import asyncio
+import functools
 import json
 import logging
 import os
@@ -218,9 +219,18 @@ def parse_job(metadata: str, room: str) -> str:
 
 
 async def fetch_config(metadata: str, reservation: str) -> demo_config.DemoConfig | None:
-    """The demo config version the site signed into the dispatch, or None for none.
+    """Fetch the demo config version the site signed into the dispatch.
 
-    Fetched once at admission: a missing or invalid version rejects the call.
+    Args:
+        metadata: the job's dispatch metadata (JSON with agent and optional version).
+        reservation: the claimed reservation id, sent with the request.
+
+    Returns:
+        The validated config, or None when the dispatch names no version.
+
+    Raises:
+        ValueError (or an HTTP error) for an invalid version or a missing or
+        invalid config, so admission rejects the call before any inference.
     """
     data = json.loads(metadata)
     version = data.get("version")
@@ -440,21 +450,28 @@ class HostedGuard:
         raise NotImplementedError
 
     def voice_stack(self) -> dict:
-        """The metered cloud stack. A demo that wraps its own clients returns those.
+        """The metered cloud stack. A demo that wraps its own clients returns those."""
+        return model_menu.build({**model_menu.defaults(self.source), **self.picked_models})
 
-        A versioned config's LiveKit Inference models replace the menu default on
-        their layers; a model the visitor picked on the page still wins.
+    def apply_config(self) -> None:
+        """Apply the call's versioned config once the demo has fully built itself.
+
+        Runs after every subclass __init__ (see build_agent), so the config's prompt
+        and LiveKit Inference models win over the demo's own. A model the visitor
+        picked on the page still wins on its layer. The greeting is kept apart
+        because some demos compute theirs as a read-only property.
         """
         config = self.approval.get("config")
-        hosted = {
-            layer: model
-            for layer, model in (config.models if config else {}).items()
-            if layer not in self.picked_models
-        }
-        menu = {**model_menu.defaults(self.source), **self.picked_models}
-        stack = model_menu.build({k: v for k, v in menu.items() if k not in hosted})
-        language = config.language if config else None
-        return {**stack, **{k: demo_config.client(k, v, language) for k, v in hosted.items()}}
+        if config is None:
+            return
+        if config.instructions:
+            self._instructions = config.instructions
+        self._config_greeting = config.greeting
+        models = {k: v for k, v in config.models.items() if k not in self.picked_models}
+        if models:
+            self.update_options(
+                **{k: demo_config.client(k, v, config.language) for k, v in models.items()}
+            )
 
     def model_choice(self, ctx) -> dict[str, str]:
         # The site validated the pick and signed it into the dispatch; check it again.
@@ -472,12 +489,7 @@ class HostedGuard:
         self._job_ctx = ctx
         self._job_task = job_task()
         super().__init__(ctx.room)
-        # A versioned config from the site replaces the demo's prompt and greeting.
-        config = self.approval.get("config")
-        if config and config.instructions:
-            self._instructions = config.instructions
-        if config and config.greeting:
-            self.greeting = config.greeting
+        self._config_greeting: str | None = None
         # Per-agent clients keep component metrics isolated between concurrent calls.
         self.picked_models = self.model_choice(ctx) if self.switchable else {}
         self.update_options(**self.voice_stack())
@@ -535,8 +547,9 @@ class HostedGuard:
                 tools = EvalTools(self.approval["id"])
                 self.session.on("function_tools_executed", tools.record)
             # Outbound demos wait for the callee to speak first.
-            if self.greeting:
-                await self.session.generate_reply(instructions=self.greeting)
+            greeting = self._config_greeting or self.greeting
+            if greeting:
+                await self.session.generate_reply(instructions=greeting)
         except Exception:
             await self._finish()
             raise
@@ -1784,6 +1797,21 @@ async def before_start(session: AgentSession, agent, ctx) -> None:
     agent.call.bind(session, agent)
 
 
+def build_agent(cls: type[HostedGuard], ctx) -> HostedGuard:
+    """OpenRTC's per-call factory: build the demo, then apply its versioned config.
+
+    Args:
+        cls: the demo's HostedGuard class from CASCADE_AGENTS.
+        ctx: the call's JobContext (the class reads it through get_job_context).
+
+    Returns:
+        The call's agent with its config applied.
+    """
+    agent = cls()
+    agent.apply_config()
+    return agent
+
+
 def build_pool() -> AgentPool:
     for key in (
         "PLAYGROUND_WORKER_SECRET",
@@ -1819,6 +1847,7 @@ def build_pool() -> AgentPool:
             turn_handling=agent.turn_handling,
             start_options=start,
             on_session_ready=before_start,
+            agent_factory=functools.partial(build_agent, agent),
         )
     for name, agent in REALTIME_AGENTS.items():
         pool.add(

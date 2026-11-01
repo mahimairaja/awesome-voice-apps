@@ -29,10 +29,15 @@ cp "$root/deployment/playground.Dockerfile" "$build/Dockerfile"
 # The /status heartbeat reports which commit is running.
 sha="$(git -C "$root" rev-parse --short=12 HEAD)"
 sed -i.bak "s|^CMD |ENV PLAYGROUND_VERSION=$sha\nCMD |" "$build/Dockerfile" && rm "$build/Dockerfile.bak"
+# Resolve the secrets file before leaving the caller's directory.
+secrets=""
+if [ "${1:-}" = "create" ]; then
+  secrets="$(cd "$(dirname "${2:?usage: deploy.sh create SECRETS_FILE}")" && pwd)/$(basename "$2")"
+fi
 [ -f "$here/livekit.toml" ] && cp "$here/livekit.toml" "$build/"
 cd "$build"
 if [ "${1:-}" = "create" ]; then
-  lk agent create --secrets-file "${2:?usage: deploy.sh create SECRETS_FILE}"
+  lk agent create --secrets-file "$secrets"
   cp livekit.toml "$here/livekit.toml"
   echo "Commit deployment/livekit/livekit.toml so later deploys update this agent."
 else

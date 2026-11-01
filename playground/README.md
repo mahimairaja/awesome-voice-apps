@@ -55,17 +55,18 @@ alert is not a guaranteed invoice cap.
 The site can publish a demo's config as an immutable version (mahimai.ca D1,
 `playground_demo_version`) and signs the live version number into the dispatch as
 `version`. The worker fetches that exact version once, while it admits the call
-(worker action `config`), and checks it again in `demo_config.py`. A missing or
-invalid version rejects the call before any inference.
+(worker action `config`), and checks it again in `demo_config.py`. A dispatch
+without a version runs the demo as before; an invalid version, or a version the
+site cannot return, rejects the call before any inference.
 
 A config adjusts a demo that already runs here; its tools stay in the demo's code,
 so `toolset` or `module` may only name that demo. It can replace the prompt and the
 greeting, and name LiveKit Inference models (`deepgram/nova-3`,
 `openai/gpt-4.1-mini`, `cartesia/sonic-3:<voice>`) for the STT, LLM and TTS layers.
 Those are billed to the LiveKit project under the `livekit` provider, so they need
-no provider key. A model the visitor picked on the page still wins on its layer. A
-demo that builds its own clients (an overridden `voice_stack`) keeps them, and
-realtime demos take no config yet. Calls without a `version` run as before.
+no provider key. The config is applied after the demo builds itself, so it wins
+over the demo's own prompt and models; a model the visitor picked on the page
+still wins on its layer. Realtime demos take no config yet.
 
 ## Model switcher
 

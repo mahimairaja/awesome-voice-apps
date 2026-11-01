@@ -28,6 +28,7 @@ CONFIG = {
 
 
 def request(metadata):
+    """A fake OpenRTC job request carrying this dispatch metadata."""
     return SimpleNamespace(
         job=SimpleNamespace(metadata=json.dumps(metadata)),
         room=SimpleNamespace(name=ROOM),
@@ -37,10 +38,13 @@ def request(metadata):
 
 
 def approval():
+    """A valid site claim answer for the test reservation."""
     return {"id": ID, "room": ROOM, "deadline": time.time() + 60, "seconds": 60}
 
 
 class Admission(unittest.IsolatedAsyncioTestCase):
+    """authorize() fetches and checks the signed config before accepting a call."""
+
     def setUp(self):
         hosted.claims.clear()
 
@@ -75,6 +79,8 @@ class Admission(unittest.IsolatedAsyncioTestCase):
             ({"version": 3}, {**CONFIG, "models": {"stt": "deepgram/nova-3:en"}}),
             ({"version": 3}, {**CONFIG, "instructions": " "}),
             ({"version": 3}, None),
+            ({"version": 3}, {**CONFIG, "models": []}),
+            ({"version": 3}, {**CONFIG, "models": ""}),
         ]
         for extra, config in bad:
             with self.subTest(extra=extra, config=config):
@@ -96,7 +102,10 @@ class Admission(unittest.IsolatedAsyncioTestCase):
 
 
 class PerCall(unittest.IsolatedAsyncioTestCase):
-    def build(self, config, models=None):
+    """build_agent() applies the config after the demo has built itself."""
+
+    def build(self, config, models=None, cls=None):
+        """Build one call's agent through the OpenRTC factory, offline."""
         claim = {"id": ID, "seconds": 60, "config": config}
         hosted.claims[ROOM] = claim
         metadata = json.dumps({"agent": "coffee", "reservation": ID, "models": models or {}})
@@ -107,13 +116,13 @@ class PerCall(unittest.IsolatedAsyncioTestCase):
             patch.dict(hosted.os.environ, KEYS),
             patch.object(hosted, "get_job_context", return_value=ctx),
         ):
-            return hosted.HostedCoffee()
+            return hosted.build_agent(cls or hosted.HostedCoffee, ctx)
 
     async def test_config_sets_prompt_greeting_and_inference_models(self):
         config = demo_config.parse(CONFIG, "coffee", 3)
         agent = self.build(config)
         self.assertEqual(agent.instructions, CONFIG["instructions"])
-        self.assertEqual(agent.greeting, CONFIG["greeting"])
+        self.assertEqual(agent._config_greeting, CONFIG["greeting"])
         self.assertEqual(agent.llm.provider, "livekit")
         self.assertEqual(agent.tts.provider, "livekit")
         # STT is not in the config, so the menu default stays.
@@ -129,9 +138,22 @@ class PerCall(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(agent.llm.provider, "livekit")
         self.assertEqual(agent.tts.provider, "livekit")
 
+    async def test_config_wins_over_a_demo_that_sets_its_own_prompt(self):
+        # Pharmacy assigns its prompt in its own __init__, after HostedGuard's.
+        raw = {**CONFIG, "toolset": "pharmacy"}
+        agent = self.build(demo_config.parse(raw, "pharmacy", 1), cls=hosted.HostedPharmacy)
+        self.assertEqual(agent.instructions, CONFIG["instructions"])
+        self.assertEqual(agent.llm.provider, "livekit")
+
+    async def test_a_read_only_greeting_demo_still_builds(self):
+        # Post-op computes its greeting as a property; the config keeps its own.
+        raw = {**CONFIG, "toolset": "postop"}
+        agent = self.build(demo_config.parse(raw, "postop", 1), cls=hosted.HostedPostop)
+        self.assertEqual(agent._config_greeting, CONFIG["greeting"])
+
     async def test_no_config_keeps_the_demo(self):
         agent = self.build(None)
-        self.assertEqual(agent.greeting, hosted.HostedCoffee.greeting)
+        self.assertIsNone(agent._config_greeting)
         self.assertNotEqual(agent.llm.provider, "livekit")
 
 
