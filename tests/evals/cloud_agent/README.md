@@ -9,6 +9,21 @@ it needs no provider keys. LiveKit Cloud injects `LIVEKIT_URL`,
 Today it serves the Coffee counter (`demos/drive-thru-coffee`) as the agent
 `eval-coffee`.
 
+## Run it on your machine
+
+A worker on your own machine joins the LiveKit Cloud project like a deployed
+one, but takes no agent deployment slot, and still uses LiveKit Inference. Put
+the project's `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET` in an
+env file outside the repo, then:
+
+```sh
+./local.sh ~/path/to/.env.local          # start the worker, run the Coffee evals, stop
+./local.sh ~/path/to/.env.local worker   # worker only, for manual calls
+```
+
+Results land in `tests/evals/recordings/` (`calls.json` and the audio).
+Score them with `uv run python judge_claude.py --dry-run recordings/calls.json`.
+
 ## Deploy
 
 ```sh
@@ -18,7 +33,7 @@ lk project set-default voiceproject   # the eval project
 ./deploy.sh update                    # after a demo change: lk agent deploy
 ```
 
-`deploy.sh` stages the demo's `agent.py` (as `demo.py`), `pyproject.toml` and
+`stage.sh` (used by both scripts) stages the demo's `agent.py` (as `demo.py`), `pyproject.toml` and
 `uv.lock` next to `agent.py` and the `Dockerfile` in `build/`, then runs the
 CLI there. The first deploy writes `livekit.toml`; commit it.
 
