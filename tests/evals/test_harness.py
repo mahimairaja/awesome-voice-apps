@@ -469,6 +469,26 @@ def test_connector_watches_the_room_it_was_given(monkeypatch):
     assert connector.states[-1][1:] == ("agent", "speaking")
 
 
+def test_cloud_site_dispatches_the_eval_agent(tmp_path, monkeypatch):
+    from cloud import CloudSite
+    from livekit import api
+
+    monkeypatch.setenv("LIVEKIT_URL", "wss://example.livekit.cloud")
+    monkeypatch.setenv("LIVEKIT_API_KEY", "key")
+    monkeypatch.setenv("LIVEKIT_API_SECRET", "s" * 32)
+    monkeypatch.delenv("EVAL_AGENT_NAME", raising=False)
+    site = CloudSite(out=str(tmp_path / "calls.json"))
+    call = site.start("coffee", 90)
+    claims = api.TokenVerifier("key", "s" * 32).verify(call.token)
+    assert claims.video.room == call.id and call.id.startswith("eval-coffee-")
+    assert [a.agent_name for a in claims.room_config.agents] == ["eval-coffee"]
+    assert call.seconds == 90 and call.url == "wss://example.livekit.cloud"
+
+    site.record({"id": call.id, "golden": "g", "turns": [{"role": "user", "text": "hi"}]})
+    saved = json.loads((tmp_path / "calls.json").read_text())["calls"]
+    assert saved[0]["transcript"] == [{"role": "user", "text": "hi"}]
+
+
 def test_judge_skips_a_rejected_call_and_judges_the_rest(tmp_path, monkeypatch, capsys):
     import anthropic
     import judge_claude

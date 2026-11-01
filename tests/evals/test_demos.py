@@ -46,7 +46,13 @@ RUN = {
 
 
 @pytest.fixture(scope="session")
-def site() -> Site:
+def site():
+    # EVAL_TARGET=cloud calls the eval agents on LiveKit Cloud (cloud_agent/)
+    # instead of the playground worker behind mahimai.ca.
+    if os.environ.get("EVAL_TARGET") == "cloud":
+        from cloud import CloudSite
+
+        return CloudSite()
     return Site()
 
 

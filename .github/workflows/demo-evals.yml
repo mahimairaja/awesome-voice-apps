@@ -24,6 +24,11 @@ on:
         description: "Site to call: https://mahimai.ca (default) or one of its workers.dev previews"
         required: false
         default: ""
+      target:
+        description: "site calls the playground worker through mahimai.ca; cloud calls the eval agents on LiveKit Cloud (tests/evals/cloud_agent)"
+        type: choice
+        options: [site, cloud]
+        default: site
       judge_only:
         description: "Only judge the calls already recorded (no new calls)"
         type: boolean
@@ -108,7 +113,12 @@ jobs:
           EVAL_SITE: ${{ inputs.site }}
           EVAL_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}
           EVAL_AUDIO_DIR: recordings
-        run: uv run deepeval test run test_demos.py --identifier "gh-${{ github.run_id }}"
+          EVAL_TARGET: ${{ inputs.target || 'site' }}
+          EVAL_RECORDS: recordings/calls.json
+          LIVEKIT_URL: ${{ secrets.EVAL_LIVEKIT_URL }}
+          LIVEKIT_API_KEY: ${{ secrets.EVAL_LIVEKIT_API_KEY }}
+          LIVEKIT_API_SECRET: ${{ secrets.EVAL_LIVEKIT_API_SECRET }}
+        run: mkdir -p recordings && uv run deepeval test run test_demos.py --identifier "gh-${{ github.run_id }}"
       # The call audio, to listen to what the scores describe. Synthetic callers
       # and demo agents only, kept a week.
       - name: Keep the call audio
@@ -128,7 +138,8 @@ jobs:
     needs: live
     if: >-
       always() && github.repository == 'mahimairaja/awesome-voice-apps' &&
-      (needs.live.result == 'success' || needs.live.result == 'failure' || inputs.judge_only)
+      (needs.live.result == 'success' || needs.live.result == 'failure' || inputs.judge_only) &&
+      inputs.target != 'cloud'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
