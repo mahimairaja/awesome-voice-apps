@@ -432,7 +432,9 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
                 self.assertIsInstance(detector, hosted.inference.TurnDetector)
                 self.assertIs(detector, hosted.end_of_turn_detector())
                 self.assertEqual(detector.model, "turn-detector-v1")
-                self.assertEqual(turns["endpointing"], {"min_delay": 0.3})
+                self.assertEqual(
+                    turns["endpointing"], {"mode": "dynamic", "min_delay": 0.3, "max_delay": 1.2}
+                )
                 self.assertTrue(turns["preemptive_generation"]["preemptive_tts"])
             else:
                 self.assertIs(turns, hosted.CASCADE_AGENTS[name].turn_handling)
