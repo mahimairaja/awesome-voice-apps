@@ -49,7 +49,10 @@ class HostedPronounce(unittest.IsolatedAsyncioTestCase):
         self.assertIsNot(first.tts, second.tts)
         self.assertIn("two-minute limit", first.instructions)
         self.assertFalse(first._turn_handling["preemptive_generation"]["enabled"])
-        self.assertEqual(first._turn_handling["endpointing"]["min_delay"], 0.9)
+        # Hosted calls end turns on the cloud detector, so the reading wait is shorter.
+        self.assertEqual(first._turn_handling["endpointing"], {"min_delay": 0.5, "max_delay": 2.0})
+        self.assertEqual(first.min_endpointing_delay, 0.5)
+        self.assertEqual(first.max_endpointing_delay, 2.0)
         self.assertNotIn("coach", sys.modules)
         await first.llm.aclose()
         await second.llm.aclose()
