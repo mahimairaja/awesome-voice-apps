@@ -437,10 +437,11 @@ class PlaygroundSink(RemoteCollectorSink):
 # Transcribed words a caller must say over the agent before it stops talking.
 INTERRUPT_MIN_WORDS = 2
 
-# A token made only of these, standing alone between spaces. A live Coffee eval had
-# the model end two replies with "// // // ...": unspoken, but seconds of dead air
-# and on screen in the transcript. A symbol inside a word or number ("24/7") stays.
-STRAY_SYMBOLS = re.compile(r"(?<!\S)[/\\|#*~`=_]+(?!\S)")
+# A token made only of these, standing alone between spaces. Live Coffee evals had
+# replies end in "// // // ..." and "for the ... ... ...": unspoken, but seconds of
+# dead air and on screen in the transcript. A symbol attached to a word or number
+# ("24/7", "wait...") stays.
+STRAY_SYMBOLS = re.compile(r"(?<!\S)[/\\|#*~`=_.\u2026]+(?!\S)")
 
 
 class StraySymbols:
@@ -471,6 +472,14 @@ class StraySymbols:
         return self._clean(rest)
 
     def _clean(self, text: str) -> str:
+        dropped = [(m.start(), m.group()) for m in STRAY_SYMBOLS.finditer(text)]
+        if dropped:
+            # A local A/B could not reproduce these runs, so log where they land in each
+            # chunk. Only the symbols and offsets: reply text can carry what the caller
+            # said, and the worker keeps transcripts out of its logs.
+            logger.warning(
+                "dropped stray symbols", extra={"dropped": dropped, "chunk_chars": len(text)}
+            )
         text = re.sub(r" {2,}", " ", STRAY_SYMBOLS.sub("", text))
         if self.spaced:
             text = text.lstrip(" ")
