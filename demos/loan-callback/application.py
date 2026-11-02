@@ -53,6 +53,10 @@ MAX_TEXT = 80
 MAX_NOTE = 160
 MAX_NOTES = 6
 APP_ID = re.compile(r"^NB-[0-9A-F]{4}$")
+# Filler a model writes for a question nobody answered. Never stored as an answer.
+PLACEHOLDERS = {"-", "?", "none", "n/a", "na", "unknown", "not given", "not provided", "tbd"}
+# A zero is only an answer when the caller's own words say so.
+SAID_ZERO = re.compile(r"\b(0|zero|no|none|nothing|nil|don'?t|not|under|less than|new)\b", re.I)
 
 
 def estimate_tokens(text: str) -> int:
@@ -113,8 +117,24 @@ def normalize(field: str, value: str) -> tuple[str | None, str]:
     return money(amount), ""
 
 
-def record(state: dict, field: str, value: str, note: str = "") -> str:
-    """Store one answer and an optional note for later. The caller saves the state next."""
+def unsaid(field: str, stored: str, said: str) -> bool:
+    """True when the value is a default, not something the caller said."""
+    if KINDS[field] == "text":
+        return stored.lower().strip(" .") in PLACEHOLDERS
+    return parse_amount(stored) == 0 and not SAID_ZERO.search(said)
+
+
+def read_back(state: dict) -> str:
+    """The read-back before submitting, always from the latest stored answers."""
+    answers = state["answers"]
+    return f"{answers['loan_amount']} for {answers['use_of_funds']}"
+
+
+def record(state: dict, field: str, value: str, note: str = "", said: str = "") -> str:
+    """Store one answer and an optional note for later. The caller saves the state next.
+
+    said is the caller's own words; a zero is only recorded when they say it.
+    """
     if state["submitted"]:
         return "rejected: the application is already submitted"
     if field not in LABELS:
@@ -122,17 +142,36 @@ def record(state: dict, field: str, value: str, note: str = "") -> str:
     stored, problem = normalize(field, value)
     if stored is None:
         return f"rejected: {LABELS[field].lower()} {problem}"
-    changed = field in state["answers"]
+    previous = state["answers"].get(field)
+    if previous is None and unsaid(field, stored, " ".join(str(said).split())):
+        return (
+            f"rejected: the caller has not answered {LABELS[field].lower()}, so nothing was "
+            f"recorded. Ask: {PROMPTS[field]} If they did say zero, record it again with "
+            "their words."
+        )
+    changed = previous is not None
     state["answers"][field] = stored
     note = " ".join(str(note).split())[:MAX_NOTE]
     if note:
         # The rolling summary: one line per thing worth keeping, oldest dropped first.
         state["notes"] = [*state["notes"], note][-MAX_NOTES:]
     nxt = current(state)
-    head = f"{'updated' if changed else 'recorded'} {LABELS[field].lower()}: {stored}."
+    if previous == stored:
+        ask = f" Next ask: {PROMPTS[nxt]}" if nxt else ""
+        return (
+            f"unchanged: {LABELS[field].lower()} is already {stored}. If the caller answered "
+            f"another question, record that field instead.{ask}"
+        )
+    if changed:
+        head = f"updated {LABELS[field].lower()}: {stored}, replacing {previous}."
+    else:
+        head = f"recorded {LABELS[field].lower()}: {stored}."
     if nxt:
         return f"{head} Next ask: {PROMPTS[nxt]}"
-    return f"{head} Every question is answered. Read back the amount and use, then ask to submit."
+    return (
+        f"{head} Every question is answered. Read back exactly {read_back(state)}, "
+        "then ask to submit."
+    )
 
 
 def decision(state: dict) -> str:
@@ -154,7 +193,10 @@ def submit(state: dict) -> str:
     if missing:
         return f"rejected: still missing {', '.join(missing)}"
     state["submitted"] = {"ref": state["app_id"], "decision": decision(state)}
-    return f"submitted. Reference {state['app_id']}. {state['submitted']['decision']}."
+    return (
+        f"submitted. Reference {state['app_id']}. {read_back(state)}. "
+        f"{state['submitted']['decision']}."
+    )
 
 
 def context_message(state: dict) -> str:
@@ -172,7 +214,7 @@ def context_message(state: dict) -> str:
     elif nxt:
         lines.append(f"Next question ({nxt}): {PROMPTS[nxt]}")
     else:
-        lines.append("Every question is answered; ask to submit.")
+        lines.append(f"Every question is answered; read back {read_back(state)}, ask to submit.")
     return "\n".join(lines)
 
 

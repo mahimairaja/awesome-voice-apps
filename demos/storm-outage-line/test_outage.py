@@ -183,3 +183,28 @@ async def test_readings_are_scored_per_line(outage):
 async def test_playback_needs_a_reading(outage):
     line, context = outage
     assert "no reading" in await line.play_back(context)
+
+
+async def test_report_outage_takes_the_address_as_the_transcript_spells_it(outage):
+    line, context = outage
+    card = {"house": "95", "street": "Wetherby Court", "account": "0694 7381"}
+    context.userdata["card"] = card
+    heard = "The address is 95 Wetherby Court, and the account number is 0694 7381."
+    await line.on_user_turn_completed(None, SimpleNamespace(text_content=heard))
+    guessed = await line.report_outage(context, "95 Weatherby Court", "0694 7381")
+    assert "not in the caller's words" in guessed and heard in guessed
+    assert context.userdata["ticket"] is None
+    logged = await line.report_outage(context, "95 Wetherby Ct", "zero six nine four 7381")
+    assert context.userdata["ticket"]["ref"] in logged
+
+
+async def test_playback_publishes_no_stage_text(outage):
+    line, context = outage
+    rate = 16000
+    line.line.note_rate(rate)
+    line.line._record(np.ones(rate, dtype=np.int16))
+    context.userdata["readings"][-1]["_spans"] = [(0, rate)]
+    context.session.say = MagicMock()
+    assert "Playing it now" in await line.play_back(context)
+    assert context.session.say.call_args.args == ("",)
+    assert context.session.say.call_args.kwargs["add_to_chat_ctx"] is False

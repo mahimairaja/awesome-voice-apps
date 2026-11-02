@@ -3,10 +3,11 @@
 import asyncio
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import hosted
 import hosted_approval
+from livekit.agents import ToolError
 
 ID = "598cd768-86d4-42a1-bb44-adc44fba4207"
 ROOM = f"playground-{ID}"
@@ -71,6 +72,47 @@ class ApprovalDemo(unittest.IsolatedAsyncioTestCase):
 
         spoken = [chunk async for chunk in agent.bound_text(text())]
         self.assertEqual(sum(map(len, spoken)), 3900)
+        await agent.llm.aclose()
+
+    async def test_no_refund_or_approval_while_the_manager_has_not_decided(self):
+        agent, _ = build()
+        case = agent.initial_state()
+        case["found"] = True
+        context = SimpleNamespace(userdata=case)
+        case["request"] = {"id": "REQ-0001", "amount": 649.0, "to": "card"}
+        with self.assertRaisesRegex(ToolError, "Still waiting for the manager"):
+            await agent.issue_refund(context, 649.0, "card")
+        self.assertIsNone(case["refund"])
+        again = await agent.ask_manager(context, 649.0, "card", "defective", "Stopped heating")
+        self.assertTrue(again.startswith("Still waiting for the manager"), again)
+        await agent.llm.aclose()
+
+    async def test_a_policy_fallback_is_never_called_a_manager_approval(self):
+        agent, _ = build()
+        case = agent.initial_state()
+        case["found"] = True
+        case["request"] = {"id": "REQ-0001", "amount": 649.0, "to": "card"}
+        case["hold"] = {"since": 0.0, "check_ins": 0}
+        session = SimpleNamespace(
+            userdata=case, agent_state="listening", generate_reply=MagicMock()
+        )
+        system = []
+        chat_ctx = SimpleNamespace(
+            copy=lambda: SimpleNamespace(add_message=lambda **m: system.append(m["content"]))
+        )
+        with (
+            patch.object(type(agent), "session", new=PropertyMock(return_value=session)),
+            patch.object(type(agent), "chat_ctx", new=PropertyMock(return_value=chat_ctx)),
+            patch.object(agent, "update_chat_ctx", new=AsyncMock()),
+        ):
+            await agent._decide("policy", "approve", "Defect inside 90 days.")
+        self.assertIn("store's written policy decided: APPROVED $649.00 to card", system[0])
+        self.assertNotIn("Manager decision", system[0])
+        said = session.generate_reply.call_args.kwargs["instructions"]
+        self.assertIn("the store's written policy approved it", said)
+        self.assertEqual(case["approved"], {"amount": 649.0, "to": "card"})
+        issued = await agent.issue_refund(SimpleNamespace(userdata=case), 649.0, "card")
+        self.assertTrue(issued.startswith("Refund RF-"), issued)
         await agent.llm.aclose()
 
 

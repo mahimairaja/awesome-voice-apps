@@ -120,6 +120,21 @@ RULES: list[dict] = [
     },
 ]
 RULE_BY_ID = {r["id"]: r for r in RULES}
+
+# The parts of a multi-part answer, each with the one question that asks it. A
+# part the patient has not answered arrives as None and is asked, never assumed.
+PARTS: dict[str, dict[str, str]] = {
+    "temperature": {"chills_or_sweats": "Have you had any chills or sweats?"},
+    "wound": {
+        "redness_spreading": "Is any redness spreading out from the incision?",
+        "drainage": "Is anything draining from the incision, and what does it look like?",
+        "edges_opening": "Are the edges of the incision opening at all?",
+    },
+    "pain": {
+        "score": "On a scale of zero to ten, how is your pain?",
+        "medication_helping": "Is the pain medication helping?",
+    },
+}
 TIER_RANK = {"routine": 0, "nurse": 1, "emergency": 2}
 
 EMERGENCY_SCRIPT = (
@@ -203,6 +218,17 @@ def _clip(words: str) -> str:
     return " ".join(words.split())[:120]
 
 
+def missing_part(step: str, value: dict) -> str | None:
+    """The first part of this answer the patient has not given, or None."""
+    for part in PARTS.get(step, {}):
+        # Chills only matter without a reading, so a reading never needs them.
+        if part == "chills_or_sweats" and value.get("reading") is not None:
+            continue
+        if value.get(part) is None:
+            return part
+    return None
+
+
 def _evaluate(step: str, value: dict) -> tuple[bool, str, list[str]]:
     """Validate one answer and return (ok, summary or error, rule ids that fired)."""
     if step == "breathing":
@@ -257,6 +283,12 @@ def record(state: dict, step: str, value: dict, words: str = "") -> str:
         if state["outcome"]["tier"] == "emergency":
             return f"The check-in stopped on an emergency. Say only: {EMERGENCY_SCRIPT}"
         return "The check-in is finished. Say goodbye, or call start_over if they ask."
+    part = missing_part(step, value)
+    if part:
+        return (
+            f"rejected: the patient has not answered {part.replace('_', ' ')}, so nothing "
+            f"was recorded. Ask only: {PARTS[step][part]}"
+        )
     ok, summary, rules = _evaluate(step, value)
     if not ok:
         return f"rejected: {summary}. Ask again: {STEP_BY_ID[step]['ask']}"

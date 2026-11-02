@@ -604,13 +604,28 @@ class BillingDesk(Agent):
 
     # Tools --------------------------------------------------------------
 
+    def authority_left(self) -> float:
+        return AUTHORITY - sum(line.credited for line in self.bill.values())
+
+    def over_limit(self, item: Line) -> str:
+        """No credit is applied past the limit; the specialist takes the rest."""
+        used = AUTHORITY - self.authority_left()
+        return (
+            f"Over your limit: ${used:.2f} of ${AUTHORITY:.0f} used, and the "
+            f"{item.label} credit needs ${item.credit_max:.2f}. Do not offer or promise "
+            "it. Offer the billing specialist, and call transfer_to_specialist when they agree."
+        )
+
     @function_tool()
     async def explain_charge(self, context: RunContext, line: LineId) -> str:
         """Show one bill line on the caller's screen and get the facts behind it."""
         item = self.bill[line]
         publish_ui_event(self.room, "Bill", "update", bill_props(self.bill, line))
+        facts = f"{item.label}, ${item.amount:.2f}. {item.facts}"
+        if item.credit_max and not item.credited and item.credit_max > self.authority_left():
+            return f"{facts} {self.over_limit(item)}"
         allowed = item.credit_max - item.credited
-        return f"{item.label}, ${item.amount:.2f}. {item.facts} Creditable now: ${allowed:.2f}."
+        return f"{facts} Creditable now: ${allowed:.2f}."
 
     @function_tool()
     async def apply_credit(self, context: RunContext, line: LineId) -> str:
@@ -622,17 +637,26 @@ class BillingDesk(Agent):
             return f"{item.label} is correct and cannot be credited."
         if item.credited:
             return f"{item.label} is already credited ${item.credited:.2f}."
-        used = sum(i.credited for i in self.bill.values())
-        if used + item.credit_max > AUTHORITY:
-            return (
-                f"Over your limit: ${used:.2f} of ${AUTHORITY:.0f} used, this needs "
-                f"${item.credit_max:.2f}. Offer the billing specialist."
-            )
+        if item.credit_max > self.authority_left():
+            return self.over_limit(item)
         item.credited = item.credit_max
         self.meter.relief()
         publish_ui_event(self.room, "Bill", "update", bill_props(self.bill, line))
         due = sum(i.amount - i.credited for i in self.bill.values())
-        return f"Credited ${item.credited:.2f} for {item.label}. New balance ${due:.2f}."
+        result = f"Credited ${item.credited:.2f} for {item.label}. New balance ${due:.2f}."
+        # Say up front which credits no longer fit, so none is offered by mistake.
+        beyond = [
+            i.label
+            for i in self.bill.values()
+            if i.credit_max and not i.credited and i.credit_max > self.authority_left()
+        ]
+        if beyond:
+            result += (
+                f" ${self.authority_left():.2f} of your limit is left, so do not offer a credit "
+                f"for {' or '.join(beyond)}; if they want it, offer the billing specialist and "
+                "call transfer_to_specialist."
+            )
+        return result
 
     @function_tool()
     async def transfer_to_specialist(self, context: RunContext) -> str:
