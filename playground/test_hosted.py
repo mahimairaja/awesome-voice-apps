@@ -1216,6 +1216,37 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(gate.current)
         self.assertEqual(len(published[-1]["overlaps"]), 1)
 
+    def test_stray_symbol_runs_are_dropped_as_they_stream(self):
+        stray = hosted.StraySymbols()
+        # The 03:32 Coffee eval: two replies ended with a run of "//".
+        chunks = ["I added a large", " latte. /", "/ // //", " // Anything", " else?"]
+        out = "".join(stray.feed(c) for c in chunks) + stray.flush()
+        self.assertEqual(out, "I added a large latte. Anything else?")
+        stray = hosted.StraySymbols()
+        out = "".join(stray.feed(c) for c in ["Open 24/7, ", "drive-thru # 3 ", "*"])
+        self.assertEqual(out + stray.flush(), "Open 24/7, drive-thru 3 ")
+
+    async def test_llm_node_strips_stray_symbols_from_strings_and_chunks(self):
+        from livekit.agents import Agent
+        from livekit.agents.llm import ChatChunk, ChoiceDelta
+
+        agent = object.__new__(hosted.HostedCoffee)
+        agent.approval = {"seconds": 120}
+        agent._llm_requests = 0
+        agent._finish = AsyncMock()
+
+        async def fake_llm(_agent, _ctx, _tools, _settings):
+            yield ChatChunk(id="1", delta=ChoiceDelta(role="assistant", content="Your order "))
+            yield "is in. // //"
+            yield ChatChunk(id="1", delta=ChoiceDelta(content=" // Pull up"))
+            yield " to the window."
+
+        context = SimpleNamespace(to_dict=dict)
+        with patch.object(Agent, "llm_node", fake_llm):
+            chunks = [c async for c in agent.llm_node(context, [], None)]
+        text = "".join(c if isinstance(c, str) else c.delta.content for c in chunks)
+        self.assertEqual(text, "Your order is in. Pull up to the window.")
+
     def test_reply_latency_is_logged_per_turn(self):
         user = SimpleNamespace(
             role="user", metrics={"end_of_turn_delay": 0.4123, "transcription_delay": 0.2}
