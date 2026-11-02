@@ -292,11 +292,13 @@ def test_connector_keeps_the_callers_transcript_apart():
         connector._on_transcript_stream(_Reader("TR_agent", "One latte coming up."), "agent")
         connector._on_transcript_stream(_Reader("TR_caller", "A latte please."), "agent")
         connector._on_transcript_stream(_Reader("TR_caller", "A lat", final=False), "agent")
+        connector._on_transcript_stream(_Reader("TR_agent", "Anything", final=False), "agent")
         await asyncio.sleep(0.01)
 
     asyncio.run(run())
     assert connector._current_transcript == "One latte coming up."
     assert connector.heard == ["A latte please."]
+    assert connector.said == ["One latte coming up."]  # the agent's own words, final only
 
 
 def test_wait_until_quiet_waits_for_the_agent_and_keeps_its_audio():
@@ -469,6 +471,54 @@ def test_silent_turns_are_named_and_left_out():
     assert "No audio in turn(s) 4" in reason
 
 
+def test_whispers_guess_at_a_silent_clip_is_left_out():
+    """A silent "You" is not the agent; LiveKit's own words and voiced audio stay."""
+    from deepeval.test_case import ConversationalTestCase, Turn
+    from metrics import drop_phantoms, phantom
+    from report import call_record
+
+    silent = _clip(3.0, level=0.0)
+    turns = [
+        Turn(role="assistant", content="you", audio=_clip(15.0, level=0.0)),  # agent silent
+        Turn(role="user", content="Hi.", audio=_clip(1.0)),
+        Turn(role="assistant", content="One latte.", audio=_clip(1.0)),
+        Turn(role="assistant", content="you you", audio=silent),  # the scribe stayed quiet
+        Turn(role="assistant", content="Is that right?", audio=silent),  # text, audio lost
+        Turn(role="assistant", content="You", audio=_clip(0.5)),  # voiced: really spoken
+        Turn(role="user", content="Yes.", audio=_clip(1.0)),
+        Turn(
+            role="assistant",
+            content="You",
+            audio=silent,
+            metadata={"intended_content": "Thanks, Sam."},  # cut off at hang-up
+        ),
+        Turn(role="assistant", content="", audio=None),
+    ]
+    assert phantom(turns[0]) and not phantom(turns[1]) and not phantom(turns[5])
+    kept, dropped = drop_phantoms(list(turns))
+    assert dropped == [0, 3, 8]
+    assert [t.content for t in kept] == [
+        "Hi.",
+        "One latte.",
+        "Is that right?",
+        "You",
+        "Yes.",
+        "Thanks, Sam.",
+    ]
+
+    # With the agent's LiveKit transcripts known, a silent turn must be one of them.
+    said = {"One latte.", "Thank you."}
+    assert phantom(Turn(role="assistant", content="Is that right?", audio=silent), said)
+    assert not phantom(Turn(role="assistant", content="Thank you.", audio=silent), said)
+
+    golden = ConversationalGolden(
+        name="g", scenario="s", additional_metadata={"demo": "coffee", "script": ["Hi."]}
+    )
+    case = ConversationalTestCase(turns=kept)
+    record = call_record(call_id="c", run={"id": "r"}, golden=golden, case=case, metrics=[])
+    assert [t["text"] for t in record["turns"]][:3] == ["Hi.", "One latte.", "Is that right?"]
+
+
 def test_wait_until_quiet_waits_for_the_last_reply_to_start():
     import asyncio
     import time
@@ -554,8 +604,9 @@ def test_saved_turns_load_back_with_their_start_times(tmp_path):
         Turn(role="user", content="Hi.", audio=_clip(0.8, start=4.0)),
         Turn(role="assistant", content="", audio=None),
     ]
-    save_turns(ConversationalTestCase(turns=turns), golden, tmp_path)
+    save_turns(ConversationalTestCase(turns=turns), golden, tmp_path, ["Welcome."])
     name, case = load_case(tmp_path)
+    assert json.loads((tmp_path / "turns.json").read_text())["agent_said"] == ["Welcome."]
     assert name == "g"
     assert [t.content for t in case.turns] == [t.content for t in turns]
     assert [t.audio and t.audio.start_time for t in case.turns] == [0.5, 1.6, 4.0, None]

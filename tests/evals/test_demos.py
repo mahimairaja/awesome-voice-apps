@@ -22,7 +22,7 @@ from caller import UiState, caller_graph, patient_simulator, script, stop_after_
 from deepeval import assert_test
 from deepeval.dataset import EvaluationDataset
 from deepeval.voice import VoiceConfig
-from metrics import gating_metrics, voice_metrics, word_metrics
+from metrics import drop_phantoms, gating_metrics, voice_metrics, word_metrics
 from playground_api import EvalBusy, Site
 from report import call_record
 from rescore import save_turns
@@ -97,12 +97,18 @@ def simulate(golden, call, speech):
         max_concurrent=1,
     )
     [case] = simulator.simulate([golden], max_user_simulations=len(script(golden)) + 1)
+    said = connectors[-1].said if connectors else None
     if AUDIO_DIR:
         # Every turn's clip and start time, so rescore.py can score it again.
-        save_turns(case, golden, Path(AUDIO_DIR) / simulator._voice.run_label)
+        save_turns(case, golden, Path(AUDIO_DIR) / simulator._voice.run_label, said)
     heard = connectors[-1].heard if connectors else []
     if connectors:
         describe(golden.name, case, connectors[-1])
+    # Whisper's "you" on a silent clip is not the agent: keep it out of the
+    # transcript, the metrics and the judge.
+    case.turns, dropped = drop_phantoms(case.turns, None if said is None else set(said))
+    if dropped:
+        log.warning("%s: left out silent turn(s) %s", golden.name, dropped)
     return case, heard
 
 
