@@ -507,6 +507,28 @@ def test_the_caller_holds_on_for_the_reply_to_its_last_line(monkeypatch):
     assert last.content == "Goodbye." and turns[-1] is last
 
 
+def test_saved_turns_load_back_with_their_start_times(tmp_path):
+    from deepeval.test_case import ConversationalTestCase, Turn
+    from rescore import load_case, save_turns
+
+    golden = ConversationalGolden(
+        name="g", scenario="s", additional_metadata={"demo": "coffee", "script": ["Hi."]}
+    )
+    turns = [
+        Turn(role="assistant", content="Welcome.", audio=_clip(1.0, start=0.5), latency_ms=500.0),
+        Turn(role="assistant", content="What can I get you?", audio=_clip(1.2, start=1.6)),
+        Turn(role="user", content="Hi.", audio=_clip(0.8, start=4.0)),
+        Turn(role="assistant", content="", audio=None),
+    ]
+    save_turns(ConversationalTestCase(turns=turns), golden, tmp_path)
+    name, case = load_case(tmp_path)
+    assert name == "g"
+    assert [t.content for t in case.turns] == [t.content for t in turns]
+    assert [t.audio and t.audio.start_time for t in case.turns] == [0.5, 1.6, 4.0, None]
+    assert case.turns[1].audio.get_bytes() == turns[1].audio.get_bytes()
+    assert case.turns[0].latency_ms == 500.0
+
+
 def test_overlapping_replies_are_left_out_of_latency():
     from report import turns
 

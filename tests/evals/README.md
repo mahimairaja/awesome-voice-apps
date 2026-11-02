@@ -60,6 +60,9 @@ export DEEPEVAL_TELEMETRY_OPT_OUT=YES
 PLAYGROUND_EVAL_SECRET=... EVAL_DEMOS=coffee EVAL_AUDIO_DIR=recordings \
   uv run deepeval test run test_demos.py
 
+# Score the saved calls again offline (each folder's turns.json and WAVs).
+uv run python rescore.py recordings
+
 # Judge the recorded calls (Claude API key, about one cent a call).
 ANTHROPIC_API_KEY=... PLAYGROUND_EVAL_SECRET=... uv run python judge_claude.py
 ```

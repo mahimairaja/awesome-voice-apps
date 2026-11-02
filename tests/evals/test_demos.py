@@ -25,6 +25,7 @@ from deepeval.voice import VoiceConfig
 from metrics import gating_metrics, voice_metrics, word_metrics
 from playground_api import EvalBusy, Site
 from report import call_record
+from rescore import save_turns
 from speech import KokoroTTS, NoLLM, WhisperSTT, wav_samples
 
 log = logging.getLogger("evals")
@@ -96,6 +97,9 @@ def simulate(golden, call, speech):
         max_concurrent=1,
     )
     [case] = simulator.simulate([golden], max_user_simulations=len(script(golden)) + 1)
+    if AUDIO_DIR:
+        # Every turn's clip and start time, so rescore.py can score it again.
+        save_turns(case, golden, Path(AUDIO_DIR) / simulator._voice.run_label)
     heard = connectors[-1].heard if connectors else []
     if connectors:
         describe(golden.name, case, connectors[-1])
