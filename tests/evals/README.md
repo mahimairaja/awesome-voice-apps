@@ -69,7 +69,9 @@ ANTHROPIC_API_KEY=... PLAYGROUND_EVAL_SECRET=... uv run python judge_claude.py
 ```
 
 `EVAL_DEMOS` picks demo ids; leave it empty to run every golden. `EVAL_SITE`
-points at another deployment, such as a preview.
+points at another deployment, such as a preview. `EVAL_RECORDS=calls.json` keeps the scored
+calls in that file instead of posting them, so a trial run never reaches the public
+page; judge it with `judge_claude.py --dry-run calls.json`.
 
 The `Demo evals` workflow runs on the 1st and 15th of each month, after a push
 that redeploys the worker, and by hand. It needs the `PLAYGROUND_EVAL_SECRET`

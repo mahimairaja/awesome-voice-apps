@@ -142,6 +142,25 @@ def test_site_reserves_ends_and_records():
     ]
 
 
+def test_site_keeps_records_local_with_eval_records(tmp_path, monkeypatch):
+    """EVAL_RECORDS keeps scored calls in a file; nothing is posted to the site."""
+    seen = []
+
+    def handler(request: httpx.Request):
+        seen.append(request.url.path)
+        return httpx.Response(200, json={"ok": True})
+
+    out = tmp_path / "calls.json"
+    monkeypatch.setenv("EVAL_RECORDS", str(out))
+    site = site_with(handler)
+    site.record({"id": "c1", "turns": [{"role": "user", "text": "hi"}]})
+    site.record({"id": "c2"})
+    assert seen == []
+    calls = json.loads(out.read_text())["calls"]
+    assert [c["id"] for c in calls] == ["c1", "c2"]
+    assert calls[0]["transcript"] == [{"role": "user", "text": "hi"}]
+
+
 def test_site_gives_up_when_busy():
     calls = []
 

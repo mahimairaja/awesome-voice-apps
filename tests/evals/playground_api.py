@@ -12,6 +12,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 import httpx
 
@@ -84,4 +85,17 @@ class Site:
         self._send("DELETE", "/api/playground/eval-session", {"id": call_id})
 
     def record(self, record: dict) -> dict:
-        return self._send("POST", "/api/playground/evals", {"action": "record", **record})
+        """Post a scored call, or with EVAL_RECORDS keep it in that file instead.
+
+        A kept call never reaches the public evals page; the judge reads the file with
+        ``judge_claude.py --dry-run``. The worker still stores the call's tool calls
+        under its session id, so they can be joined in later.
+        """
+        out = os.environ.get("EVAL_RECORDS")
+        if not out:
+            return self._send("POST", "/api/playground/evals", {"action": "record", **record})
+        path = Path(out)
+        calls = json.loads(path.read_text())["calls"] if path.exists() else []
+        calls.append({**record, "transcript": record.get("turns", []), "tools": []})
+        path.write_text(json.dumps({"calls": calls}, indent=1, default=str))
+        return {"ok": True}
