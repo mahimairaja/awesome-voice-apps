@@ -29,7 +29,7 @@ from caller import (
 from deepeval import assert_test
 from deepeval.dataset import EvaluationDataset
 from deepeval.voice import VoiceConfig
-from metrics import drop_phantoms, gating_metrics, voice_metrics, word_metrics
+from metrics import clean_call, gating_metrics, voice_metrics, word_metrics
 from playground_api import EvalBusy, Site
 from report import call_record
 from rescore import save_turns
@@ -119,9 +119,10 @@ def simulate(golden, call, speech):
     heard = connectors[-1].heard if connectors else []
     if connectors:
         describe(golden.name, case, connectors[-1])
-    # Whisper's "you" on a silent clip is not the agent: keep it out of the
-    # transcript, the metrics and the judge.
-    case.turns, dropped = drop_phantoms(case.turns, None if said is None else set(said))
+    # Whisper's "you" on a silent clip is not the agent, the silence DeepEval
+    # buffers before a reply is not part of it, and the judge reads the
+    # agent's own words: see metrics.clean_call.
+    case.turns, dropped = clean_call(case.turns, said)
     if dropped:
         log.warning("%s: left out silent turn(s) %s", golden.name, dropped)
     return case, heard

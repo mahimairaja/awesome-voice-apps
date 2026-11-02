@@ -117,7 +117,9 @@ def pause_latency_ms(caller, reply) -> float | None:
 def turns(case: ConversationalTestCase | None) -> list[dict]:
     out, caller = [], None
     for turn in (case.turns if case else [])[:80]:
-        item = {"role": turn.role, "text": (turn.content or "")[:2000]}
+        # The agent's own words where whisper misread a clip (metrics.clean_call).
+        text = (getattr(turn, "metadata", None) or {}).get("agent_words") or turn.content or ""
+        item = {"role": turn.role, "text": text[:2000]}
         if turn.audio is not None and turn.audio.start_time is not None:
             item["start_s"] = round(turn.audio.start_time, 3)
         # DeepEval floors a reply that began before the caller finished at 0.

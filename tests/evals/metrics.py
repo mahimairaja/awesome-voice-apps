@@ -23,6 +23,9 @@ not) is not the agent's voice, so the audio metrics leave it out and name it
 in their reason instead of scoring it as a very quiet turn (see AudibleTurns).
 A silent clip whose only words are whisper's guess ("you") is no turn at all:
 ``drop_phantoms`` takes it out of the call before anything is scored.
+``clean_call`` also cuts each agent clip to its speech and gives each agent
+turn the agent's own published words, so the judge never reads whisper's
+guess at a clip cut short.
 
 Goal, relevance, tool use and policy are judged from the transcript by Claude
 (see judge_claude.py and JUDGE.md).
@@ -31,6 +34,7 @@ Goal, relevance, tool use and policy are judged from the transcript by Claude
 from __future__ import annotations
 
 import copy
+import difflib
 import math
 import re
 
@@ -123,6 +127,134 @@ def drop_phantoms(turns, agent_said: set[str] | None = None) -> tuple[list, list
             kept.append(turn)
         else:
             dropped.append(index)
+    return kept, dropped
+
+
+def trimmed(audio: Audio) -> Audio:
+    """The clip without the silence before and after its speech, still dated by it.
+
+    DeepEval dates an agent clip by its first voiced frame but keeps the
+    downlink silence it buffered before it, from the moment the caller began
+    speaking. On 2026-11-02 that was 5 to 13 s, so a clip's speech sat at its
+    end, its end time ran seconds past the reply, and whisper wrote "you",
+    "// //" or dots over the silence. Cut at DeepEval's own 20 ms frame and
+    silence floor, so the first kept frame is the one the clip is dated by.
+    A clip with no voiced frame is returned as it is.
+    """
+    pcm, rate, channels = audio_utils.wav_bytes_to_pcm16(audio.get_bytes())
+    pcm = audio_utils.downmix_to_mono(pcm, channels or 1)
+    step = 2 * int(rate * audio_utils.DEFAULT_FRAME_MS / 1000)
+    voiced = [
+        offset
+        for offset in range(0, len(pcm), step)
+        if not audio_utils.is_silent(pcm[offset : offset + step])
+    ]
+    if not voiced:
+        return audio
+    kept = pcm[voiced[0] : voiced[-1] + step]
+    return Audio.from_bytes(
+        audio_utils.pcm16_to_wav_bytes(kept, rate, 1), "audio/wav", start_time=audio.start_time
+    )
+
+
+def trim_agent_audio(turns) -> None:
+    """Cut every assistant clip down to its speech (see ``trimmed``), in place."""
+    for turn in turns:
+        if turn.role == "assistant" and turn.audio is not None:
+            turn.audio = trimmed(turn.audio)
+
+
+def own_words(turns, said: list[str] | None) -> list[str]:
+    """Each turn's text, with the agent's turns in its own published words.
+
+    The harness cuts the agent's audio on silence, so one LiveKit transcript
+    can span two turns, and a turn cut short gets whisper's reading of the
+    clip instead ("point a- // //" for "point it at the router's lights").
+    The final transcripts in ``said`` are what the agent meant, in order, so
+    their words are matched to the turns' words. An unmatched run goes to the
+    turns with no match between its neighbours (whisper's "you" for "I'll
+    record that as moderate."), else to the side its transcript started on.
+    A turn takes its transcript words only when whisper heard nothing real in
+    it or the transcripts cover half its words; otherwise, and without
+    ``said``, it keeps its text.
+    """
+    texts = [turn.content or "" for turn in turns]
+    agent = [i for i, turn in enumerate(turns) if turn.role == "assistant"]
+    if not said or not agent:
+        return texts
+    heard = [(normalize(word), i) for i in agent for word in texts[i].split()]
+    spoken = [(word, item) for item, line in enumerate(said) for word in line.split()]
+    owner: list[int | None] = [None] * len(spoken)
+    matcher = difflib.SequenceMatcher(
+        None, [w for w, _ in heard], [normalize(w) for w, _ in spoken], autojunk=False
+    )
+    hits: dict[int, int] = {}
+    for block in matcher.get_matching_blocks():
+        for k in range(block.size):
+            owner[block.b + k] = heard[block.a + k][1]
+            hits[heard[block.a + k][1]] = hits.get(heard[block.a + k][1], 0) + 1
+    matched = {i for i in owner if i is not None}
+    k = 0
+    while k < len(spoken):
+        if owner[k] is not None:
+            k += 1
+            continue
+        end = k
+        while end < len(spoken) and owner[end] is None:
+            end += 1
+        before = next((owner[j] for j in range(k - 1, -1, -1) if owner[j] is not None), None)
+        after = owner[end] if end < len(spoken) else None
+        low = -1 if before is None else before
+        high = len(turns) if after is None else after
+        empty = [i for i in agent if low < i < high and i not in matched]
+        items = sorted({spoken[j][1] for j in range(k, end)})
+        for j in range(k, end):
+            if empty:
+                # Whisper heard none of this turn: one transcript per empty turn.
+                owner[j] = empty[min(items.index(spoken[j][1]), len(empty) - 1)]
+            elif after is None or (before is not None and spoken[k - 1][1] == spoken[j][1]):
+                owner[j] = before
+            else:
+                owner[j] = after
+        k = end
+    words: dict[int, list[str]] = {}
+    for (word, _), i in zip(spoken, owner):
+        if i is not None:
+            words.setdefault(i, []).append(word)
+    for i, kept in words.items():
+        mine = " ".join(kept)
+        heard_words, mine_words = normalize(texts[i]).split(), normalize(mine).split()
+        # At hang-up the clip can run past the agent's last final transcript:
+        # whisper's extra words are kept then, but never its symbols.
+        longer = len(heard_words) > len(mine_words) and heard_words[: len(mine_words)] == mine_words
+        # LiveKit's transcripts can miss speech the audio holds (a confirmation
+        # number, a whole first sentence), so a turn whisper heard clearly keeps
+        # its words unless the transcripts cover at least half of them.
+        junk = " ".join(heard_words) in SILENCE_WORDS
+        covered = hits.get(i, 0) >= sum(1 for w in texts[i].split() if normalize(w)) / 2
+        if mine_words and not longer and (junk or covered):
+            texts[i] = mine
+    return texts
+
+
+AGENT_WORDS = "agent_words"
+
+
+def clean_call(turns, said: list[str] | None) -> tuple[list, list[int]]:
+    """The turns the call is scored and judged on, and the silent ones left out.
+
+    Whisper's guesses at silence go (``drop_phantoms``) and each agent clip is
+    cut to its speech (``trim_agent_audio``). Each agent turn whose words differ
+    gets the agent's own (``own_words``) in ``metadata["agent_words"]``, which
+    the record and so the judge read (see report.turns). ``content`` is left as
+    DeepEval wrote it, so Agent Intelligibility and Transcription Accuracy still
+    measure what was heard.
+    """
+    kept, dropped = drop_phantoms(turns, None if said is None else set(said))
+    trim_agent_audio(kept)
+    for turn, text in zip(kept, own_words(kept, said)):
+        if turn.role == "assistant" and text != (turn.content or ""):
+            turn.metadata = {**(turn.metadata or {}), AGENT_WORDS: text}
     return kept, dropped
 
 

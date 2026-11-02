@@ -15,9 +15,10 @@ overwritten, so it is cut from ``deepeval-conversation.wav`` from its start,
 after taking out every clip that is known exactly; its trailing silence is
 approximate.
 
-Silent turns whose words are whisper's guess ("you") are left out before
-scoring, as in a live run (see metrics.drop_phantoms). For a turns.json call,
-"before" is the call scored as recorded, with them in.
+Before scoring, the call is cleaned as in a live run (see metrics.clean_call):
+silent turns whose words are whisper's guess ("you") are left out, each agent
+clip is cut to its speech and each agent turn reads the agent's own words. For
+a turns.json call, "before" is the call scored as recorded.
 
 Agent Intelligibility needs faster-whisper. It runs only when the model is
 already cached; nothing is downloaded.
@@ -233,7 +234,7 @@ def main(argv: list[str]) -> int:
         rows = sorted(
             (r for part in export for r in part["results"]), key=lambda r: r["created_at"]
         )
-    from metrics import drop_phantoms
+    from metrics import clean_call
 
     stt = cached_whisper()
     if stt is None:
@@ -263,7 +264,7 @@ def main(argv: list[str]) -> int:
                 continue
             case, level = legacy_case(folder, row)
             name, before, residual = row["golden"], stored(row), f"{level:.0f} dBFS"
-        case.turns, dropped = drop_phantoms(case.turns, None if said is None else set(said))
+        case.turns, dropped = clean_call(case.turns, said)
         after = score(case, stt)
         silent = sorted({i for _, skipped in after.values() for i in skipped})
         cells = " | ".join(
