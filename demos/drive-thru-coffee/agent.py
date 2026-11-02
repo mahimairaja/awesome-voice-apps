@@ -16,6 +16,7 @@ Recording: coming after the demo is recorded.
 import asyncio
 import json
 import logging
+import re
 from typing import Literal
 
 from dotenv import load_dotenv
@@ -101,6 +102,26 @@ def _fmt(cents: int) -> str:
 
 def _menu_prompt() -> str:
     return ", ".join(f"{key}: {item['label']} {_fmt(item['price'])}" for key, item in MENU.items())
+
+
+# Replies that end an order, not names: "No, that's everything." once became a cup name.
+NOT_NAMES = {
+    "no",
+    "nope",
+    "yes",
+    "yeah",
+    "that's",
+    "thats",
+    "everything",
+    "all",
+    "thanks",
+    "nothing",
+}
+
+
+def _looks_like_name(text: str) -> bool:
+    words = re.findall(r"[a-z']+", text.lower())
+    return 0 < len(words) <= 3 and not NOT_NAMES.intersection(words)
 
 
 def _subtotal(cart: list[dict]) -> int:
@@ -190,16 +211,20 @@ class DriveThruAttendant(Agent):
     def __init__(self, room: rtc.Room) -> None:
         super().__init__(
             instructions=(
-                "You are a friendly drive-thru coffee attendant. Take orders, "
-                "confirm modifications, and suggest one add-on sparingly. Keep "
+                "You are a friendly drive-thru coffee attendant. Take orders and "
+                "confirm modifications. You may suggest one add-on at most once "
+                "per order, and never after the customer says they are done. Keep "
                 "replies short, plain text, no markdown or emojis. "
                 "The full menu is on the screen the whole time. When the customer "
                 "asks about it, point them to the screen and describe it in a "
                 "sentence or two the way a person would (the kinds of drinks, a "
                 "couple of pastries); never read it out item by item like a list. "
-                f"Use add_item with these keys: {_menu_prompt()}. After "
-                "submit_order, read back the order and total, ask for a name, "
-                "and end."
+                f"Use add_item with these keys: {_menu_prompt()}. To change "
+                "an item, remove_item it and add_item the new one. When the "
+                "customer is done, ask for a name for the order. Call "
+                "submit_order only with the name they give; if their reply is "
+                "not a name, ask again. After submit_order, read back the order "
+                "and total in one sentence and end."
             ),
         )
         self.room = room
@@ -253,8 +278,11 @@ class DriveThruAttendant(Agent):
         if not cart:
             return "There is nothing in the order yet. What can I get you?"
 
+        name = customer_name.strip()
+        if not _looks_like_name(name):
+            return "That does not sound like a name. Ask the customer for a name for the order."
+
         total = _subtotal(cart)
-        name = customer_name.strip() or "friend"
         publish_ui_event(
             self.room,
             "Checkout",

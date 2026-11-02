@@ -25,3 +25,12 @@ async def test_takes_and_submits_an_order(fake_room, judge_llm):
         assert evaluation.all_passed, {
             name: j.reasoning for name, j in evaluation.judgments.items()
         }
+
+
+def test_only_names_become_cup_names():
+    from agent import _looks_like_name
+
+    for name in ("Sam", "Priya.", "It's Sam.", "Mary Ann", "Jean-Luc"):
+        assert _looks_like_name(name), name
+    for reply in ("No, that's everything.", "That's all, thanks.", "Yes", ""):
+        assert not _looks_like_name(reply), reply
