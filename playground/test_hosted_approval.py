@@ -41,7 +41,7 @@ class ApprovalDemo(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             room.local_participant.register_rpc_method.call_args.args[0], "approval.decide"
         )
-        self.assertEqual(agent.tts.model, "sonic-3")
+        self.assertEqual(agent.tts.model, "cartesia/sonic-3")
         await agent.llm.aclose()
 
     async def test_the_manager_shares_the_call_caps(self):
@@ -55,7 +55,7 @@ class ApprovalDemo(unittest.IsolatedAsyncioTestCase):
             manager = agent.make_manager(case)
         self.assertIsInstance(manager, hosted_approval.HostedManager)
         self.assertIs(manager.llm, agent.llm)
-        self.assertEqual(manager.tts.model, "sonic-3")
+        self.assertEqual(manager.tts.model, "cartesia/sonic-3")
         self.assertNotEqual(manager.tts._opts.voice, agent.tts._opts.voice)
 
         agent._finish = AsyncMock()

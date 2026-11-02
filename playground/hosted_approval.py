@@ -9,7 +9,7 @@ agent, so a transfer can never reset a cap.
 import importlib.util
 from pathlib import Path
 
-from livekit.plugins import cartesia
+from livekit.agents import inference
 
 _demo = Path(__file__).resolve().parents[1] / "demos" / "manager-approval"
 _spec = importlib.util.spec_from_file_location("playground_approval_agent", _demo / "agent.py")
@@ -32,10 +32,10 @@ def publish_approval(room, case: dict) -> None:
     _module.publish_case(room, case)
 
 
-def voice(role: str) -> cartesia.TTS:
-    """A fresh per-call client; sonic-3, since sonic-2 is being retired."""
-    return cartesia.TTS(
-        model="sonic-3",
+def voice(role: str) -> inference.TTS:
+    """A fresh per-call client on LiveKit Inference; sonic-3, since sonic-2 is retiring."""
+    return inference.TTS(
+        model="cartesia/sonic-3",
         voice=_module.MANAGER_VOICE if role == "manager" else _module.AGENT_VOICE,
     )
 

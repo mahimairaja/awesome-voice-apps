@@ -18,10 +18,16 @@ state.
 Server secrets required:
 
 - LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET
-- DEEPGRAM_API_KEY, OPENAI_API_KEY, CARTESIA_API_KEY
+- OPENAI_API_KEY: only for the demos that call OpenAI beyond speech and chat
+  (embeddings, reading images, realtime voice, a demo's own counted client).
+  Every STT, LLM and TTS model runs on LiveKit Inference (inference_swap.py), so
+  the worker needs no Deepgram or Cartesia key. GOOGLE_API_KEY (optional) runs the
+  interpreter's Google realtime model.
 - PLAYGROUND_ORIGIN: approved site or preview HTTPS origin
 - PLAYGROUND_WORKER_SECRET: same random secret configured on the site
-- VOICEGW_COLLECTOR_URL, VOICEGW_API_KEY: private authenticated collector
+- VOICEGW_COLLECTOR_URL, VOICEGW_API_KEY (optional): a VoiceGateway collector that
+  mirrors each call's usage. Costs are priced in the worker and reported to the
+  site either way.
 - SPATIUS_APP_ID, SPATIUS_API_KEY, SPATIUS_AVATAR_ID: the concierge demo's
   avatar. The site needs the same SPATIUS_APP_ID and SPATIUS_AVATAR_ID (never
   the API key) so the browser can draw the face. Optional SPATIUS_USD_PER_MINUTE
@@ -35,7 +41,7 @@ reviewed against the $10 monthly allocation.
 ## Admission and cleanup
 
 The site reserves daily seconds, global capacity and monthly budget atomically.
-Only its room-scoped token dispatches `mahimai-playground-coffee`, with agent
+Only its room-scoped token dispatches `playground`, with agent
 metadata `coffee`. The worker claims the reservation once before accepting a job.
 A rejected, duplicated or expired claim cannot start provider inference.
 
@@ -49,6 +55,24 @@ VoiceGateway tracks providers with transcript and state snapshot capture disable
 This telemetry is separate from the site's conservative admission ledger. Provider
 billing, network costs and hosting charges still require reconciliation. A budget
 alert is not a guaranteed invoice cap.
+
+## Versioned demo configs
+
+The site can publish a demo's config as an immutable version (mahimai.ca D1,
+`playground_demo_version`) and signs the live version number into the dispatch as
+`version`. The worker fetches that exact version once, while it admits the call
+(worker action `config`), and checks it again in `demo_config.py`. A dispatch
+without a version runs the demo as before; an invalid version, or a version the
+site cannot return, rejects the call before any inference.
+
+A config adjusts a demo that already runs here; its tools stay in the demo's code,
+so `toolset` or `module` may only name that demo. It can replace the prompt and the
+greeting, and name LiveKit Inference models (`deepgram/nova-3`,
+`openai/gpt-4.1-mini`, `cartesia/sonic-3:<voice>`) for the STT, LLM and TTS layers.
+Those are billed to the LiveKit project under the `livekit` provider, so they need
+no provider key. The config is applied after the demo builds itself, so it wins
+over the demo's own prompt and models; a model the visitor picked on the page
+still wins on its layer. Realtime demos take no config yet.
 
 ## Model switcher
 

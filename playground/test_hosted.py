@@ -308,6 +308,33 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(ValueError):
                 await sink.log_request(record("bad", "cartesia", float("nan")))
 
+    async def test_without_a_collector_costs_still_reach_the_site(self):
+        env = {k: v for k, v in hosted.os.environ.items() if not k.startswith("VOICEGW_")}
+        with patch.dict(hosted.os.environ, env, clear=True):
+            sink = hosted.PlaygroundSink(ID)
+        self.assertFalse(sink.mirror)
+        row = SimpleNamespace(
+            id="one",
+            provider="livekit",
+            cost_usd=0.000003,
+            model_id="openai/gpt-4.1-mini",
+            input_units=0,
+            output_units=0,
+            modality="llm",
+            project="mahimai-playground",
+        )
+        with (
+            patch.object(hosted.RemoteCollectorSink, "log_request", new_callable=AsyncMock) as up,
+            patch.object(hosted.RemoteCollectorSink, "_post", new_callable=AsyncMock) as post,
+            patch.object(hosted, "control", new_callable=AsyncMock) as control,
+        ):
+            await sink.log_request(row)
+            await sink.log_turns([object()])
+            await sink.close()
+        up.assert_not_awaited()
+        post.assert_not_awaited()
+        control.assert_any_await("usage", ID, service="livekit", microusd=3)
+
     async def test_speechmatics_is_priced_by_the_sink(self):
         # voice-prices has no direct linden-1 row; an unpriced row would stop the call.
         with patch.dict(
@@ -377,8 +404,6 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             for key in (
                 "PLAYGROUND_WORKER_SECRET",
                 "PLAYGROUND_ORIGIN",
-                "VOICEGW_COLLECTOR_URL",
-                "VOICEGW_API_KEY",
                 "DEEPGRAM_API_KEY",
                 "OPENAI_API_KEY",
                 "CARTESIA_API_KEY",
@@ -732,7 +757,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             ),
         ):
             agent = hosted.HostedRecall()
-        self.assertEqual(agent.tts._opts.model, "sonic-3")
+        self.assertEqual(agent.tts._opts.model, "cartesia/sonic-3")
         self.assertEqual(agent.store.reservation, ID)
         await agent.llm.aclose()
 
@@ -802,7 +827,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         ):
             agent = hosted.HostedClaim()
         self.assertIn("record each of them", agent.instructions)
-        self.assertTrue(type(agent.llm).__module__.startswith("livekit.plugins.openai"))
+        self.assertEqual(agent.llm.provider, "livekit")
         await agent.llm.aclose()
         self.assertEqual(hosted.HostedGuard.llm_budget, 12)
 
@@ -1016,7 +1041,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         ):
             agent = hosted.HostedPharmacy()
         self.assertIn("two-minute limit", agent.instructions)
-        self.assertIn("metformin", agent.stt._opts.keyterm)
+        self.assertIn("metformin", agent.stt._opts.extra_kwargs["keyterm"])
         await agent.llm.aclose()
 
     async def test_furnace_calls_start_empty_and_dispatch_once(self):
@@ -1575,7 +1600,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertIsNot(a.line, b.line)
         self.assertIsNot(a.stt, b.stt)
         # The outage STT formats numbers so readings compare with the card.
-        self.assertTrue(a.stt._opts.smart_format)
+        self.assertTrue(a.stt._opts.extra_kwargs["smart_format"])
         await a.llm.aclose()
         await b.llm.aclose()
 
@@ -1713,7 +1738,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             ),
         ):
             agent = hosted.HostedCancel()
-        self.assertEqual(agent.tts.model, "sonic-3")
+        self.assertEqual(agent.tts.model, "cartesia/sonic-3")
         self.assertIn("two-minute limit", agent.instructions)
         await agent.llm.aclose()
 
@@ -1771,8 +1796,8 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         ):
             agent = hosted.HostedPostop()
         self.assertIn("two-minute limit", agent.instructions)
-        self.assertEqual(agent.tts.model, "sonic-3")
-        self.assertTrue(agent.stt._opts.smart_format)
+        self.assertEqual(agent.tts.model, "cartesia/sonic-3")
+        self.assertTrue(agent.stt._opts.extra_kwargs["smart_format"])
         state = agent.initial_state()
         with patch.object(
             type(agent), "session", property(lambda self: SimpleNamespace(userdata=state))
@@ -1807,12 +1832,13 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         first, second = self.deescalate_agents()
         module = hosted_deescalate._module
         self.assertIsNot(first.tts, second.tts)
-        self.assertEqual(first.tts.model, "sonic-3")
+        self.assertEqual(first.tts.model, "cartesia/sonic-3")
         self.assertIsNot(first.bill, second.bill)
         self.assertIsNot(first.meter, second.meter)
         first._voice(module.VOICE_BY_BAND["heated"])
-        self.assertEqual((first.tts._opts.speed, first.tts._opts.emotion), (0.88, ["sympathetic"]))
-        self.assertEqual(second.tts._opts.speed, 0.95)
+        extra = first.tts._opts.extra_kwargs
+        self.assertEqual((extra["speed"], extra["emotion"]), (0.88, "sympathetic"))
+        self.assertEqual(second.tts._opts.extra_kwargs["speed"], 0.95)
         with patch.object(module, "publish_ui_event"):
             await first.apply_credit(SimpleNamespace(), "protection")
         self.assertEqual(second.bill["protection"].credited, 0)
@@ -1831,7 +1857,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             await first.on_user_turn_completed(turn, message)
             note = turn.items[-1].text_content
             self.assertIn("Take ownership", note)
-            self.assertEqual(first.tts._opts.speed, 0.88)
+            self.assertEqual(first.tts._opts.extra_kwargs["speed"], 0.88)
             self.assertFalse(first.handed_off)
             await first.on_user_turn_completed(
                 ChatContext.empty(),
@@ -1885,7 +1911,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             self.assertIsNot(first._models[tier], second._models[tier])
             self.assertEqual(first._models[tier].model, model)
             self.assertEqual(first._models[tier]._opts.max_completion_tokens, 180)
-        self.assertEqual(first.tts.model, "sonic-3")
+        self.assertEqual(first.tts.model, "cartesia/sonic-3")
         self.assertIsNot(first.ledger, second.ledger)
         self.assertIsNot(first.learned, second.learned)
         self.assertIsNot(first.state, second.state)
@@ -2059,7 +2085,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         ):
             agent = hosted.HostedPayer()
         self.assertIn("two-minute limit", agent.instructions)
-        self.assertEqual(agent.tts._opts.model, "sonic-3")
+        self.assertEqual(agent.tts._opts.model, "cartesia/sonic-3")
         with patch.object(hosted, "spawn") as spawn:
             agent._llm_requests = 35
             self.assertTrue(agent.allow_side_call())
@@ -2090,7 +2116,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
     async def test_resume_checkpoints_go_to_the_site_by_reservation(self):
         self.assertNotIn("application", sys.modules)
         agent = self.resume_agent()
-        self.assertEqual(agent.tts._opts.model, "sonic-3")
+        self.assertEqual(agent.tts._opts.model, "cartesia/sonic-3")
         self.assertIn("about a minute", agent.instructions)
         self.assertEqual(hosted.HostedResume.llm_budget, 24)
         self.assertEqual(agent.store.reservation, ID)
@@ -2158,7 +2184,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
     async def test_onprem_keeps_its_counted_model_client(self):
         agent = self.onprem_agent()
         self.assertIs(agent.llm, agent.stack["llm"])
-        self.assertEqual(agent.tts.model, "sonic-3")
+        self.assertEqual(agent.tts.model, "cartesia/sonic-3")
         self.assertIn("two-minute limit", agent.instructions)
         await agent.aclose_clients()
 
@@ -2259,7 +2285,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             agent = hosted.HostedIvr()
         self.assertIn("two-minute limit", agent.instructions)
         self.assertIn("router note", agent.instructions)
-        self.assertEqual(agent.tts.model, "sonic-3")
+        self.assertEqual(agent.tts.model, "cartesia/sonic-3")
         self.assertEqual([tool.info.name for tool in agent.tools], ["transfer"])
         await agent.llm.aclose()
 
@@ -2284,7 +2310,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             ),
         ):
             agent = hosted.HostedCopilot()
-        self.assertEqual(agent.tts.model, "sonic-3")
+        self.assertEqual(agent.tts.model, "cartesia/sonic-3")
         self.assertIn("Kestrel Freight", agent.instructions)
         self.assertIn("role-play", agent.greeting)
         self.assertIsNone(agent.copilot)
@@ -2385,7 +2411,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertIs(desk.llm, guard.llm)
         self.assertIsNot(desk.tts, guard.tts)
         self.assertNotEqual(desk.tts._opts.voice, guard.tts._opts.voice)
-        self.assertEqual(guard.tts._opts.model, "sonic-3")
+        self.assertEqual(guard.tts._opts.model, "cartesia/sonic-3")
 
     async def test_fraud_handoffs_cannot_reset_the_call_caps(self):
         guard = object.__new__(hosted.HostedFraud)
@@ -2588,7 +2614,7 @@ class InterviewDemo(unittest.IsolatedAsyncioTestCase):
         ):
             agent = hosted.HostedStressTest()
             sim = agent.make_sim_llm()
-        self.assertEqual(agent.tts.model, "sonic-3")
+        self.assertEqual(agent.tts.model, "cartesia/sonic-3")
         self.assertEqual(sim.model, "gpt-4o-mini")
         self.assertIsNot(sim, agent.llm)
         self.assertEqual({tool.info.name for tool in agent.tools}, {"run_suite", "call_in"})

@@ -9,7 +9,7 @@ HostedGuard limits as the front desk, so a handoff can never reset a cap.
 import importlib.util
 from pathlib import Path
 
-from livekit.plugins import cartesia
+from livekit.agents import inference
 
 _demo = Path(__file__).resolve().parents[1] / "demos" / "card-fraud-line"
 _spec = importlib.util.spec_from_file_location("playground_fraud_agent", _demo / "agent.py")
@@ -37,10 +37,10 @@ def watch(session, room) -> None:
     _module.watch(session, room)
 
 
-def voice(role: str) -> cartesia.TTS:
-    """A fresh per-call client; sonic-3, since sonic-2 is being retired."""
-    return cartesia.TTS(
-        model="sonic-3",
+def voice(role: str) -> inference.TTS:
+    """A fresh per-call client on LiveKit Inference; sonic-3, since sonic-2 is retiring."""
+    return inference.TTS(
+        model="cartesia/sonic-3",
         voice=_module.SPECIALIST_VOICE if role == "specialist" else _module.FRONT_DESK_VOICE,
     )
 

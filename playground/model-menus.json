@@ -11,24 +11,8 @@
       "cartesia-ink-whisper",
       "deepgram-flux",
       "deepgram-nova-2",
-      "deepgram-nova-2-atc",
-      "deepgram-nova-2-automotive",
       "deepgram-nova-2-conversationalai",
-      "deepgram-nova-2-drivethru",
-      "deepgram-nova-2-finance",
-      "deepgram-nova-2-meeting",
-      "deepgram-nova-2-phonecall",
-      "deepgram-nova-2-video",
-      "deepgram-nova-2-voicemail",
-      "deepgram-enhanced",
-      "deepgram-base",
-      "openai-gpt-live-transcribe",
-      "openai-gpt-transcribe",
-      "openai-gpt-4o-transcribe",
-      "openai-gpt-4o-mini-transcribe",
-      "openai-gpt-realtime-whisper",
-      "openai-whisper-1",
-      "speechmatics-linden-1"
+      "deepgram-nova-2-phonecall"
     ],
     "llm": [
       "openai-gpt-4o-mini",
@@ -48,14 +32,7 @@
     "tts": [
       "cartesia-sonic-3",
       "cartesia-sonic-turbo",
-      "deepgram-aura-2",
-      "deepgram-aura",
-      "openai-tts-1",
-      "openai-tts-1-hd",
-      "speechmatics-sarah",
-      "speechmatics-theo",
-      "speechmatics-megan",
-      "speechmatics-jack"
+      "deepgram-aura-2"
     ]
   },
   "demos": {
@@ -67,23 +44,8 @@
         "cartesia-ink-whisper",
         "deepgram-flux",
         "deepgram-nova-2",
-        "deepgram-nova-2-atc",
-        "deepgram-nova-2-automotive",
         "deepgram-nova-2-conversationalai",
-        "deepgram-nova-2-drivethru",
-        "deepgram-nova-2-finance",
-        "deepgram-nova-2-meeting",
-        "deepgram-nova-2-phonecall",
-        "deepgram-nova-2-video",
-        "deepgram-nova-2-voicemail",
-        "deepgram-enhanced",
-        "deepgram-base",
-        "openai-gpt-live-transcribe",
-        "openai-gpt-transcribe",
-        "openai-gpt-4o-transcribe",
-        "openai-gpt-4o-mini-transcribe",
-        "openai-gpt-realtime-whisper",
-        "openai-whisper-1"
+        "deepgram-nova-2-phonecall"
       ],
       "llm": [
         "openai-gpt-4o-mini",
@@ -107,10 +69,7 @@
         "speechmatics-megan",
         "speechmatics-jack",
         "cartesia-sonic-turbo",
-        "deepgram-aura-2",
-        "deepgram-aura",
-        "openai-tts-1",
-        "openai-tts-1-hd"
+        "deepgram-aura-2"
       ]
     },
     "clinic-scheduler": {
@@ -121,23 +80,8 @@
         "cartesia-ink-whisper",
         "deepgram-flux",
         "deepgram-nova-2",
-        "deepgram-nova-2-atc",
-        "deepgram-nova-2-automotive",
         "deepgram-nova-2-conversationalai",
-        "deepgram-nova-2-drivethru",
-        "deepgram-nova-2-finance",
-        "deepgram-nova-2-meeting",
-        "deepgram-nova-2-phonecall",
-        "deepgram-nova-2-video",
-        "deepgram-nova-2-voicemail",
-        "deepgram-enhanced",
-        "deepgram-base",
-        "openai-gpt-live-transcribe",
-        "openai-gpt-transcribe",
-        "openai-gpt-4o-transcribe",
-        "openai-gpt-4o-mini-transcribe",
-        "openai-gpt-realtime-whisper",
-        "openai-whisper-1"
+        "deepgram-nova-2-phonecall"
       ],
       "llm": [
         "openai-gpt-4o-mini",
@@ -161,10 +105,7 @@
         "speechmatics-megan",
         "speechmatics-jack",
         "cartesia-sonic-turbo",
-        "deepgram-aura-2",
-        "deepgram-aura",
-        "openai-tts-1",
-        "openai-tts-1-hd"
+        "deepgram-aura-2"
       ]
     },
     "mortgage-renewal": {
@@ -175,23 +116,8 @@
         "cartesia-ink-whisper",
         "deepgram-flux",
         "deepgram-nova-2",
-        "deepgram-nova-2-atc",
-        "deepgram-nova-2-automotive",
         "deepgram-nova-2-conversationalai",
-        "deepgram-nova-2-drivethru",
-        "deepgram-nova-2-finance",
-        "deepgram-nova-2-meeting",
-        "deepgram-nova-2-phonecall",
-        "deepgram-nova-2-video",
-        "deepgram-nova-2-voicemail",
-        "deepgram-enhanced",
-        "deepgram-base",
-        "openai-gpt-live-transcribe",
-        "openai-gpt-transcribe",
-        "openai-gpt-4o-transcribe",
-        "openai-gpt-4o-mini-transcribe",
-        "openai-gpt-realtime-whisper",
-        "openai-whisper-1"
+        "deepgram-nova-2-phonecall"
       ],
       "llm": [
         "openai-gpt-4o-mini",
@@ -215,10 +141,7 @@
         "speechmatics-megan",
         "speechmatics-jack",
         "cartesia-sonic-turbo",
-        "deepgram-aura-2",
-        "deepgram-aura",
-        "openai-tts-1",
-        "openai-tts-1-hd"
+        "deepgram-aura-2"
       ]
     },
     "panel-scribe": {
@@ -229,23 +152,8 @@
         "cartesia-ink-whisper",
         "deepgram-flux",
         "deepgram-nova-2",
-        "deepgram-nova-2-atc",
-        "deepgram-nova-2-automotive",
         "deepgram-nova-2-conversationalai",
-        "deepgram-nova-2-drivethru",
-        "deepgram-nova-2-finance",
-        "deepgram-nova-2-meeting",
-        "deepgram-nova-2-phonecall",
-        "deepgram-nova-2-video",
-        "deepgram-nova-2-voicemail",
-        "deepgram-enhanced",
-        "deepgram-base",
-        "openai-gpt-live-transcribe",
-        "openai-gpt-transcribe",
-        "openai-gpt-4o-transcribe",
-        "openai-gpt-4o-mini-transcribe",
-        "openai-gpt-realtime-whisper",
-        "openai-whisper-1"
+        "deepgram-nova-2-phonecall"
       ],
       "llm": [
         "openai-gpt-4o-mini"
@@ -257,10 +165,7 @@
         "speechmatics-megan",
         "speechmatics-jack",
         "cartesia-sonic-turbo",
-        "deepgram-aura-2",
-        "deepgram-aura",
-        "openai-tts-1",
-        "openai-tts-1-hd"
+        "deepgram-aura-2"
       ]
     },
     "postop-checkin": {
@@ -271,24 +176,8 @@
         "cartesia-ink-whisper",
         "deepgram-flux",
         "deepgram-nova-2",
-        "deepgram-nova-2-atc",
-        "deepgram-nova-2-automotive",
         "deepgram-nova-2-conversationalai",
-        "deepgram-nova-2-drivethru",
-        "deepgram-nova-2-finance",
-        "deepgram-nova-2-meeting",
-        "deepgram-nova-2-phonecall",
-        "deepgram-nova-2-video",
-        "deepgram-nova-2-voicemail",
-        "deepgram-enhanced",
-        "deepgram-base",
-        "openai-gpt-live-transcribe",
-        "openai-gpt-transcribe",
-        "openai-gpt-4o-transcribe",
-        "openai-gpt-4o-mini-transcribe",
-        "openai-gpt-realtime-whisper",
-        "openai-whisper-1",
-        "speechmatics-linden-1"
+        "deepgram-nova-2-phonecall"
       ],
       "llm": [
         "openai-gpt-4o-mini",
@@ -308,14 +197,7 @@
       "tts": [
         "cartesia-sonic-3",
         "cartesia-sonic-turbo",
-        "deepgram-aura-2",
-        "deepgram-aura",
-        "openai-tts-1",
-        "openai-tts-1-hd",
-        "speechmatics-sarah",
-        "speechmatics-theo",
-        "speechmatics-megan",
-        "speechmatics-jack"
+        "deepgram-aura-2"
       ]
     }
   },

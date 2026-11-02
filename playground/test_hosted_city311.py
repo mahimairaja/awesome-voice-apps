@@ -80,8 +80,8 @@ class HostedCity311(unittest.IsolatedAsyncioTestCase):
     async def test_uses_code_switching_stt_and_a_voice_per_call(self):
         first, second = self.build(), self.build()
         self.assertEqual(first.stt._opts.language, "multi")
-        self.assertEqual(first.stt.model, "nova-3")
-        self.assertEqual(first.stt._opts.endpointing_ms, 100)
+        self.assertEqual(first.stt.model, "deepgram/nova-3")
+        self.assertEqual(first.stt._opts.extra_kwargs["endpointing"], 100)
         self.assertIsNot(first.tts, second.tts)
         self.assertIsNot(first.stt, second.stt)
         await first.llm.aclose()

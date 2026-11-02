@@ -1,6 +1,7 @@
 """Hosted coffee simulation: LiveKit worker with server-authorized call limits."""
 
 import asyncio
+import functools
 import json
 import logging
 import os
@@ -10,7 +11,9 @@ import uuid
 from decimal import ROUND_CEILING, Decimal
 from typing import ClassVar
 
+import demo_config
 import httpx
+import inference_swap
 import model_menu
 import status
 import voicegateway
@@ -139,6 +142,8 @@ from livekit.agents import (
     APIConnectOptions,
     JobRequest,
     get_job_context,
+    inference,
+    utils,
 )
 from livekit.agents.voice.agent_session import SessionConnectOptions
 from livekit.agents.voice.room_io import RoomOptions
@@ -150,6 +155,9 @@ from voicegateway.services.inside_call import InsideCall
 from voicegateway.services.sinks import RemoteCollectorSink
 
 logger = logging.getLogger(__name__)
+# Demos build their own Deepgram and Cartesia clients; HostedGuard swaps each one for
+# LiveKit Inference, so the worker holds no key for either provider.
+inference_swap.install_placeholders()
 claims: dict[str, dict] = {}
 tasks: set[asyncio.Task] = set()
 
@@ -216,6 +224,33 @@ def parse_job(metadata: str, room: str) -> str:
     return reservation
 
 
+async def fetch_config(metadata: str, reservation: str) -> demo_config.DemoConfig | None:
+    """Fetch the demo config version the site signed into the dispatch.
+
+    Args:
+        metadata: the job's dispatch metadata (JSON with agent and optional version).
+        reservation: the claimed reservation id, sent with the request.
+
+    Returns:
+        The validated config, or None when the dispatch names no version.
+
+    Raises:
+        ValueError (or an HTTP error) for an invalid version or a missing or
+        invalid config, so admission rejects the call before any inference.
+    """
+    data = json.loads(metadata)
+    version = data.get("version")
+    if version is None:
+        return None
+    if type(version) is not int or version < 1:
+        raise ValueError("Invalid config version")
+    demo = data["agent"]
+    if demo in REALTIME_DEMOS:
+        raise ValueError("Realtime demos take no config yet")
+    found = await control("config", reservation, demo=demo, version=version)
+    return demo_config.parse(found.get("config"), demo, version)
+
+
 async def authorize(req: JobRequest) -> None:
     try:
         reservation = parse_job(req.job.metadata, req.room.name)
@@ -228,6 +263,7 @@ async def authorize(req: JobRequest) -> None:
         remaining = approved["deadline"] - time.time()
         if approved["room"] != req.room.name or not 0 < remaining <= 120:
             raise ValueError("Invalid reservation deadline")
+        approved["config"] = await fetch_config(req.job.metadata, reservation)
         claims[req.room.name] = approved
     except Exception:  # noqa: BLE001 - every failed admission must reject the job
         # Do not log provider credentials, metadata or HTTP response bodies.
@@ -283,7 +319,8 @@ class EvalTools:
 # the playground budget so the cap math does not change.
 SPEECHMATICS_USD_PER_MINUTE = Decimal("0.005")
 SPEECHMATICS_USD_PER_CHARACTER = Decimal("0.000011")
-BILLED_PROVIDERS = {"openai", "deepgram", "cartesia", "speechmatics"}
+# livekit: LiveKit Inference, the models a versioned demo config names.
+BILLED_PROVIDERS = {"openai", "deepgram", "cartesia", "livekit", "speechmatics"}
 
 
 def price_speechmatics(record) -> None:
@@ -301,10 +338,17 @@ def price_speechmatics(record) -> None:
 
 
 class PlaygroundSink(RemoteCollectorSink):
-    """Attribute VoiceGateway costs to this reservation, never the shared account."""
+    """Attribute VoiceGateway costs to this reservation, never the shared account.
+
+    VoiceGateway prices each record in process, and the site's ledger is the
+    record of what a call spent. A VoiceGateway collector is optional: with
+    VOICEGW_COLLECTOR_URL set, records are mirrored there too.
+    """
 
     def __init__(self, reservation: str, stop=None):
-        super().__init__(os.environ["VOICEGW_COLLECTOR_URL"], os.environ["VOICEGW_API_KEY"])
+        url = os.environ.get("VOICEGW_COLLECTOR_URL")
+        self.mirror = bool(url)
+        super().__init__(url or "http://127.0.0.1", os.environ.get("VOICEGW_API_KEY"))
         self.stop = stop
         self.reservation = reservation
         self.records = {}
@@ -317,7 +361,7 @@ class PlaygroundSink(RemoteCollectorSink):
 
     async def log_request(self, record):
         if record.project == "mahimai-playground" and record.modality == "eou":
-            await super().log_request(record)
+            await self._mirror(record)
             return
         if record.project != "mahimai-playground" or record.provider not in BILLED_PROVIDERS:
             raise ValueError("Unexpected playground cost attribution")
@@ -335,8 +379,24 @@ class PlaygroundSink(RemoteCollectorSink):
             or getattr(record, "metadata", {}).get("pricing_complete") is False
         ):
             spawn(self.stop())
-        await super().log_request(record)
+        await self._mirror(record)
         await self.report()
+
+    async def _mirror(self, record) -> None:
+        if self.mirror:
+            await super().log_request(record)
+
+    async def log_turns(self, rows) -> None:
+        if self.mirror:
+            await super().log_turns(rows)
+
+    async def log_dead_air(self, events) -> None:
+        if self.mirror:
+            await super().log_dead_air(events)
+
+    async def log_tool_calls(self, rows) -> None:
+        if self.mirror:
+            await super().log_tool_calls(rows)
 
     async def report(self):
         async with self.report_lock:
@@ -422,6 +482,38 @@ class HostedGuard:
         """The metered cloud stack. A demo that wraps its own clients returns those."""
         return model_menu.build({**model_menu.defaults(self.source), **self.picked_models})
 
+    def apply_config(self) -> None:
+        """Apply the call's versioned config once the demo has fully built itself.
+
+        Runs after every subclass __init__ (see build_agent), so the config's prompt
+        and LiveKit Inference models win over the demo's own. A model the visitor
+        picked on the page still wins on its layer. The greeting is kept apart
+        because some demos compute theirs as a read-only property.
+        """
+        config = self.approval.get("config")
+        if config is None:
+            return
+        if config.instructions:
+            self._instructions = config.instructions
+        self._config_greeting = config.greeting
+        models = {k: v for k, v in config.models.items() if k not in self.picked_models}
+        if models:
+            self.update_options(
+                **{k: demo_config.client(k, v, config.language) for k, v in models.items()}
+            )
+
+    # A demo whose point is its own model client (one that inspects every request) keeps it.
+    own_llm = False
+
+    def update_options(self, **options) -> None:
+        """Run every speech and language client this demo sets on LiveKit Inference."""
+        for layer in ("stt", "llm", "tts"):
+            if layer in options:
+                if not (layer == "llm" and self.own_llm):
+                    options[layer] = inference_swap.convert(options[layer])
+                inference_swap.check(options[layer])
+        super().update_options(**options)
+
     def model_choice(self, ctx) -> dict[str, str]:
         # The site validated the pick and signed it into the dispatch; check it again.
         try:
@@ -438,6 +530,7 @@ class HostedGuard:
         self._job_ctx = ctx
         self._job_task = job_task()
         super().__init__(ctx.room)
+        self._config_greeting: str | None = None
         # Per-agent clients keep component metrics isolated between concurrent calls.
         self.picked_models = self.model_choice(ctx) if self.switchable else {}
         self.update_options(**self.voice_stack())
@@ -495,8 +588,9 @@ class HostedGuard:
                 tools = EvalTools(self.approval["id"])
                 self.session.on("function_tools_executed", tools.record)
             # Outbound demos wait for the callee to speak first.
-            if self.greeting:
-                await self.session.generate_reply(instructions=self.greeting)
+            greeting = self._config_greeting or self.greeting
+            if greeting:
+                await self.session.generate_reply(instructions=greeting)
         except Exception:
             await self._finish()
             raise
@@ -887,6 +981,11 @@ class HostedBuilder(HostedGuard, ConfigurableAgent):
         super().__init__()
         self.update_options(tts=cartesia.TTS(model="sonic-3", voice=VOICES[self.config.voice]))
 
+    def _voice_tts(self):
+        # The voice is an Inference client here, which takes the same voice ids.
+        tts = self.tts if isinstance(self.tts, inference.TTS) else self.session.tts
+        return tts if isinstance(tts, inference.TTS) else None
+
     def initial_config(self):
         # The site validated this config and signed it into the dispatch; check it again.
         try:
@@ -1165,6 +1264,14 @@ class HostedDeescalate(HostedGuard, BillingDesk):
         super().__init__()
         self.update_options(tts=deescalate_voice())
 
+    def _voice(self, settings: dict) -> None:
+        # The voice is an Inference client here; Cartesia's speed and emotion go as extras.
+        tts = self.tts if utils.is_given(self.tts) and self.tts else self.session.tts
+        if isinstance(tts, inference.TTS):
+            tts.update_options(
+                extra_kwargs={"speed": settings["speed"], "emotion": settings["emotion"]}
+            )
+
     def initial_state(self) -> dict:
         return {}
 
@@ -1340,6 +1447,7 @@ class HostedOnprem(HostedGuard, PrivateHealthLine):
     """
 
     demo = "onprem"
+    own_llm = True
     # Five answers, each a tool call and a reply, plus the read-out at the end.
     llm_budget = 20
     greeting = ONPREM_GREETING
@@ -1744,20 +1852,30 @@ async def before_start(session: AgentSession, agent, ctx) -> None:
     agent.call.bind(session, agent)
 
 
+def build_agent(cls: type[HostedGuard], ctx) -> HostedGuard:
+    """OpenRTC's per-call factory: build the demo, then apply its versioned config.
+
+    Args:
+        cls: the demo's HostedGuard class from CASCADE_AGENTS.
+        ctx: the call's JobContext (the class reads it through get_job_context).
+
+    Returns:
+        The call's agent with its config applied.
+    """
+    agent = cls()
+    agent.apply_config()
+    return agent
+
+
 def build_pool() -> AgentPool:
-    for key in (
-        "PLAYGROUND_WORKER_SECRET",
-        "PLAYGROUND_ORIGIN",
-        "VOICEGW_COLLECTOR_URL",
-        "VOICEGW_API_KEY",
-    ):
+    for key in ("PLAYGROUND_WORKER_SECRET", "PLAYGROUND_ORIGIN"):
         if not os.environ.get(key):
             raise RuntimeError(f"Missing {key}")
     # One process runs every call as a task and admits two calls at once. The
     # multilingual turn detector stays unloaded: Silero VAD handles turn
     # boundaries, so livekit starts no inference process (about 250 MB).
     pool = AgentPool(
-        agent_name="mahimai-playground-coffee",
+        agent_name="playground",
         request_fnc=authorize,
         max_concurrent_sessions=2,
         turn_detector=False,
@@ -1779,6 +1897,7 @@ def build_pool() -> AgentPool:
             turn_handling=agent.turn_handling,
             start_options=start,
             on_session_ready=before_start,
+            agent_factory=functools.partial(build_agent, agent),
         )
     for name, agent in REALTIME_AGENTS.items():
         pool.add(

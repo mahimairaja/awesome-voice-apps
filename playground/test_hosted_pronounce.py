@@ -42,8 +42,9 @@ class HostedPronounce(unittest.IsolatedAsyncioTestCase):
     async def test_registered_with_plain_nova3_and_sonic3_per_call(self):
         self.assertIs(hosted.CASCADE_AGENTS["pronounce"], hosted.HostedPronounce)
         first, second = self.build(), self.build()
-        self.assertEqual((first.stt.model, first.stt._opts.keyterm), ("nova-3", []))
-        self.assertEqual(first.tts._opts.model, "sonic-3")
+        self.assertEqual(first.stt.model, "deepgram/nova-3")
+        self.assertNotIn("keyterm", first.stt._opts.extra_kwargs)
+        self.assertEqual(first.tts._opts.model, "cartesia/sonic-3")
         self.assertIsNot(first.stt, second.stt)
         self.assertIsNot(first.tts, second.tts)
         self.assertIn("two-minute limit", first.instructions)

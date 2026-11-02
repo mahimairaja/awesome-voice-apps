@@ -11,10 +11,12 @@ import threading
 import time
 
 import httpx
+from model_menu import PLACEHOLDER
 
 logger = logging.getLogger(__name__)
 INTERVAL_SECONDS = 60
-VERSION = os.environ.get("RAILWAY_GIT_COMMIT_SHA", "")[:12] or None
+# Set by deployment/livekit/deploy.sh to the deployed commit.
+VERSION = os.environ.get("PLAYGROUND_VERSION", "")[:12] or None
 
 # (provider, url, headers from the environment). Only reads, never billed calls.
 PROBES = {
@@ -31,6 +33,15 @@ PROBES = {
         {"X-API-Key": env["CARTESIA_API_KEY"], "Cartesia-Version": "2025-04-16"},
     ),
 }
+
+
+KEYS = {"openai": "OPENAI_API_KEY", "deepgram": "DEEPGRAM_API_KEY", "cartesia": "CARTESIA_API_KEY"}
+
+
+def held(provider: str, env=os.environ) -> bool:
+    """A provider key the worker really holds. Calls on LiveKit Inference need none,
+    and the site then reads that provider's own status page instead."""
+    return env.get(KEYS[provider]) not in (None, "", PLACEHOLDER)
 
 
 def probe(client: httpx.Client, provider: str, env=os.environ) -> dict:
@@ -53,7 +64,7 @@ def beat(client: httpx.Client, demos, env=os.environ) -> None:
     body = {
         "action": "heartbeat",
         "demos": sorted(demos),
-        "probes": {name: probe(client, name, env) for name in PROBES},
+        "probes": {name: probe(client, name, env) for name in PROBES if held(name, env)},
     }
     if VERSION:
         body["version"] = VERSION

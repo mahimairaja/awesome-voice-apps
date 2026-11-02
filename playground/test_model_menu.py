@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import hosted
+import inference_swap
 import model_menu
 from voicegateway.inference.pricing.catalog import calculate_cost_detail
 from voicegateway.inference.session.capture import component_identity
@@ -19,6 +20,8 @@ KEYS = {
     "OPENAI_API_KEY": "offline",
     "CARTESIA_API_KEY": "offline",
     "SPEECHMATICS_API_KEY": "offline",
+    "LIVEKIT_API_KEY": "offline",
+    "LIVEKIT_API_SECRET": "offline-secret-at-least-32-characters-long",
 }
 UNITS = {
     "stt": {"audio_seconds": 60},
@@ -49,14 +52,27 @@ class ModelMenu(unittest.TestCase):
         self.assertEqual(
             model_menu.parse_choice(
                 {
-                    "stt": "openai-gpt-4o-mini-transcribe",
+                    "stt": "deepgram-nova-2",
                     "llm": "anthropic-claude",  # not on the menu
                     "tts": "deepgram-nova-3",  # an STT id in the TTS slot
                     "vision": "openai-gpt-4.1-mini",
                 }
             ),
-            {"stt": "openai-gpt-4o-mini-transcribe"},
+            {"stt": "deepgram-nova-2"},
         )
+        # A model that only runs on its provider's own plugin is off the menus.
+        self.assertEqual(model_menu.parse_choice({"stt": "openai-gpt-4o-mini-transcribe"}), {})
+
+    def test_menus_offer_only_livekit_inference_models(self):
+        for layer, ids in model_menu.default_menu().items():
+            with self.subTest(layer=layer):
+                self.assertTrue(set(ids) <= model_menu.INFERENCE[layer])
+        # No provider key is needed for them.
+        with patch.dict(hosted.os.environ, {}, clear=True):
+            self.assertTrue(model_menu.runnable("stt", "deepgram-nova-3"))
+            self.assertFalse(model_menu.runnable("tts", "openai-tts-1"))
+        with patch.dict(hosted.os.environ, {"DEEPGRAM_API_KEY": model_menu.PLACEHOLDER}):
+            self.assertFalse(model_menu.runnable("stt", "deepgram-base"))
 
     def test_default_is_on_the_menu(self):
         self.assertEqual(model_menu.parse_choice(model_menu.DEFAULT), model_menu.DEFAULT)
@@ -74,8 +90,8 @@ class ModelMenu(unittest.TestCase):
         # Its picks lead, and every other general model still follows.
         self.assertEqual(sorted(menu["stt"][2:]), sorted(model_menu.default_menu()["stt"][1:]))
         self.assertEqual(
-            model_menu.parse_choice({"stt": "openai-gpt-4o-mini-transcribe"}, "postop-checkin"),
-            {"stt": "openai-gpt-4o-mini-transcribe"},
+            model_menu.parse_choice({"stt": "deepgram-nova-2"}, "postop-checkin"),
+            {"stt": "deepgram-nova-2"},
         )
         self.assertEqual(
             model_menu.menus()["picks"]["postop-checkin"]["stt"],
@@ -128,6 +144,30 @@ class ModelMenu(unittest.TestCase):
                         self.assertEqual(unrated, ())
 
 
+class InferenceModels(unittest.TestCase):
+    def test_every_inference_model_converts_and_is_priced_as_livekit(self):
+        with patch.dict(hosted.os.environ, KEYS):
+            for layer, ids in model_menu.INFERENCE.items():
+                for model_id in sorted(ids):
+                    with self.subTest(model=model_id):
+                        plugin = model_menu.client(layer, model_id)
+                        client = inference_swap.convert(plugin)
+                        self.assertIsNot(client, plugin)
+                        provider, priced_as = component_identity(client)
+                        self.assertEqual(provider, "livekit")
+                        cost, unrated = calculate_cost_detail(layer, priced_as, **UNITS[layer])
+                        self.assertGreater(cost, 0)
+                        self.assertEqual(unrated, ())
+
+    def test_gpt5_keeps_its_low_reasoning_and_reply_cap(self):
+        with patch.dict(hosted.os.environ, KEYS):
+            client = inference_swap.convert(model_menu.client("llm", "openai-gpt-5-mini"))
+        extra = client._opts.extra_kwargs
+        self.assertEqual(extra["max_completion_tokens"], 180)
+        self.assertIn(extra["reasoning_effort"], ("none", "minimal"))
+        self.assertIs(extra["store"], False)
+
+
 class SwitchableDemo(unittest.IsolatedAsyncioTestCase):
     async def test_coffee_runs_the_visitors_pick(self):
         agent = build(
@@ -137,9 +177,9 @@ class SwitchableDemo(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             identity(agent),
             {
-                "stt": "deepgram/nova-3",
-                "llm": "openai/gpt-4.1-nano",
-                "tts": "deepgram/aura-2-thalia-en",
+                "stt": "livekit/deepgram/nova-3",
+                "llm": "livekit/openai/gpt-4.1-nano",
+                "tts": "livekit/deepgram/aura-2",
             },
         )
         await agent.llm.aclose()
@@ -148,7 +188,7 @@ class SwitchableDemo(unittest.IsolatedAsyncioTestCase):
         for metadata in ("not json", {"models": "openai"}, {"models": {"llm": "gpt-5"}}):
             with self.subTest(metadata=metadata):
                 agent = build(hosted.HostedCoffee, metadata)
-                self.assertEqual(identity(agent)["llm"], "openai/gpt-4o-mini")
+                self.assertEqual(identity(agent)["llm"], "livekit/openai/gpt-4o-mini")
                 await agent.llm.aclose()
 
     async def test_speechmatics_leads_the_sponsored_demos(self):
@@ -166,7 +206,7 @@ class SwitchableDemo(unittest.IsolatedAsyncioTestCase):
                 agent = build(
                     agent_class, {"agent": agent_class.demo, "models": {"stt": "deepgram-nova-3"}}
                 )
-                self.assertEqual(identity(agent)["stt"], "deepgram/nova-3")
+                self.assertEqual(identity(agent)["stt"], "livekit/deepgram/nova-3")
                 await agent.llm.aclose()
                 # The voice stays on Cartesia, with the Speechmatics voices next in line.
                 agent = build(
@@ -180,12 +220,12 @@ class SwitchableDemo(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(all(i.startswith("speechmatics-") for i in tts[1:]))
 
     async def test_a_missing_sponsor_key_falls_back(self):
-        # Before SPEECHMATICS_API_KEY is set in Railway, the demo runs Deepgram.
+        # Before SPEECHMATICS_API_KEY is set in the worker secrets, the demo runs Deepgram.
         keys = {k: v for k, v in KEYS.items() if k != "SPEECHMATICS_API_KEY"}
         for metadata in ({"agent": "claim"}, {"models": {"stt": "speechmatics-linden-1"}}):
             with self.subTest(metadata=metadata):
                 agent = build(hosted.HostedClaim, metadata, keys)
-                self.assertEqual(identity(agent)["stt"], "deepgram/nova-3")
+                self.assertEqual(identity(agent)["stt"], "livekit/deepgram/nova-3")
                 await agent.llm.aclose()
 
     async def test_speechmatics_gets_its_own_turn_mode_enum(self):
@@ -201,7 +241,7 @@ class SwitchableDemo(unittest.IsolatedAsyncioTestCase):
 
     async def test_other_demos_ignore_a_pick(self):
         agent = build(hosted.HostedTrivia, {"agent": "trivia", "models": {"tts": "openai-tts-1"}})
-        self.assertEqual(identity(agent)["tts"], "cartesia/sonic-3")
+        self.assertEqual(identity(agent)["tts"], "livekit/cartesia/sonic-3")
         await agent.llm.aclose()
 
 

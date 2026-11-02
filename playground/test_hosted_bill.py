@@ -328,7 +328,7 @@ class HostedBillTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(second._bill)
         self.assertEqual(second._uploads, 0)
         self.assertIsNot(first._vision, second._vision)
-        self.assertEqual(first.tts._opts.model, "sonic-3")
+        self.assertEqual(first.tts._opts.model, "cartesia/sonic-3")
         self.assertEqual(hosted.HostedBill.llm_budget, 24)
         self.assertGreater(hosted_bill.vision_cost(None), 0)
         await self.close(first, second)
