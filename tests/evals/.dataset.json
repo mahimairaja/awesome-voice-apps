@@ -27,7 +27,7 @@
   {
     "name": "coffee-off-menu",
     "scenario": "A drive-thru customer asks for a matcha latte, which is not on the menu, then settles for a cold brew.",
-    "expected_outcome": "The agent says matcha is not on the menu without inventing it, adds one cold brew, and submits the order under the name Priya.",
+    "expected_outcome": "The agent says matcha is not on the menu without inventing it, adds one cold brew, and submits the order under the name John Doe.",
     "persona": {
       "characteristics": "A polite customer trying the place for the first time.",
       "speaks_first": false,
@@ -35,7 +35,7 @@
     },
     "additional_metadata": {
       "demo": "coffee",
-      "seconds": 100,
+      "seconds": 105,
       "expected_tools": [
         "add_item",
         "submit_order"
@@ -44,7 +44,7 @@
         "Hi there. Do you have a matcha latte?",
         "Okay, then I'll just have a cold brew.",
         "That's all, thanks.",
-        "Priya."
+        "John Doe."
       ]
     }
   },
