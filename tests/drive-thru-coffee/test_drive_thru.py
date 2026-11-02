@@ -43,3 +43,29 @@ def test_only_names_become_cup_names():
         assert _cup_name(reply) == name, reply
     for reply in ("No, that's everything.", "That's all, thanks.", "I'm done", "Yes", ""):
         assert _cup_name(reply) is None, reply
+
+
+async def test_adds_items_as_soon_as_they_are_named(fake_room):
+    # The first live eval confirmed the order out loud without adding it, then
+    # called remove_item on an empty cart and dropped the size.
+    async with AgentSession(llm=openai.LLM(model="gpt-4o-mini"), userdata={"cart": []}) as session:
+        await session.start(DriveThruAttendant(fake_room))
+
+        await session.run(user_input="Hi, can I get a large latte and a blueberry muffin?")
+
+        cart = session.userdata["cart"]
+        assert [item["key"] for item in cart] == ["latte", "blueberry_muffin"]
+        assert "large" in " ".join(cart[0]["modifications"]).lower()
+
+
+async def test_add_item_keeps_the_size_and_refuses_off_menu_keys(fake_room):
+    from types import SimpleNamespace
+
+    agent = DriveThruAttendant(fake_room)
+    context = SimpleNamespace(userdata={"cart": []})
+
+    reply = await agent.add_item(context, "iced_latte", ["large", "oat milk"])
+    assert reply == "Added one iced latte with large, oat milk."
+    assert context.userdata["cart"][0]["modifications"] == ["large", "oat milk"]
+    assert await agent.add_item(context, "matcha_latte") == "I do not have that item."
+    assert len(context.userdata["cart"]) == 1

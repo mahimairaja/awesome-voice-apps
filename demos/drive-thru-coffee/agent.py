@@ -213,9 +213,13 @@ class DriveThruAttendant(Agent):
     def __init__(self, room: rtc.Room) -> None:
         super().__init__(
             instructions=(
-                "You are a friendly drive-thru coffee attendant. Take orders and "
-                "confirm modifications. You may suggest one add-on at most once "
-                "per order, and never after the customer says they are done. Keep "
+                "You are a friendly drive-thru coffee attendant. As soon as the "
+                "customer names an item, call add_item for it before you reply, "
+                "then say what you added; never ask them to confirm first. Put "
+                "size, temperature and milk in modifications (for example "
+                '"large" or "oat milk"). You may suggest one add-on from the '
+                "menu below at most once per order, and never after the customer "
+                "says they are done. Keep "
                 "replies short, plain text, no markdown or emojis. "
                 "The full menu is on the screen the whole time. When the customer "
                 "asks about it, point them to the screen and describe it in a "
@@ -240,8 +244,8 @@ class DriveThruAttendant(Agent):
     ) -> str:
         """Add one menu item to the current order.
 
-        Use the item_key from the menu. Call this after the customer has
-        named an item and any modifications they want.
+        Use the item_key from the menu. Call this as soon as the customer
+        names an item; put its size, temperature and milk in modifications.
         """
         menu_item = MENU.get(item_key)
         if menu_item is None:
