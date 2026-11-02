@@ -461,8 +461,14 @@ class HostedGuard:
     # alone (a cough, a TV, the agent's own voice leaking back through laptop speakers)
     # used to cut a reply after its first word. Now it takes two transcribed words to
     # interrupt, and a stray sound that never becomes words lets the reply resume.
+    # build_pool swaps "vad" for LiveKit Inference's turn detector, which reads the words
+    # to decide a turn is over, so the endpointing wait can stay short without cutting off
+    # a caller who pauses mid-sentence. Preemptive TTS starts the voice before the turn
+    # is confirmed; a turn that turns out unfinished discards it.
     turn_handling = {
         "turn_detection": "vad",
+        "endpointing": {"min_delay": 0.3},
+        "preemptive_generation": {"preemptive_tts": True},
         "interruption": {
             "mode": "vad",
             "min_duration": 0.6,
@@ -1845,11 +1851,52 @@ REALTIME_AGENTS = {"sdr": RealtimeSDR, "interp": RealtimeInterpreter}
 async def before_start(session: AgentSession, agent, ctx) -> None:
     """Wire per-call plumbing after the room connects and before the session starts."""
     if isinstance(agent, HostedGuard):
+        session.on("conversation_item_added", log_reply_latency)
         # Avatar demos route the session's audio to a video participant first.
         if hasattr(agent, "start_avatar"):
             await agent.start_avatar(session)
         return
     agent.call.bind(session, agent)
+
+
+def log_reply_latency(event) -> None:
+    """Log where each turn's wait went, so an eval's slow reply can be split.
+
+    The caller's message carries the end-of-turn delay; the agent's reply carries the
+    LLM's first token and the TTS's first audio.
+    """
+    metrics = getattr(event.item, "metrics", None)
+    if not metrics:
+        return
+    keys = (
+        ("end_of_turn_delay", "transcription_delay")
+        if event.item.role == "user"
+        else ("llm_node_ttft", "tts_node_ttfb", "e2e_latency")
+    )
+    timings = {k: round(metrics[k], 3) for k in keys if metrics.get(k) is not None}
+    if timings:
+        logger.info("turn latency", extra={"role": event.item.role, **timings})
+
+
+@functools.cache
+def end_of_turn_detector() -> inference.TurnDetector:
+    """One cloud turn detector for the worker; each session opens its own stream.
+
+    v1 runs on LiveKit Inference. local_fallback=False keeps the local mini model
+    (about 108 MB) out of the worker: if the gateway fails, turns end on the endpointing
+    delay instead.
+    """
+    return inference.TurnDetector(version="v1", local_fallback=False)
+
+
+def turn_handling_for(agent: type[HostedGuard]) -> dict:
+    """The demo's turn handling, with the shared default ending turns on the detector.
+
+    A demo that brings its own turn handling (mortgage) keeps it unchanged.
+    """
+    if agent.turn_handling is not HostedGuard.turn_handling:
+        return agent.turn_handling
+    return {**agent.turn_handling, "turn_detection": end_of_turn_detector()}
 
 
 def build_agent(cls: type[HostedGuard], ctx) -> HostedGuard:
@@ -1871,9 +1918,9 @@ def build_pool() -> AgentPool:
     for key in ("PLAYGROUND_WORKER_SECRET", "PLAYGROUND_ORIGIN"):
         if not os.environ.get(key):
             raise RuntimeError(f"Missing {key}")
-    # One process runs every call as a task and admits two calls at once. The
-    # multilingual turn detector stays unloaded: Silero VAD handles turn
-    # boundaries, so livekit starts no inference process (about 250 MB).
+    # One process runs every call as a task and admits two calls at once. The local
+    # multilingual turn detector stays unloaded (about 250 MB); turns end on LiveKit
+    # Inference's cloud detector instead (see turn_handling_for).
     pool = AgentPool(
         agent_name="playground",
         request_fnc=authorize,
@@ -1894,7 +1941,7 @@ def build_pool() -> AgentPool:
             # Replaced per call in HostedGuard.on_enter; never share state between calls.
             userdata={},
             max_tool_steps=3,
-            turn_handling=agent.turn_handling,
+            turn_handling=turn_handling_for(agent),
             start_options=start,
             on_session_ready=before_start,
             agent_factory=functools.partial(build_agent, agent),

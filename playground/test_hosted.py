@@ -407,8 +407,12 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
                 "DEEPGRAM_API_KEY",
                 "OPENAI_API_KEY",
                 "CARTESIA_API_KEY",
+                # LiveKit Cloud supplies these; the cloud turn detector needs them.
+                "LIVEKIT_API_KEY",
+                "LIVEKIT_API_SECRET",
             )
         }
+        hosted.end_of_turn_detector.cache_clear()
         with patch.dict(hosted.os.environ, env):
             pool = hosted.build_pool()
         self.assertIsInstance(pool, hosted.AgentPool)
@@ -421,6 +425,17 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(config.start_options["room_options"].text_input)
             self.assertEqual(config.session_kwargs["max_tool_steps"], 3)
             self.assertIs(config.on_session_ready, hosted.before_start)
+            turns = config.session_kwargs["turn_handling"]
+            if hosted.CASCADE_AGENTS[name].turn_handling is hosted.HostedGuard.turn_handling:
+                # Turns end on the shared cloud detector, never the local mini model.
+                detector = turns["turn_detection"]
+                self.assertIsInstance(detector, hosted.inference.TurnDetector)
+                self.assertIs(detector, hosted.end_of_turn_detector())
+                self.assertEqual(detector.model, "turn-detector-v1")
+                self.assertEqual(turns["endpointing"], {"min_delay": 0.3})
+                self.assertTrue(turns["preemptive_generation"]["preemptive_tts"])
+            else:
+                self.assertIs(turns, hosted.CASCADE_AGENTS[name].turn_handling)
         for name in hosted.REALTIME_DEMOS:
             config = pool.get(name)
             self.assertEqual(
@@ -1198,6 +1213,25 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         pending.pop()()
         self.assertIsNone(gate.current)
         self.assertEqual(len(published[-1]["overlaps"]), 1)
+
+    def test_reply_latency_is_logged_per_turn(self):
+        user = SimpleNamespace(
+            role="user", metrics={"end_of_turn_delay": 0.4123, "transcription_delay": 0.2}
+        )
+        reply = SimpleNamespace(
+            role="assistant",
+            metrics={"llm_node_ttft": 0.51, "tts_node_ttfb": 0.18, "e2e_latency": 1.2},
+        )
+        with self.assertLogs(hosted.logger, "INFO") as logs:
+            hosted.log_reply_latency(SimpleNamespace(item=user))
+            hosted.log_reply_latency(SimpleNamespace(item=reply))
+            # A message without timings logs nothing.
+            hosted.log_reply_latency(SimpleNamespace(item=SimpleNamespace(role="user")))
+        records = logs.records
+        self.assertEqual(len(records), 2)
+        self.assertEqual(records[0].end_of_turn_delay, 0.412)
+        self.assertEqual(records[1].llm_node_ttft, 0.51)
+        self.assertEqual(records[1].tts_node_ttfb, 0.18)
 
     async def test_mortgage_turn_handling_and_payments(self):
         self.assertEqual(
