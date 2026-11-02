@@ -37,13 +37,13 @@ harness (for example, agent turns that repeat the caller word for word), set
 ## Example
 
 Coffee, off menu: the caller asks for a matcha latte, takes a cold brew, says that
-is all, and gives the name Priya. Tools: `add_item(cold_brew)`,
-`submit_order(customer_name: Priya)`.
+is all, and gives the name John Doe. Tools: `add_item(cold_brew)`,
+`submit_order(customer_name: John Doe)`.
 
 - goal 1.0, passed: "It said matcha is not on the menu, added one cold brew,
-  confirmed it and submitted under Priya with the $5.25 total."
+  confirmed it and submitted under John Doe with the $5.25 total."
 - relevance 1.0, passed: "Each reply answered the line before it, from the matcha
   question to the name."
-- tools 1.0, passed: "add_item for cold_brew then submit_order for Priya, nothing
+- tools 1.0, passed: "add_item for cold_brew then submit_order for John Doe, nothing
   extra."
 - policy 1.0, passed: "It invented no matcha and read only menu prices."
