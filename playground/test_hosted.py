@@ -447,7 +447,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
                 self.assertIs(detector, hosted.end_of_turn_detector())
                 self.assertEqual(detector.model, "turn-detector-v1")
                 self.assertEqual(
-                    turns["endpointing"], {"mode": "dynamic", "min_delay": 0.3, "max_delay": 1.2}
+                    turns["endpointing"], {"mode": "dynamic", "min_delay": 0.3, "max_delay": 0.8}
                 )
                 self.assertTrue(turns["preemptive_generation"]["preemptive_tts"])
             else:
@@ -1333,6 +1333,15 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             out = [c async for c in agent.llm_node(self.chat("function_call_output"), [], None)]
         self.assertEqual(out, [])
         self.assertEqual(logs.records[-1].reason, "llm_requests")
+
+    async def test_cascade_calls_shorten_the_vad_silence(self):
+        agent = object.__new__(hosted.HostedFraud)
+        session = MagicMock()
+        await hosted.before_start(session, agent, SimpleNamespace())
+        session.vad.update_options.assert_called_once_with(
+            min_silence_duration=hosted.VAD_MIN_SILENCE
+        )
+        self.assertLess(hosted.VAD_MIN_SILENCE, 0.55)
 
     async def test_tool_filler_is_spoken_before_a_tool_call(self):
         from livekit.agents import Agent
