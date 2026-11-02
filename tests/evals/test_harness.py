@@ -326,6 +326,7 @@ def test_word_accuracy_spells_digits_and_ignores_case():
     assert word_accuracy("one oat latte", "one goat latte") == pytest.approx(2 / 3)
     assert word_accuracy("one oat latte", "") == 0.0
     assert word_accuracy("", "anything") is None
+    assert normalize("That\u2019s all") == "thats all" == normalize("That's all")
 
 
 def test_transcription_accuracy_compares_the_script_with_what_the_agent_heard():
@@ -788,6 +789,7 @@ def test_agent_intelligibility_reads_clean_speech_back():
 
 
 def test_turn_taking_scores_only_the_agents_side(monkeypatch):
+    """Only gaps and overlaps going into an agent turn are scored."""
     import math
 
     import metrics

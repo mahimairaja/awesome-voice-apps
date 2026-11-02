@@ -119,6 +119,7 @@ VoiceConsistencyMetric = skips_silent(deepeval_metrics.VoiceConsistencyMetric)
 
 def normalize(text: str) -> str:
     """Lowercase words with digits spelled out, so '4471' matches 'four four seven one'."""
+    text = text.replace("\u2019", "'")  # a curly apostrophe keeps "that's" one word
     text = re.sub(r"\d", lambda m: f" {DIGITS[int(m.group())]} ", text.lower())
     text = text.replace("&", " and ").replace("%", " percent ")
     return " ".join(re.sub(r"[^a-z' ]+", " ", text).replace("'", "").split())
