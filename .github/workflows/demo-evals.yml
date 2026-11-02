@@ -24,6 +24,11 @@ on:
         description: "Site to call: https://mahimai.ca (default) or one of its workers.dev previews"
         required: false
         default: ""
+      target:
+        description: "site calls the playground worker through mahimai.ca; cloud calls the eval agents on LiveKit Cloud (tests/evals/cloud_agent)"
+        type: choice
+        options: [site, cloud]
+        default: site
       judge_only:
         description: "Only judge the calls already recorded (no new calls)"
         type: boolean
@@ -103,46 +108,81 @@ jobs:
       - name: Run evals
         env:
           PLAYGROUND_EVAL_SECRET: ${{ secrets.PLAYGROUND_EVAL_SECRET }}
-          EVAL_DEMOS: ${{ inputs.demos }}
+          EVAL_DEMOS: ${{ inputs.demos || (inputs.target == 'cloud' && 'coffee') || '' }}
           EVAL_MODELS: ${{ inputs.models }}
           EVAL_SITE: ${{ inputs.site }}
           EVAL_RUN_ID: gh-${{ github.run_id }}-${{ github.run_attempt }}
-        run: uv run deepeval test run test_demos.py --identifier "gh-${{ github.run_id }}"
+          EVAL_AUDIO_DIR: recordings
+          EVAL_TARGET: ${{ inputs.target || 'site' }}
+          EVAL_RECORDS: recordings/calls.json
+          LIVEKIT_URL: ${{ secrets.EVAL_LIVEKIT_URL }}
+          LIVEKIT_API_KEY: ${{ secrets.EVAL_LIVEKIT_API_KEY }}
+          LIVEKIT_API_SECRET: ${{ secrets.EVAL_LIVEKIT_API_SECRET }}
+        run: mkdir -p recordings && uv run deepeval test run test_demos.py --identifier "gh-${{ github.run_id }}"
+      # The call audio, to listen to what the scores describe. Synthetic callers
+      # and demo agents only, kept a week.
+      - name: Keep the call audio
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-recordings-${{ github.run_id }}
+          path: tests/evals/recordings/
+          retention-days: 7
+          if-no-files-found: ignore
 
   judge:
     # Claude reads each new call's transcript and tools and scores goal, relevance,
-    # tool use and policy (tests/evals/JUDGE.md). Runs on the Claude subscription.
+    # tool use and policy (tests/evals/JUDGE.md) through the Claude API. The script
+    # fetches and posts; the model only sees the call it judges.
     name: judge calls
     needs: live
     if: >-
       always() && github.repository == 'mahimairaja/awesome-voice-apps' &&
-      (needs.live.result == 'success' || needs.live.result == 'failure' || inputs.judge_only)
+      (needs.live.result == 'success' || needs.live.result == 'failure' || inputs.judge_only) &&
+      inputs.target != 'cloud'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
+    env:
+      HAS_API_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+    defaults:
+      run:
+        working-directory: tests/evals
     steps:
       - uses: actions/checkout@v4
-      # Transcripts are untrusted, so Claude never holds the eval secret and can
-      # only read files: the steps around it fetch the calls and post the scores.
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: tests/evals/uv.lock
+      - run: uv sync --locked
+      # The Claude API judge when the repository has ANTHROPIC_API_KEY; until then
+      # Claude Code on the maintainer's subscription, as before.
+      - name: Judge with the Claude API
+        if: env.HAS_API_KEY == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PLAYGROUND_EVAL_SECRET: ${{ secrets.PLAYGROUND_EVAL_SECRET }}
+        run: uv run python judge_claude.py
       - name: Fetch pending calls
+        if: env.HAS_API_KEY != 'true'
         env:
           PLAYGROUND_EVAL_SECRET: ${{ secrets.PLAYGROUND_EVAL_SECRET }}
-        run: python3 tests/evals/judge_api.py pending > pending.json
-      # The Claude Code CLI rather than claude-code-action, which rejects push
-      # and schedule events.
-      - name: Judge
+        run: python3 judge_api.py pending > pending.json
+      - name: Judge with Claude Code
+        if: env.HAS_API_KEY != 'true'
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: >-
           npx --yes @anthropic-ai/claude-code@2.1.283
-          -p "Follow tests/evals/JUDGE.md to judge the calls in pending.json."
+          -p "Follow JUDGE_CLI.md to judge the calls in pending.json."
           --model claude-sonnet-4-6
           --output-format json
           --allowedTools Read
           --disallowedTools "Bash,Edit,Write,WebFetch,WebSearch"
           > judged.json
       - name: Post scores
+        if: env.HAS_API_KEY != 'true'
         env:
           PLAYGROUND_EVAL_SECRET: ${{ secrets.PLAYGROUND_EVAL_SECRET }}
-        run: python3 tests/evals/judge_api.py post judged.json
+        run: python3 judge_api.py post judged.json

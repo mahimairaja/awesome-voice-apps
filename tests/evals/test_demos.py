@@ -10,6 +10,7 @@ Run with: deepeval test run test_demos.py   (see README.md)
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from pathlib import Path
@@ -17,15 +18,17 @@ from pathlib import Path
 import deepeval
 import pytest
 from agent_connector import AgentConnector
-from caller import UiState, caller_graph, script, stop_after_script
+from caller import UiState, caller_graph, patient_simulator, script, stop_after_script
 from deepeval import assert_test
 from deepeval.dataset import EvaluationDataset
-from deepeval.simulator import ConversationSimulator
 from deepeval.voice import VoiceConfig
-from metrics import gating_metrics, voice_metrics
+from metrics import gating_metrics, voice_metrics, word_metrics
 from playground_api import EvalBusy, Site
 from report import call_record
-from speech import KokoroTTS, NoLLM, WhisperSTT
+from rescore import save_turns
+from speech import KokoroTTS, NoLLM, WhisperSTT, wav_samples
+
+log = logging.getLogger("evals")
 
 HERE = Path(__file__).parent
 dataset = EvaluationDataset()
@@ -44,7 +47,13 @@ RUN = {
 
 
 @pytest.fixture(scope="session")
-def site() -> Site:
+def site():
+    # EVAL_TARGET=cloud calls the eval agents on LiveKit Cloud (cloud_agent/)
+    # instead of the playground worker behind mahimai.ca.
+    if os.environ.get("EVAL_TARGET") == "cloud":
+        from cloud import CloudSite
+
+        return CloudSite()
     return Site()
 
 
@@ -53,26 +62,34 @@ def speech():
     return KokoroTTS(), WhisperSTT(), NoLLM()
 
 
+# EVAL_AUDIO_DIR=recordings keeps each call's audio for a listen.
+AUDIO_DIR = os.environ.get("EVAL_AUDIO_DIR") or None
+
+
 def simulate(golden, call, speech):
+    """Place one call. Returns the test case and what the agent heard the caller say."""
     tts, stt, llm = speech
     ui = UiState()
     meta = golden.additional_metadata
+    connectors = []
 
     def connector():
         from livekit import rtc
 
         room = rtc.Room()
         ui.attach(room)
-        return AgentConnector(
+        made = AgentConnector(
             url=call.url,
             token=call.token,
             room=room,
             turn_detection=meta.get("turn_detection", "balanced"),
         )
+        connectors.append(made)
+        return made
 
-    simulator = ConversationSimulator(
+    simulator = patient_simulator()(
         voice_config=VoiceConfig(
-            connector=connector, tts_model=tts, stt_model=stt, output_dir=None
+            connector=connector, tts_model=tts, stt_model=stt, output_dir=AUDIO_DIR
         ),
         simulation_graph=caller_graph(ui),
         stopping_controller=stop_after_script,
@@ -80,7 +97,39 @@ def simulate(golden, call, speech):
         max_concurrent=1,
     )
     [case] = simulator.simulate([golden], max_user_simulations=len(script(golden)) + 1)
-    return case
+    if AUDIO_DIR:
+        # Every turn's clip and start time, so rescore.py can score it again.
+        save_turns(case, golden, Path(AUDIO_DIR) / simulator._voice.run_label)
+    heard = connectors[-1].heard if connectors else []
+    if connectors:
+        describe(golden.name, case, connectors[-1])
+    return case, heard
+
+
+def describe(name, case, connector) -> None:
+    """Log each turn's timing and loudness, to tell harness faults from agent faults."""
+    log.warning(
+        "%s: agent transcript streams=%d, heard=%r, waits=%s",
+        name,
+        connector.agent_streams,
+        connector.heard,
+        [round(w, 2) for w in connector.waits],
+    )
+    log.warning("%s: tracks=%s agent states=%s", name, connector.tracks, connector.states)
+    for i, turn in enumerate(case.turns):
+        line = f"{name} #{i} {turn.role}: {turn.content!r}"
+        audio = getattr(turn, "audio", None)
+        if audio is not None:
+            samples, rate = wav_samples(audio)
+            rms = float((samples**2).mean() ** 0.5) if len(samples) else 0.0
+            peak = float(abs(samples).max()) if len(samples) else 0.0
+            line += (
+                f" start={getattr(audio, 'start_time', None)} secs={len(samples) / rate:.2f}"
+                f" rate={rate} rms={rms:.4f} peak={peak:.3f}"
+            )
+        if turn.metadata:
+            line += f" meta={turn.metadata}"
+        log.warning(line)
 
 
 @pytest.mark.parametrize("golden", goldens, ids=[g.name for g in goldens])
@@ -94,7 +143,9 @@ def test_demo(golden, site, speech):
     case, error = None, None
     measured = voice_metrics()
     try:
-        case = simulate(golden, call, speech)
+        case, heard = simulate(golden, call, speech)
+        said = [t.content for t in case.turns if t.role == "user" and t.content]
+        measured += word_metrics(said, heard, speech[1])
         for metric in measured:
             metric.measure(case, _show_indicator=False)
     except Exception as exc:  # the call failed; store that, then fail the test
