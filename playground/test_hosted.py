@@ -1235,6 +1235,24 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertIn("...", [symbols for _, symbols in logs.records[0].dropped])
         self.assertFalse(hasattr(logs.records[0], "text"))
 
+    def test_punctuation_that_starts_a_chunk_is_kept(self):
+        # The 12:20 Coffee eval: the model streams a sentence's period at the start of
+        # the next chunk, and the filter dropped it ("to your order Would you"), so
+        # TTS waited for a sentence end and replies slowed to 3 to 4 s.
+        cases = [
+            ["I've added a latte", ". Would you like", " anything else", "?"],
+            ["Your total is $5", ".25", ". Pull up", "."],
+            ["Got the order", ".", " Next", "..."],
+        ]
+        for chunks in cases:
+            stray = hosted.StraySymbols()
+            out = "".join(stray.feed(c) for c in chunks) + stray.flush()
+            self.assertEqual(out, "".join(chunks), chunks)
+        # A real run that starts a chunk after a space is still dropped.
+        stray = hosted.StraySymbols()
+        out = "".join(stray.feed(c) for c in ["for the ", "... ... done."]) + stray.flush()
+        self.assertEqual(out, "for the done.")
+
     async def test_llm_node_strips_stray_symbols_from_strings_and_chunks(self):
         from livekit.agents import Agent
         from livekit.agents.llm import ChatChunk, ChoiceDelta
