@@ -472,6 +472,11 @@ class StraySymbols:
         return self._clean(rest)
 
     def _clean(self, text: str) -> str:
+        dropped = STRAY_SYMBOLS.findall(text)
+        if dropped:
+            # A local A/B could not reproduce these runs; the text around them in the
+            # worker log shows which stage of the hosted pipeline makes them.
+            logger.warning("dropped stray symbols", extra={"dropped": dropped, "text": text[:200]})
         text = re.sub(r" {2,}", " ", STRAY_SYMBOLS.sub("", text))
         if self.spaced:
             text = text.lstrip(" ")
