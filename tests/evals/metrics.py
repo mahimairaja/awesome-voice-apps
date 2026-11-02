@@ -24,6 +24,7 @@ Goal, relevance, tool use and policy are judged from the transcript by Claude
 
 from __future__ import annotations
 
+import math
 import re
 
 import jiwer
@@ -31,12 +32,13 @@ from deepeval.metrics import (
     AgentResponsivenessMetric,
     AudioIntegrityMetric,
     SpeechIntelligibilityMetric,
-    TurnTakingNaturalnessMetric,
     VoiceConsistencyMetric,
     VoiceNaturalnessMetric,
     VoiceReliabilityMetric,
 )
+from deepeval.metrics import TurnTakingNaturalnessMetric as DeepEvalTurnTaking
 from deepeval.metrics.voice.base_metric import BaseVoiceMetric
+from deepeval.voice.timeline import build_audio_timeline
 from report import INFORMATIONAL, metric_key
 
 DIGITS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"]
@@ -120,6 +122,50 @@ class AgentIntelligibilityMetric(BaseVoiceMetric):
     @property
     def __name__(self):
         return "Agent Intelligibility"
+
+
+class TurnTakingNaturalnessMetric(DeepEvalTurnTaking):
+    """DeepEval's turn-taking score over the agent's side of each exchange only.
+
+    DeepEval scores every change of speaker. The scripted caller waits until the
+    agent has been quiet for 1.5 s (see AgentConnector.wait_until_quiet) and then
+    synthesizes its line, so each agent-to-caller gap is at least 1.5 s and scored
+    at most exp(-1.5 / 2.5) = 0.55 whatever the agent does. Here only the
+    transitions into an agent turn count: the wait after the caller stops, or the
+    agent talking over the caller. Same scoring curves as DeepEval, and the same
+    key, so stored results stay comparable.
+    """
+
+    def _evaluate(self, test_case):
+        result = super()._evaluate(test_case)
+        if result[0] is None:
+            return result
+        timeline = build_audio_timeline(test_case.turns)
+        transitions, scores = [], []
+        for current, following in zip(timeline, timeline[1:]):
+            if current.role == following.role or following.role != "assistant":
+                continue
+            gap = following.start_time - current.end_time
+            score = math.exp(-gap / 2.5) if gap >= 0 else math.exp(-abs(gap) / 0.6)
+            scores.append(score)
+            transitions.append(
+                {
+                    "from_turn": current.turn_index,
+                    "to_turn": following.turn_index,
+                    "kind": "gap" if gap >= 0 else "agent_overlap",
+                    "gap_seconds": gap,
+                    "score": score,
+                }
+            )
+        if not scores:
+            return None, "No caller-to-agent transitions to evaluate.", {"transitions": []}
+        score = sum(scores) / len(scores)
+        return (
+            score,
+            f"Turn-taking naturalness was {score:.2f} across {len(scores)} caller-to-agent "
+            "transition(s); the scripted caller's own wait is not scored.",
+            {"transitions": transitions},
+        )
 
 
 def voice_metrics():

@@ -618,3 +618,28 @@ def test_agent_intelligibility_reads_clean_speech_back():
     case = SimpleNamespace(turns=[Turn(role="assistant", content=text, audio=audio)])
     score, reason, _ = AgentIntelligibilityMetric(stt)._evaluate(case)
     assert score >= 0.85, reason
+
+
+def test_turn_taking_scores_only_the_agents_side(monkeypatch):
+    import math
+
+    import metrics
+
+    entry = lambda i, role, start, end: SimpleNamespace(  # noqa: E731
+        turn_index=i, role=role, start_time=start, end_time=end
+    )
+    timeline = [
+        entry(0, "assistant", 0.0, 2.0),
+        entry(1, "user", 4.0, 5.0),  # the caller's scripted wait: not scored
+        entry(2, "assistant", 6.0, 8.0),  # 1 s to answer
+        entry(3, "user", 10.0, 11.0),
+        entry(4, "assistant", 10.7, 12.0),  # talks over the caller for 0.3 s
+    ]
+    monkeypatch.setattr(metrics, "build_audio_timeline", lambda turns: timeline)
+    monkeypatch.setattr(metrics.DeepEvalTurnTaking, "_evaluate", lambda self, case: (0.4, "", {}))
+    metric = metrics.TurnTakingNaturalnessMetric()
+    score, reason, breakdown = metric._evaluate(SimpleNamespace(turns=[]))
+    assert [t["kind"] for t in breakdown["transitions"]] == ["gap", "agent_overlap"]
+    assert score == pytest.approx((math.exp(-1 / 2.5) + math.exp(-0.3 / 0.6)) / 2)
+    assert metric_key(metric) == "turn_taking_naturalness"
+    assert "caller-to-agent" in reason
