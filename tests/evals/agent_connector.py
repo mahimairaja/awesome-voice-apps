@@ -19,6 +19,11 @@ Two things the stock connector gets wrong for these calls:
    caller line, ``PatientSimulator`` (in ``caller.py``) now waits until the
    agent has been quiet for ``quiet_ms``, then hands DeepEval the rest of the
    reply as usual.
+
+   The caller's last line gets the same wait, but for the reply to start as
+   well: the harness hangs up once the script is done, and before this it
+   hung up while the agent was drawing breath, so the last turn held its
+   first transcript word and no audio.
 """
 
 from __future__ import annotations
@@ -111,8 +116,13 @@ class AgentConnector(LiveKitConnector):
 
     # 2. Let the agent finish -------------------------------------------------
 
-    async def wait_until_quiet(self) -> float:
+    async def wait_until_quiet(self, start_within_s: float = 0.0) -> float:
         """Wait until no voiced agent audio has arrived for ``quiet_ms``.
+
+        With ``start_within_s``, first wait up to that long for the agent to
+        start talking, then for it to go quiet. The caller's last line uses
+        this: the call ends right after it, and an agent that has not started
+        its reply yet would otherwise be cut off before saying a word.
 
         Peeks at the downlink without losing anything: every queued event goes
         back in its original order, so the simulator still reads the agent's
@@ -133,10 +143,15 @@ class AgentConnector(LiveKitConnector):
                 if audio and not audio_utils.is_silent(audio, self.silence_threshold_rms):
                     last_voiced = getattr(event, "received_at", None) or time.perf_counter()
             now = time.perf_counter()
-            quiet_since = last_voiced if last_voiced is not None else started
-            if self.call_ended or (now - quiet_since) * 1000.0 >= self.quiet_ms:
+            if self.call_ended:
                 break
-            if now - started >= self.max_wait_s:
+            if last_voiced is None and now - started < start_within_s:
+                await asyncio.sleep(0.05)  # the reply has not started yet
+                continue
+            quiet_since = last_voiced if last_voiced is not None else started
+            if (now - quiet_since) * 1000.0 >= self.quiet_ms:
+                break
+            if now - started >= start_within_s + self.max_wait_s:
                 logger.warning(
                     "The agent was still talking after %.0fs; the caller goes on.", self.max_wait_s
                 )

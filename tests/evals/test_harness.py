@@ -435,6 +435,78 @@ def test_silent_turns_are_named_and_left_out():
     assert "No audio in turn(s) 4" in reason
 
 
+def test_wait_until_quiet_waits_for_the_last_reply_to_start():
+    import asyncio
+    import time
+
+    from deepeval.voice.connectors.types import AgentEvent
+
+    loud = b"\xff\x3f" * 480
+    connector = _connector_with_tracks()
+    connector.quiet_ms = 100
+
+    async def run():
+        connector._out_frames = asyncio.Queue()
+
+        async def agent_starts_late():
+            await asyncio.sleep(0.3)
+            connector._out_frames.put_nowait(
+                AgentEvent(audio=loud, received_at=time.perf_counter())
+            )
+
+        talker = asyncio.create_task(agent_starts_late())
+        waited = await connector.wait_until_quiet(start_within_s=2.0)
+        await talker
+        never = await connector.wait_until_quiet(start_within_s=0.2)  # nothing more comes
+        return waited, never
+
+    waited, never = asyncio.run(run())
+    assert 0.3 + 0.1 - 0.05 <= waited < 1.0  # the late start, then the quiet window
+    assert never < 0.6  # bounded: gives up on a reply that never starts
+    assert connector._out_frames.qsize() == 1  # the reply is still there for the simulator
+
+
+def test_the_caller_holds_on_for_the_reply_to_its_last_line(monkeypatch):
+    """After the last line the simulator waits for the reply and keeps it as a turn."""
+    import asyncio
+
+    import caller
+    from deepeval.simulator import ConversationSimulator
+    from deepeval.test_case import Turn
+
+    golden = ConversationalGolden(
+        name="g", scenario="s", additional_metadata={"demo": "coffee", "script": ["Hi.", "Bye."]}
+    )
+    waits = []
+
+    async def wait_until_quiet(start_within_s=0.0):
+        waits.append(start_within_s)
+        return 0.0
+
+    connector = SimpleNamespace(wait_until_quiet=wait_until_quiet, call_ended=False)
+    session = SimpleNamespace(connector=connector, started_at=1.0)
+
+    async def exchange(self, session, input, turns, golden):
+        reply = Turn(role="assistant", content="You", audio=_clip(2.0, level=0.0))
+        turns.append(reply)
+        return reply
+
+    async def backlog(self, session, turns, call_started_at):
+        turns.append(Turn(role="assistant", content="Goodbye.", audio=_clip(1.0)))
+
+    monkeypatch.setattr(ConversationSimulator, "_voice_duplex_exchange", exchange)
+    monkeypatch.setattr(ConversationSimulator, "_take_agent_backlog", backlog)
+    patient = caller.patient_simulator()
+    simulator = patient.__new__(patient)
+    turns = [Turn(role="user", content="Hi.")]
+    first = asyncio.run(simulator._voice_duplex_exchange(session, "Hi.", turns, golden))
+    assert first.content == "You" and waits == []  # more lines to come: no extra wait
+    turns.append(Turn(role="user", content="Bye."))
+    last = asyncio.run(simulator._voice_duplex_exchange(session, "Bye.", turns, golden))
+    assert waits == [caller.LAST_REPLY_START_S]  # the reply had not started
+    assert last.content == "Goodbye." and turns[-1] is last
+
+
 def test_overlapping_replies_are_left_out_of_latency():
     from report import turns
 

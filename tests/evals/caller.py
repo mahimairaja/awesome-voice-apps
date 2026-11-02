@@ -109,14 +109,29 @@ def stop_after_script(golden: ConversationalGolden, simulated_user_turns: int):
     return proceed()
 
 
+# How long the caller holds on after its last line for the agent to start
+# answering, when the exchange that followed the line ended without a voiced
+# reply. Replies here start within about 3 s; tool calls take longer.
+LAST_REPLY_START_S = 10.0
+
+
+def voiced(turn) -> bool:
+    """True when the turn's audio holds sound above the silence floor."""
+    from metrics import is_silent
+
+    return turn.audio is not None and not is_silent(turn.audio)
+
+
 def patient_simulator():
     """ConversationSimulator that lets the agent finish before the caller speaks.
 
     DeepEval collects whatever the agent said since its last turn right before
     each caller line. This waits first, while the agent is still talking (see
     ``AgentConnector.wait_until_quiet``), so that collection holds the whole
-    reply and the caller never talks over it. Built lazily so offline tests
-    that never place a call do not import the simulator.
+    reply and the caller never talks over it. After the last line, when the
+    call is about to end, it also waits for that reply to start and finish and
+    keeps it as a turn. Built lazily so offline tests that never place a call
+    do not import the simulator.
     """
     from deepeval.simulator import ConversationSimulator
 
@@ -126,5 +141,19 @@ def patient_simulator():
             if wait is not None:
                 await wait()
             return await super()._take_agent_backlog(session, turns, call_started_at)
+
+        async def _voice_duplex_exchange(self, session, input, turns, golden):
+            reply = await super()._voice_duplex_exchange(session, input, turns, golden)
+            spoken = sum(1 for turn in turns if turn.role == "user")
+            wait = getattr(session.connector, "wait_until_quiet", None)
+            if spoken < len(script(golden)) or wait is None or session.connector.call_ended:
+                return reply
+            # The stopping check hangs up next, so the rest of the reply is
+            # taken now. A reply that has not started gets LAST_REPLY_START_S.
+            await wait(0.0 if voiced(reply) else LAST_REPLY_START_S)
+            before = len(turns)
+            started_at = session.started_at or 0.0
+            await ConversationSimulator._take_agent_backlog(self, session, turns, started_at)
+            return turns[-1] if len(turns) > before else reply
 
     return PatientSimulator
