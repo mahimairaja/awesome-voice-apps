@@ -533,6 +533,123 @@ def test_whispers_guess_at_a_silent_clip_is_left_out():
     assert [t["text"] for t in record["turns"]][:3] == ["Hi.", "One latte.", "Is that right?"]
 
 
+def _joined(*clips, start: float | None = None):
+    """The clips end to end as one Audio, dated ``start``."""
+    from deepeval.test_case import Audio
+    from deepeval.voice.connectors import audio_utils
+
+    pcm = b"".join(audio_utils.wav_bytes_to_pcm16(c.get_bytes())[0] for c in clips)
+    wav = audio_utils.pcm16_to_wav_bytes(pcm, 16000, 1)
+    return Audio.from_bytes(wav, "audio/wav", start_time=start)
+
+
+def test_agent_clips_are_cut_to_their_speech_and_keep_their_date():
+    """DeepEval keeps the silence before a reply; the clip is dated by its speech."""
+    from deepeval.test_case import Turn
+    from metrics import is_silent, trim_agent_audio
+    from speech import wav_samples
+
+    reply = _joined(_clip(6.0, level=0.0), _clip(2.0), _clip(0.5, level=0.0), start=27.5)
+    caller = _joined(_clip(0.2, level=0.0), _clip(1.0), start=20.0)
+    silent = _clip(3.0, level=0.0, start=40.0)
+    turns = [
+        Turn(role="user", content="Hi.", audio=caller),
+        Turn(role="assistant", content="One moment.", audio=reply),
+        Turn(role="assistant", content="you", audio=silent),
+    ]
+    trim_agent_audio(turns)
+    samples, rate = wav_samples(turns[1].audio)
+    assert abs(len(samples) / rate - 2.0) < 0.05
+    assert turns[1].audio.start_time == 27.5
+    # The caller's clip and a silent clip (for drop_phantoms) are left alone.
+    assert turns[0].audio is caller and turns[2].audio is silent and is_silent(silent)
+
+
+def test_agent_turns_read_the_agents_own_words():
+    """Whisper's reading of a cut clip gives way to what the agent published."""
+    from deepeval.test_case import Turn
+    from metrics import own_words
+
+    said = [
+        "Please point your camera at the front lights of the router.",
+        "One moment.",
+        "I will check the lights again. Please point your camera at the router's lights.",
+        "I'll record that as moderate.",
+        "Thank you. Have you started",
+    ]
+    turns = [
+        Turn(role="assistant", content="Please point your camera at the front lights of the"),
+        Turn(role="user", content="Okay."),
+        Turn(role="assistant", content="One more."),
+        Turn(role="assistant", content="I will check the lights again. // // // //"),
+        Turn(role="assistant", content="Please point your camera at the router's lights."),
+        Turn(role="user", content="Moderate."),
+        Turn(role="assistant", content="You"),
+        Turn(role="user", content="No new medication."),
+        Turn(role="assistant", content="Thank you. Have you started any"),
+    ]
+    assert own_words(turns, said) == [
+        "Please point your camera at the front lights of the router.",
+        "Okay.",
+        "One moment.",
+        "I will check the lights again.",
+        "Please point your camera at the router's lights.",
+        "Moderate.",
+        "I'll record that as moderate.",
+        "No new medication.",
+        # The clip ran past the last final transcript at hang-up: kept as heard.
+        "Thank you. Have you started any",
+    ]
+    assert own_words(turns, None) == [t.content for t in turns]
+
+    # LiveKit's transcripts missed this line (cancel, 2026-11-02): whisper's stays.
+    heard = "Your Lumora Plus membership is canceled. Your confirmation number is CXH339AX."
+    cancel = [
+        Turn(role="assistant", content=heard),
+        Turn(role="user", content="No thanks, I still want to cancel."),
+        Turn(role="assistant", content="Your membership has been canceled. Thank you."),
+    ]
+    said = [
+        "Your membership has been canceled. Thank you.",
+        "Your membership has been canceled. Thank you.",
+    ]
+    assert own_words(cancel, said)[0] == heard
+
+
+def test_a_call_is_judged_on_the_agents_words(tmp_path):
+    """clean_call drops whisper's silences, trims the clips and restores the words."""
+    from deepeval.test_case import ConversationalTestCase, Turn
+    from metrics import clean_call
+    from report import call_record
+
+    turns = [
+        Turn(role="user", content="Hi.", audio=_clip(1.0, start=0.0)),
+        Turn(
+            role="assistant",
+            content="Great job! Now read this line aloud. 33,000-",
+            audio=_joined(_clip(7.0, level=0.0), _clip(2.0), start=2.0),
+        ),
+        Turn(role="assistant", content="you", audio=_clip(5.0, level=0.0, start=9.0)),
+    ]
+    said = ['Great job! Now read this line aloud: "Thirty three thousand thoughtful thinkers."']
+    kept, dropped = clean_call(list(turns), said)
+    assert dropped == [2]
+    # Intelligibility keeps measuring what was heard; the record reads the agent.
+    assert kept[1].content == turns[1].content
+    assert kept[1].metadata["agent_words"] == said[0]
+    golden = ConversationalGolden(
+        name="g", scenario="s", additional_metadata={"demo": "pronounce", "script": ["Hi."]}
+    )
+    record = call_record(
+        call_id="c",
+        run={"id": "r"},
+        golden=golden,
+        case=ConversationalTestCase(turns=kept),
+        metrics=[],
+    )
+    assert [t["text"] for t in record["turns"]] == ["Hi.", said[0]]
+
+
 def test_wait_until_quiet_waits_for_the_last_reply_to_start():
     import asyncio
     import time
