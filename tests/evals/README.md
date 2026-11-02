@@ -83,9 +83,13 @@ set; without it, it falls back to Claude Code with `CLAUDE_CODE_OAUTH_TOKEN`
 
 Add a golden to `.dataset.json` with a `name`, `scenario`, `expected_outcome`,
 a `persona` with `"speaks_first": false`, and `additional_metadata` holding the
-`demo` id, the `script` lines and optionally `seconds` and `expected_tools`.
+`demo` id, the `script` lines, `seconds` and optionally `expected_tools`.
 Each line is said after the agent finishes its turn, so write the lines as
-answers to what the agent will ask.
+answers to what the agent will ask. `seconds` is the call's length: at least
+`script_seconds(script)` in `caller.py` (20 s plus 18 s and 0.4 s a word per
+line), and at most the demo's cap on the site (`call_cap` in
+`playground_api.py`, 120 s unless the demo sets less). The offline tests check
+both. A script that needs more than the cap is cut short, so keep it shorter.
 
 Limits: the scripted caller never talks over the agent, so interruption
 scenarios are not tested yet, and the worker reports tool calls for cascade

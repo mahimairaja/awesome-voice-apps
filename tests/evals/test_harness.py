@@ -45,6 +45,20 @@ def test_every_golden_names_a_demo_and_a_script():
         assert len(golden.scenario) <= 400 and len(golden.expected_outcome) <= 400
 
 
+def test_every_call_fits_its_script():
+    """A golden's call lasts as long as its script needs, within what the site accepts."""
+    from caller import script_seconds
+    from playground_api import MIN_EVAL_SECONDS, call_cap
+
+    assert script_seconds(["one two three four five"]) == 40  # 20 + 18 + 5 * 0.4
+    assert call_cap("resume") == 75 and call_cap("coffee") == 120
+    for golden in goldens():
+        meta = golden.additional_metadata
+        cap = call_cap(meta["demo"])
+        assert MIN_EVAL_SECONDS <= meta["seconds"] <= cap, golden.name
+        assert meta["seconds"] >= min(cap, script_seconds(script(golden))), golden.name
+
+
 def test_lines_read_values_off_the_screen():
     ui = UiState()
     ui.on_data(packet("Refill", {"label": {"rx": "4471-B", "dob": "1984-03-12"}}))

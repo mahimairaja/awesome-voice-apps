@@ -20,6 +20,19 @@ import httpx
 # The eval secret goes only to the site or one of its Cloudflare previews.
 SITES = re.compile(r"https://(mahimai\.ca|[a-z0-9-]+-mahimai\.mahimairaja3\.workers\.dev)")
 
+# How long the site lets an eval call last. It rejects a request outside
+# MIN_EVAL_SECONDS to callSeconds(demo) with a 400. Copied from the website
+# repository: src/server/playground/evals.ts (MIN_EVAL_SECONDS, evalSeconds)
+# and src/config/playground.ts (callSeconds: a demo's callSeconds, else 120).
+MIN_EVAL_SECONDS = 30
+DEFAULT_CALL_CAP = 120
+CALL_CAPS = {"resume": 75}
+
+
+def call_cap(demo: str) -> int:
+    """The longest eval call the site accepts for ``demo``, in seconds."""
+    return CALL_CAPS.get(demo, DEFAULT_CALL_CAP)
+
 
 class EvalBusy(Exception):
     """No eval call is free: the budget is spent or the two call slots are taken."""

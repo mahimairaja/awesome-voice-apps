@@ -10,7 +10,7 @@
     },
     "additional_metadata": {
       "demo": "coffee",
-      "seconds": 90,
+      "seconds": 105,
       "expected_tools": [
         "add_item",
         "remove_item",
@@ -35,7 +35,7 @@
     },
     "additional_metadata": {
       "demo": "coffee",
-      "seconds": 90,
+      "seconds": 100,
       "expected_tools": [
         "add_item",
         "submit_order"
@@ -91,7 +91,7 @@
     },
     "additional_metadata": {
       "demo": "mortgage",
-      "seconds": 90,
+      "seconds": 105,
       "expected_tools": [
         "compare_option"
       ],
@@ -114,7 +114,7 @@
     },
     "additional_metadata": {
       "demo": "trivia",
-      "seconds": 90,
+      "seconds": 120,
       "expected_tools": [
         "answer_question"
       ],
@@ -138,7 +138,7 @@
     },
     "additional_metadata": {
       "demo": "water",
-      "seconds": 90,
+      "seconds": 120,
       "expected_tools": [
         "log_water",
         "remove_water",
@@ -164,7 +164,7 @@
     },
     "additional_metadata": {
       "demo": "tenant",
-      "seconds": 90,
+      "seconds": 115,
       "expected_tools": [],
       "script": [
         "My kitchen faucet has been leaking for two weeks and my landlord keeps ignoring it. What can I do?",
@@ -185,7 +185,7 @@
     },
     "additional_metadata": {
       "demo": "clinic",
-      "seconds": 90,
+      "seconds": 120,
       "expected_tools": [
         "find_slots",
         "book_appointment",
@@ -264,7 +264,7 @@
     },
     "additional_metadata": {
       "demo": "city311",
-      "seconds": 90,
+      "seconds": 120,
       "expected_tools": [
         "report_issue",
         "set_language",
@@ -319,7 +319,7 @@
     },
     "additional_metadata": {
       "demo": "fraud",
-      "seconds": 90,
+      "seconds": 120,
       "expected_tools": [
         "verify_caller",
         "check_identity",
@@ -348,7 +348,7 @@
     },
     "additional_metadata": {
       "demo": "interview",
-      "seconds": 90,
+      "seconds": 120,
       "expected_tools": [],
       "script": [
         "I'm proud of a billing service I rebuilt last year. I owned the migration from a cron job to a queue, and it cut failed invoices by about half.",
@@ -369,7 +369,7 @@
     },
     "additional_metadata": {
       "demo": "router",
-      "seconds": 75,
+      "seconds": 110,
       "expected_tools": [
         "look_at_camera"
       ],
@@ -392,7 +392,7 @@
     },
     "additional_metadata": {
       "demo": "builder",
-      "seconds": 90,
+      "seconds": 120,
       "expected_tools": [
         "check_availability",
         "book_appointment"
@@ -417,7 +417,7 @@
     },
     "additional_metadata": {
       "demo": "rebook",
-      "seconds": 90,
+      "seconds": 120,
       "expected_tools": [
         "search_flights",
         "check_policy",
@@ -446,7 +446,7 @@
     },
     "additional_metadata": {
       "demo": "returns",
-      "seconds": 90,
+      "seconds": 120,
       "expected_tools": [
         "verify_order",
         "check_return_options",
@@ -495,7 +495,7 @@
     },
     "additional_metadata": {
       "demo": "outage",
-      "seconds": 90,
+      "seconds": 120,
       "turn_detection": "patient",
       "expected_tools": [
         "report_outage",
@@ -522,7 +522,7 @@
     },
     "additional_metadata": {
       "demo": "cancel",
-      "seconds": 90,
+      "seconds": 105,
       "expected_tools": [
         "note_reason",
         "make_offer"
@@ -546,7 +546,7 @@
     },
     "additional_metadata": {
       "demo": "cancel",
-      "seconds": 60,
+      "seconds": 90,
       "expected_tools": [
         "note_reason",
         "cancel_membership"
@@ -569,7 +569,7 @@
     },
     "additional_metadata": {
       "demo": "bill",
-      "seconds": 60,
+      "seconds": 95,
       "expected_tools": [],
       "script": [
         "Hi. I got a bill from an urgent care and I don't understand the difference between billed and allowed.",
@@ -589,7 +589,7 @@
     },
     "additional_metadata": {
       "demo": "pronounce",
-      "seconds": 90,
+      "seconds": 100,
       "expected_tools": [
         "choose_language",
         "skip_line"
@@ -613,7 +613,7 @@
     },
     "additional_metadata": {
       "demo": "postop",
-      "seconds": 90,
+      "seconds": 120,
       "expected_tools": [
         "record_breathing",
         "record_calf",
@@ -643,7 +643,7 @@
     },
     "additional_metadata": {
       "demo": "approval",
-      "seconds": 90,
+      "seconds": 120,
       "expected_tools": [
         "find_order",
         "ask_manager",
@@ -669,7 +669,7 @@
     },
     "additional_metadata": {
       "demo": "deescalate",
-      "seconds": 90,
+      "seconds": 120,
       "expected_tools": [
         "explain_charge",
         "apply_credit",
@@ -696,7 +696,7 @@
     },
     "additional_metadata": {
       "demo": "recall",
-      "seconds": 90,
+      "seconds": 120,
       "expected_tools": [
         "record_consent",
         "remember",
@@ -721,7 +721,7 @@
     },
     "additional_metadata": {
       "demo": "cost",
-      "seconds": 90,
+      "seconds": 110,
       "expected_tools": [
         "look_up_bill",
         "credit_duplicate"
@@ -801,7 +801,7 @@
     },
     "additional_metadata": {
       "demo": "onprem",
-      "seconds": 90,
+      "seconds": 120,
       "expected_tools": [
         "record_answer",
         "complete_checkin"
@@ -827,7 +827,7 @@
     },
     "additional_metadata": {
       "demo": "ivr",
-      "seconds": 90,
+      "seconds": 120,
       "expected_tools": [
         "transfer"
       ],
@@ -851,7 +851,7 @@
     },
     "additional_metadata": {
       "demo": "copilot",
-      "seconds": 90,
+      "seconds": 120,
       "expected_tools": [],
       "script": [
         "Thanks for making time, Dana. Before I show anything, how does your team handle carrier invoices today, and have you ever paid one twice?",
@@ -874,7 +874,7 @@
     },
     "additional_metadata": {
       "demo": "stresstest",
-      "seconds": 90,
+      "seconds": 120,
       "expected_tools": [
         "call_in",
         "end_test"
@@ -899,7 +899,7 @@
     },
     "additional_metadata": {
       "demo": "concierge",
-      "seconds": 90,
+      "seconds": 120,
       "expected_tools": [
         "recommend",
         "book_table",
@@ -927,7 +927,7 @@
     },
     "additional_metadata": {
       "demo": "sdr",
-      "seconds": 90,
+      "seconds": 120,
       "turn_detection": "patient",
       "expected_tools": [],
       "script": [
@@ -951,7 +951,7 @@
     },
     "additional_metadata": {
       "demo": "interp",
-      "seconds": 90,
+      "seconds": 120,
       "expected_tools": [],
       "script": [
         "Hola, buenas noches. Tengo una reserva para dos noches. Me llamo Ana Garcia.",
