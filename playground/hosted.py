@@ -437,10 +437,11 @@ class PlaygroundSink(RemoteCollectorSink):
 # Transcribed words a caller must say over the agent before it stops talking.
 INTERRUPT_MIN_WORDS = 2
 
-# A token made only of these, standing alone between spaces. A live Coffee eval had
-# the model end two replies with "// // // ...": unspoken, but seconds of dead air
-# and on screen in the transcript. A symbol inside a word or number ("24/7") stays.
-STRAY_SYMBOLS = re.compile(r"(?<!\S)[/\\|#*~`=_]+(?!\S)")
+# A token made only of these, standing alone between spaces. Live Coffee evals had
+# replies end in "// // // ..." and "for the ... ... ...": unspoken, but seconds of
+# dead air and on screen in the transcript. A symbol attached to a word or number
+# ("24/7", "wait...") stays.
+STRAY_SYMBOLS = re.compile(r"(?<!\S)[/\\|#*~`=_.\u2026]+(?!\S)")
 
 
 class StraySymbols:
