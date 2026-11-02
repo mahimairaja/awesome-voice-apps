@@ -464,10 +464,13 @@ class HostedGuard:
     # build_pool swaps "vad" for LiveKit Inference's turn detector, which reads the words
     # to decide a turn is over, so the endpointing wait can stay short without cutting off
     # a caller who pauses mid-sentence. Preemptive TTS starts the voice before the turn
-    # is confirmed; a turn that turns out unfinished discards it.
+    # is confirmed; a turn that turns out unfinished discards it. When the detector
+    # thinks the caller is not done, the session waits max_delay; a short answer such
+    # as a name read that way and waited 2.5 s (the 3 s default). Dynamic endpointing
+    # learns each caller's pauses between min_delay and max_delay.
     turn_handling = {
         "turn_detection": "vad",
-        "endpointing": {"min_delay": 0.3},
+        "endpointing": {"mode": "dynamic", "min_delay": 0.3, "max_delay": 1.2},
         "preemptive_generation": {"preemptive_tts": True},
         "interruption": {
             "mode": "vad",
