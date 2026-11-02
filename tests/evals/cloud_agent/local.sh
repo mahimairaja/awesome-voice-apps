@@ -36,8 +36,10 @@ cd "$here/.."
 # The scripted caller's Kokoro voice (about 115 MB), fetched once.
 mkdir -p .models recordings
 for f in kokoro-v1.0.int8.onnx voices-v1.0.bin; do
-  [ -s ".models/$f" ] || curl -fsSL -o ".models/$f" \
-    "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/$f"
+  # Into .part first, so a cut-off download is never taken for the model.
+  [ -s ".models/$f" ] || { curl -fsSL -o ".models/$f.part" \
+    "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/$f" &&
+    mv ".models/$f.part" ".models/$f"; }
 done
 EVAL_TARGET=cloud EVAL_DEMOS="${EVAL_DEMOS:-coffee}" EVAL_RECORDS=recordings/calls.json \
   EVAL_AUDIO_DIR=recordings uv run deepeval test run test_demos.py

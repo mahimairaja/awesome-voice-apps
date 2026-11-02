@@ -47,7 +47,8 @@ needs a paid model.
 cd tests/evals
 mkdir -p .models
 for f in kokoro-v1.0.int8.onnx voices-v1.0.bin; do
-  curl -fsSL -o ".models/$f" "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/$f"
+  curl -fsSL -o ".models/$f.part" "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/$f" &&
+    mv ".models/$f.part" ".models/$f"
 done
 uv sync
 
