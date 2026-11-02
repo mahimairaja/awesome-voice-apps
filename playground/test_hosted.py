@@ -156,6 +156,19 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(0)
         agent._finish.assert_awaited_once()
 
+    async def test_context_cap_leaves_room_for_tool_heavy_calls(self):
+        agent = object.__new__(hosted.HostedFraud)
+        agent.approval = {"seconds": 120}
+        agent._llm_requests = 0
+        agent._finish = AsyncMock()
+        # About 17 KB: a pharmacy call after 7 turns with tool results, stopped by the old 16 KB cap.
+        long_call = SimpleNamespace(to_dict=lambda: {"items": "x" * 17_000})
+        self.assertTrue(agent.charge_llm(long_call))
+        too_long = SimpleNamespace(to_dict=lambda: {"items": "x" * (hosted.CONTEXT_BYTES + 1)})
+        self.assertFalse(agent.charge_llm(too_long))
+        await asyncio.sleep(0)
+        agent._finish.assert_awaited_once()
+
     def openrtc_job(self, ctx):
         """A real OpenRTC coroutine executor running one held-open call for ctx."""
         executor = CoroutineJobExecutor(
