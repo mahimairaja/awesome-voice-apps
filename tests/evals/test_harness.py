@@ -341,25 +341,98 @@ def test_transcription_accuracy_compares_the_script_with_what_the_agent_heard():
     assert score == 0.0 and "no transcript" in reason
 
 
-def test_agent_intelligibility_names_the_worst_turn():
+def _clip(seconds: float, level: float = 0.3, start: float | None = None, rate: int = 16000):
+    """A WAV Audio of a steady tone (or digital silence at level 0)."""
+    import numpy as np
+    from deepeval.test_case import Audio
+    from speech import wav_bytes
+
+    t = np.arange(int(seconds * rate)) / rate
+    samples = level * np.sin(2 * np.pi * 220 * t)
+    return Audio.from_bytes(wav_bytes(samples, rate), "audio/wav", start_time=start)
+
+
+class _DurationSTT:
+    """Hears each clip by its length, so a test can tell joined audio apart."""
+
+    def __init__(self, heard: dict[float, str]):
+        self.heard = heard
+        self.calls = 0
+
+    def transcribe(self, audio):
+        from speech import wav_samples
+
+        self.calls += 1
+        samples, rate = wav_samples(audio)
+        return self.heard[round(len(samples) / rate, 1)], 0.0
+
+
+def test_agent_intelligibility_names_the_worst_reply():
+    from deepeval.test_case import Turn
     from metrics import AgentIntelligibilityMetric
 
-    class FakeSTT:
-        def transcribe(self, audio):
-            return {"a": "your total is five dollars", "b": "your toad all is fine"}[audio], 0.0
-
+    stt = _DurationSTT({1.0: "your total is five dollars", 2.0: "your toad all is fine"})
     turns = [
-        SimpleNamespace(role="user", content="hi", audio="x"),
-        SimpleNamespace(role="assistant", content="Your total is five dollars.", audio="a"),
-        SimpleNamespace(role="assistant", content="Your total is five.", audio="b"),
-        SimpleNamespace(role="assistant", content="", audio="c"),
+        Turn(role="user", content="hi", audio=_clip(1.0)),
+        Turn(role="assistant", content="Your total is five dollars.", audio=_clip(1.0)),
+        Turn(role="user", content="and?", audio=_clip(1.0)),
+        Turn(role="assistant", content="Your total is five.", audio=_clip(2.0)),
+        Turn(role="user", content="ok", audio=_clip(1.0)),
+        Turn(role="assistant", content="", audio=_clip(1.0)),
     ]
-    score, reason, breakdown = AgentIntelligibilityMetric(FakeSTT())._evaluate(
+    score, reason, breakdown = AgentIntelligibilityMetric(stt)._evaluate(
         SimpleNamespace(turns=turns)
     )
-    assert breakdown["turns"] == 2
+    assert breakdown["replies"] == 2
     assert 0.5 < score < 1.0
     assert "heard as" in reason and "toad" in reason
+
+
+def test_agent_intelligibility_joins_the_segments_of_one_reply():
+    """'Awesome!' and the rest of the reply are scored against their audio together."""
+    from deepeval.test_case import Turn
+    from metrics import AgentIntelligibilityMetric
+
+    stt = _DurationSTT({2.5: "awesome youre now up to four glasses"})
+    turns = [
+        Turn(role="user", content="another one", audio=_clip(1.0)),
+        Turn(role="assistant", content="Awesome!", audio=_clip(1.5, start=3.0)),
+        Turn(role="assistant", content="You're now up to four glasses.", audio=_clip(1.0)),
+        Turn(role="user", content="thanks", audio=_clip(1.0)),
+    ]
+    score, reason, breakdown = AgentIntelligibilityMetric(stt)._evaluate(
+        SimpleNamespace(turns=turns)
+    )
+    assert score == 1.0, reason
+    assert breakdown == {"replies": 1}
+    assert stt.calls == 1
+
+
+def test_silent_turns_are_named_and_left_out():
+    from deepeval.test_case import ConversationalTestCase, Turn
+    from metrics import AgentIntelligibilityMetric, VoiceConsistencyMetric, is_silent
+
+    assert is_silent(_clip(1.0, level=0.0)) and not is_silent(_clip(1.0))
+    stt = _DurationSTT({1.0: "one latte", 1.2: "anything else"})
+    turns = [
+        Turn(role="assistant", content="One latte.", audio=_clip(1.0, start=0.0)),
+        Turn(role="user", content="yes", audio=_clip(1.0, start=2.0)),
+        Turn(role="assistant", content="Anything else?", audio=_clip(1.2, start=4.0)),
+        Turn(role="user", content="no", audio=_clip(1.0, start=6.0)),
+        Turn(role="assistant", content="You", audio=_clip(3.0, level=0.0)),
+    ]
+    case = ConversationalTestCase(turns=turns)
+    consistency = VoiceConsistencyMetric()
+    consistency.measure(case, _show_indicator=False)
+    assert consistency.score > 0.9
+    assert consistency.score_breakdown["no_audio_turns"] == [4]
+    assert "No audio in turn(s) 4" in consistency.reason
+    assert metric_key(consistency) == "voice_consistency"
+    assert turns[4].audio is not None  # the case itself is left as it was
+
+    score, reason, breakdown = AgentIntelligibilityMetric(stt)._evaluate(case)
+    assert score == 1.0 and breakdown["no_audio_turns"] == [4]
+    assert "No audio in turn(s) 4" in reason
 
 
 def test_overlapping_replies_are_left_out_of_latency():
