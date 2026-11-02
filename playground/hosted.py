@@ -147,6 +147,7 @@ from livekit.agents import (
     utils,
 )
 from livekit.agents.llm import ChatChunk
+from livekit.agents.types import TimedString
 from livekit.agents.voice.agent_session import SessionConnectOptions
 from livekit.agents.voice.room_io import RoomOptions
 from livekit.plugins import cartesia, openai
@@ -436,6 +437,15 @@ class PlaygroundSink(RemoteCollectorSink):
 
 # Transcribed words a caller must say over the agent before it stops talking.
 INTERRUPT_MIN_WORDS = 2
+# Tool round trips the model may take within one caller turn (the pool's max_tool_steps).
+TOOL_STEPS = 3
+
+
+def after_tool(chat_ctx) -> bool:
+    """Whether this request is the model's pass over a tool result, not a new turn."""
+    items = getattr(chat_ctx, "items", None) or []
+    return bool(items) and getattr(items[-1], "type", None) == "function_call_output"
+
 
 # A token made only of these, standing alone between spaces. Live Coffee evals had
 # replies end in "// // // ..." and "for the ... ... ...": unspoken, but seconds of
@@ -452,7 +462,10 @@ class StraySymbols:
     passes through in the chunks it came in.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, stage: str = "llm") -> None:
+        # Which node dropped a run ("llm" or "transcript"), so the log shows where in
+        # the pipeline the symbols first appear.
+        self.stage = stage
         self.pending = ""
         # Whether the text already sent ends in a space, so a dropped run leaves one.
         self.spaced = False
@@ -493,7 +506,8 @@ class StraySymbols:
             # chunk. Only the symbols and offsets: reply text can carry what the caller
             # said, and the worker keeps transcripts out of its logs.
             logger.warning(
-                "dropped stray symbols", extra={"dropped": dropped, "chunk_chars": len(text)}
+                "dropped stray symbols",
+                extra={"stage": self.stage, "dropped": dropped, "chunk_chars": len(text)},
             )
         text = re.sub(r" {2,}", " ", "".join(kept))
         if self.spaced:
@@ -522,8 +536,15 @@ class HostedGuard:
     # The call's job, closed before the room goes (see end_job).
     _job_ctx = None
     _job_task: asyncio.Task | None = None
-    # LLM requests allowed in a full two-minute call; shorter calls scale down.
+    # Caller turns the model may answer in a full two-minute call; shorter calls scale
+    # down. A request that follows a tool result is not a new turn: tool-heavy demos
+    # (pharmacy, claim, furnace) spent the budget on follow-up passes and went silent
+    # mid-call. Those passes have their own cap of TOOL_STEPS per turn.
     llm_budget = 12
+    # Said from code the moment a reply turns into a tool call, so the caller hears
+    # the agent before the tool runs and the model takes a second pass. A demo that
+    # must stay silent (the panel scribe) sets None.
+    tool_filler: ClassVar[str | None] = "One moment."
     # Session turn-taking; a demo about interruptions brings its own. Raw voice activity
     # alone (a cough, a TV, the agent's own voice leaking back through laptop speakers)
     # used to cut a reply after its first word. Now it takes two transcribed words to
@@ -617,23 +638,64 @@ class HostedGuard:
 
     async def llm_node(self, chat_ctx, tools, model_settings):
         # Bound billable work before sending it, independently of delayed metrics.
+        follow_up = after_tool(chat_ctx)
         self._llm_requests += 1
-        scale = self.approval["seconds"] / 120
-        if (
-            self._llm_requests > max(1, int(self.llm_budget * scale))
-            or len(json.dumps(chat_ctx.to_dict()).encode()) > 16000
-        ):
+        if not follow_up:
+            self._llm_turns = getattr(self, "_llm_turns", 0) + 1
+        turns = max(1, int(self.llm_budget * self.approval["seconds"] / 120))
+        context_bytes = len(json.dumps(chat_ctx.to_dict()).encode())
+        reason = (
+            "llm_turns"
+            if getattr(self, "_llm_turns", 0) > turns
+            else "llm_requests"
+            if self._llm_requests > turns * (1 + TOOL_STEPS)
+            else "context_bytes"
+            if context_bytes > 16000
+            else None
+        )
+        if reason:
+            # Counts only: which cap ended a call, never what was said.
+            logger.warning(
+                "call stopped",
+                extra={
+                    "reason": reason,
+                    "turns": getattr(self, "_llm_turns", 0),
+                    "requests": self._llm_requests,
+                    "context_bytes": context_bytes,
+                },
+            )
             spawn(self._finish())
             return
         stray = StraySymbols()
+        spoke = False
         async for chunk in super().llm_node(chat_ctx, tools, model_settings):
             if isinstance(chunk, str):
                 chunk = stray.feed(chunk)
                 if not chunk:
                     continue
-            elif isinstance(chunk, ChatChunk) and chunk.delta and chunk.delta.content:
-                chunk.delta.content = stray.feed(chunk.delta.content)
+                spoke = True
+            elif isinstance(chunk, ChatChunk) and chunk.delta:
+                if chunk.delta.content:
+                    chunk.delta.content = stray.feed(chunk.delta.content)
+                    spoke = spoke or bool(chunk.delta.content)
+                if chunk.delta.tool_calls and not spoke and not follow_up and self.tool_filler:
+                    spoke = True
+                    yield self.tool_filler + " "
             yield chunk
+        if rest := stray.flush():
+            yield rest
+
+    async def transcription_node(self, text, model_settings):
+        # The same filter on what the caller sees. Runs that reach this node but not
+        # llm_node were added after the model, and the "transcript" stage in the log
+        # says so.
+        stray = StraySymbols("transcript")
+        async for chunk in text:
+            if isinstance(chunk, TimedString):
+                yield chunk
+                continue
+            if cleaned := stray.feed(chunk):
+                yield cleaned
         if rest := stray.flush():
             yield rest
 
@@ -642,6 +704,9 @@ class HostedGuard:
             async for chunk in text:
                 self._tts_bytes += len(chunk.encode())
                 if self._tts_bytes > int(4000 * self.approval["seconds"] / 120):
+                    logger.warning(
+                        "call stopped", extra={"reason": "tts_bytes", "tts_bytes": self._tts_bytes}
+                    )
                     spawn(self._finish())
                     return
                 yield chunk
@@ -803,6 +868,8 @@ class HostedClaim(HostedGuard, ClaimIntake):
 
 
 class HostedPanel(HostedGuard, SoloPanelScribe):
+    # The scribe listens; a filler would break its silence.
+    tool_filler = None
     demo = "panel"
     switchable = True
     source = "panel-scribe"
@@ -2019,7 +2086,7 @@ def build_pool() -> AgentPool:
             ),
             # Replaced per call in HostedGuard.on_enter; never share state between calls.
             userdata={},
-            max_tool_steps=3,
+            max_tool_steps=TOOL_STEPS,
             turn_handling=turn_handling_for(agent),
             start_options=start,
             on_session_ready=before_start,
