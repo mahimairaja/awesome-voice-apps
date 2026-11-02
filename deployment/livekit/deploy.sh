@@ -25,10 +25,13 @@ grep -E '^COPY ' "$root/deployment/playground.Dockerfile" | while read -r _ args
     done
   done
 done
-cp "$root/deployment/playground.Dockerfile" "$build/Dockerfile"
-# The /status heartbeat reports which commit is running.
+# The /status heartbeat reports which commit is running. awk, not sed: BSD sed
+# (macOS) writes a literal "n" for "\n" in a replacement.
 sha="$(git -C "$root" rev-parse --short=12 HEAD)"
-sed -i.bak "s|^CMD |ENV PLAYGROUND_VERSION=$sha\nCMD |" "$build/Dockerfile" && rm "$build/Dockerfile.bak"
+awk -v sha="$sha" '/^CMD /{print "ENV PLAYGROUND_VERSION=" sha} {print}' \
+  "$root/deployment/playground.Dockerfile" >"$build/Dockerfile"
+# lk detects a Python project by its top-level requirements file.
+cp "$root/playground/requirements-hosted.txt" "$build/requirements.txt"
 # Resolve the secrets file before leaving the caller's directory.
 secrets=""
 if [ "${1:-}" = "create" ]; then
@@ -37,7 +40,8 @@ fi
 [ -f "$here/livekit.toml" ] && cp "$here/livekit.toml" "$build/"
 cd "$build"
 if [ "${1:-}" = "create" ]; then
-  lk agent create --secrets-file "$secrets"
+  # Non-interactive lk needs a region; voiceproject's agents run in us-east.
+  lk agent create --region "${LK_REGION:-us-east}" --secrets-file "$secrets"
   cp livekit.toml "$here/livekit.toml"
   echo "Commit deployment/livekit/livekit.toml so later deploys update this agent."
 else
