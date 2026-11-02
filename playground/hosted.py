@@ -456,6 +456,10 @@ class StraySymbols:
         self.pending = ""
         # Whether the text already sent ends in a space, so a dropped run leaves one.
         self.spaced = False
+        # The last character already seen. The model streams a sentence's period at the
+        # start of the next chunk (". Would"); without this the period looked standalone
+        # and was dropped, and TTS waited for a sentence end that never came.
+        self.last = ""
 
     def feed(self, text: str) -> str:
         text = self.pending + text
@@ -472,7 +476,18 @@ class StraySymbols:
         return self._clean(rest)
 
     def _clean(self, text: str) -> str:
-        dropped = [(m.start(), m.group()) for m in STRAY_SYMBOLS.finditer(text)]
+        # Match against the previous character too: the lookbehind sees it, and a match
+        # never starts before it.
+        context = self.last + text
+        offset = len(self.last)
+        if text:
+            self.last = text[-1]
+        kept, at, dropped = [], offset, []
+        for m in STRAY_SYMBOLS.finditer(context, offset):
+            kept.append(context[at : m.start()])
+            dropped.append((m.start() - offset, m.group()))
+            at = m.end()
+        kept.append(context[at:])
         if dropped:
             # A local A/B could not reproduce these runs, so log where they land in each
             # chunk. Only the symbols and offsets: reply text can carry what the caller
@@ -480,7 +495,7 @@ class StraySymbols:
             logger.warning(
                 "dropped stray symbols", extra={"dropped": dropped, "chunk_chars": len(text)}
             )
-        text = re.sub(r" {2,}", " ", STRAY_SYMBOLS.sub("", text))
+        text = re.sub(r" {2,}", " ", "".join(kept))
         if self.spaced:
             text = text.lstrip(" ")
         if text:
