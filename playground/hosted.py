@@ -439,6 +439,10 @@ class PlaygroundSink(RemoteCollectorSink):
 INTERRUPT_MIN_WORDS = 2
 # Tool round trips the model may take within one caller turn (the pool's max_tool_steps).
 TOOL_STEPS = 3
+# A call ends when its chat context passes this many bytes of JSON. Tool results
+# count, so tool-heavy demos (pharmacy, claims, furnace) hit 16 KB around turn 8.
+# The turn and request budgets above still cap what a call can cost.
+CONTEXT_BYTES = 32_000
 
 
 def after_tool(chat_ctx) -> bool:
@@ -650,7 +654,7 @@ class HostedGuard:
             else "llm_requests"
             if self._llm_requests > turns * (1 + TOOL_STEPS)
             else "context_bytes"
-            if context_bytes > 16000
+            if context_bytes > CONTEXT_BYTES
             else None
         )
         if reason:
@@ -1010,7 +1014,7 @@ class HostedFraud(HostedGuard, FrontDesk):
         scale = self.approval["seconds"] / 120
         if (
             self._llm_requests > max(1, int(self.llm_budget * scale))
-            or len(json.dumps(chat_ctx.to_dict()).encode()) > 16000
+            or len(json.dumps(chat_ctx.to_dict()).encode()) > CONTEXT_BYTES
         ):
             spawn(self._finish())
             return False
@@ -1391,7 +1395,7 @@ class HostedApproval(HostedGuard, RefundDesk):
         scale = self.approval["seconds"] / 120
         if (
             self._llm_requests > max(1, int(self.llm_budget * scale))
-            or len(json.dumps(chat_ctx.to_dict()).encode()) > 16000
+            or len(json.dumps(chat_ctx.to_dict()).encode()) > CONTEXT_BYTES
         ):
             spawn(self._finish())
             return False
