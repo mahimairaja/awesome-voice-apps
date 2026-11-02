@@ -630,6 +630,33 @@ def test_overlapping_replies_are_left_out_of_latency():
     assert out[3]["latency_ms"] == 840.3
 
 
+def test_a_reply_begun_in_a_pause_in_the_callers_line_has_a_latency():
+    """The interview agent took the turn in each long line's pause: latency from the pause."""
+    import numpy as np
+    from deepeval.test_case import Audio, Turn
+    from report import turns
+    from speech import wav_bytes
+
+    rate = 16000
+    tone = 0.3 * np.sin(2 * np.pi * 220 * np.arange(2 * rate) / rate)
+    gap = np.zeros(int(1.5 * rate))
+    line = np.concatenate([tone, gap, tone])  # talk 2 s, pause 1.5 s, talk 2 s
+    caller = Audio.from_bytes(wav_bytes(line, rate), "audio/wav", start_time=10.0)
+    case = SimpleNamespace(
+        turns=[
+            Turn(role="user", content="Two sentences.", audio=caller),
+            # Began 1.4 s into the pause, while the caller's clip was still going.
+            Turn(role="assistant", content="Great.", audio=_clip(1.0, start=13.4), latency_ms=0.0),
+            Turn(role="user", content="Again.", audio=_clip(3.0, start=20.0)),
+            # Began while the caller was talking, with no pause before: overlap.
+            Turn(role="assistant", content="Sure.", audio=_clip(1.0, start=21.0), latency_ms=0.0),
+        ]
+    )
+    out = turns(case)
+    assert out[1]["latency_ms"] == pytest.approx(1400.0, abs=25)
+    assert "latency_ms" not in out[3]
+
+
 def _verdict(**reasons):
     from judge_claude import Score, Verdict
 

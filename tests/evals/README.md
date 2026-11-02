@@ -31,7 +31,9 @@ this: it calls the live hosted demos and is run by maintainers.
    - Agent Intelligibility: faster-whisper on the agent's audio against the
      text the agent published. Does the audio say what the agent meant?
    A reply that starts before the caller finishes is overlap, not a 0 ms
-   response, so it is left out of latency.
+   response, so it is left out of latency, unless the agent took the turn in
+   a pause of half a second or more in the caller's line: then its latency
+   runs from the start of that pause.
 5. The transcript, timings and scores are stored on mahimai.ca. The worker
    reports the tools the agent called. `judge_claude.py` then has Claude
    Sonnet 5.5 judge goal, relevance, tool use and policy through the Claude API
