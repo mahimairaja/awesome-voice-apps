@@ -1531,7 +1531,6 @@ class HostedCost(HostedGuard, CostRouter):
         self.publish()
 
     async def on_enter(self) -> None:
-        self.session.on("user_input_transcribed", self.prefetch_question)
         await self.load_index()
         await super().on_enter()
         self.meter_embedding(0)

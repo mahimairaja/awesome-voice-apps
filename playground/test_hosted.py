@@ -635,6 +635,20 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(guide._prefetched, {})
         self.assertEqual(guide._heard, [])
 
+    async def test_only_tenant_prefetches_question_embeddings(self):
+        for cls, expected in ((hosted.HostedTenant, 1), (hosted.HostedCost, 0)):
+            agent = object.__new__(cls)
+            session = MagicMock()
+            agent.load_index = AsyncMock()
+            agent.meter_embedding = MagicMock()
+            with (
+                patch.object(type(agent), "session", session, create=True),
+                patch.object(hosted.HostedGuard, "on_enter", AsyncMock()),
+            ):
+                await agent.on_enter()
+            events = [c.args[0] for c in session.on.call_args_list]
+            self.assertEqual(events.count("user_input_transcribed"), expected, cls.__name__)
+
     async def test_tenant_question_embeds_again_when_the_turn_text_differs(self):
         guide = self.tenant_guide()
         embedded = AsyncMock(return_value=([[1.0]], 3))
