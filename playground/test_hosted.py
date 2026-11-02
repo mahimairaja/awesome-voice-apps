@@ -132,6 +132,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         agent = object.__new__(hosted.HostedCoffee)
         agent.approval = {"seconds": 60}
         agent._llm_requests = 6
+        agent._llm_turns = 6
         agent._tts_bytes = 0
         agent._finish = AsyncMock()
         context = SimpleNamespace(to_dict=dict)
@@ -1273,6 +1274,101 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             chunks = [c async for c in agent.llm_node(context, [], None)]
         text = "".join(c if isinstance(c, str) else c.delta.content for c in chunks)
         self.assertEqual(text, "Your order is in. Pull up to the window.")
+
+    def coffee_guard(self, turns=0, requests=0):
+        agent = object.__new__(hosted.HostedCoffee)
+        agent.approval = {"seconds": 120}
+        agent._llm_turns = turns
+        agent._llm_requests = requests
+        agent._finish = AsyncMock()
+        return agent
+
+    @staticmethod
+    def chat(*types):
+        items = [SimpleNamespace(type=t) for t in types]
+        return SimpleNamespace(items=items, to_dict=lambda: {"items": [{} for _ in items]})
+
+    async def test_tool_follow_ups_do_not_spend_caller_turns(self):
+        from livekit.agents import Agent
+
+        async def fake_llm(_agent, _ctx, _tools, _settings):
+            yield "Done."
+
+        agent = self.coffee_guard(turns=12, requests=12)
+        with patch.object(Agent, "llm_node", fake_llm):
+            # A pass over a tool result is not a new turn, so turn 12 of 12 still answers.
+            out = [
+                c
+                async for c in agent.llm_node(
+                    self.chat("message", "function_call_output"), [], None
+                )
+            ]
+            self.assertEqual(out, ["Done."])
+            self.assertEqual(agent._llm_turns, 12)
+            # A thirteenth caller turn stops the call, and the log says which cap.
+            with self.assertLogs(hosted.logger, "WARNING") as logs:
+                out = [c async for c in agent.llm_node(self.chat("message"), [], None)]
+        self.assertEqual(out, [])
+        self.assertEqual(logs.records[-1].reason, "llm_turns")
+        self.assertNotIn("text", vars(logs.records[-1]))
+        # Follow-up passes still have a hard cap: TOOL_STEPS per allowed turn.
+        agent = self.coffee_guard(turns=1, requests=12 * (1 + hosted.TOOL_STEPS))
+        with (
+            patch.object(Agent, "llm_node", fake_llm),
+            self.assertLogs(hosted.logger, "WARNING") as logs,
+        ):
+            out = [c async for c in agent.llm_node(self.chat("function_call_output"), [], None)]
+        self.assertEqual(out, [])
+        self.assertEqual(logs.records[-1].reason, "llm_requests")
+
+    async def test_tool_filler_is_spoken_before_a_tool_call(self):
+        from livekit.agents import Agent
+        from livekit.agents.llm import ChatChunk, ChoiceDelta, FunctionToolCall
+
+        call = FunctionToolCall(name="add_item", arguments="{}", call_id="c1")
+
+        async def tool_first(_agent, _ctx, _tools, _settings):
+            yield ChatChunk(id="1", delta=ChoiceDelta(role="assistant", tool_calls=[call]))
+
+        async def text_first(_agent, _ctx, _tools, _settings):
+            yield "Sure, a latte."
+            yield ChatChunk(id="1", delta=ChoiceDelta(role="assistant", tool_calls=[call]))
+
+        def spoken(chunks):
+            return [c for c in chunks if isinstance(c, str)]
+
+        with patch.object(Agent, "llm_node", tool_first):
+            out = [c async for c in self.coffee_guard().llm_node(self.chat("message"), [], None)]
+            self.assertEqual(spoken(out), ["One moment. "])
+            self.assertIsInstance(out[1], ChatChunk)
+            # No filler on the pass over a tool result, or for the silent panel scribe.
+            out = [
+                c
+                async for c in self.coffee_guard().llm_node(
+                    self.chat("message", "function_call_output"), [], None
+                )
+            ]
+            self.assertEqual(spoken(out), [])
+            panel = object.__new__(hosted.HostedPanel)
+            panel.approval, panel._llm_turns, panel._llm_requests = {"seconds": 120}, 0, 0
+            out = [c async for c in panel.llm_node(self.chat("message"), [], None)]
+            self.assertEqual(spoken(out), [])
+        # A reply that already speaks needs no filler.
+        with patch.object(Agent, "llm_node", text_first):
+            out = [c async for c in self.coffee_guard().llm_node(self.chat("message"), [], None)]
+        self.assertEqual(spoken(out), ["Sure, a latte."])
+
+    async def test_transcript_drops_runs_added_after_the_model(self):
+        agent = self.coffee_guard()
+
+        async def text():
+            yield "How can I help you today?"
+            yield " // //"
+
+        with self.assertLogs(hosted.logger, "WARNING") as logs:
+            out = "".join([c async for c in agent.transcription_node(text(), None)])
+        self.assertEqual(out, "How can I help you today? ")
+        self.assertEqual(logs.records[0].stage, "transcript")
 
     def test_reply_latency_is_logged_per_turn(self):
         user = SimpleNamespace(
