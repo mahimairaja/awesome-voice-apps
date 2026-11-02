@@ -18,11 +18,18 @@ from pathlib import Path
 import deepeval
 import pytest
 from agent_connector import AgentConnector
-from caller import UiState, caller_graph, patient_simulator, script, stop_after_script
+from caller import (
+    UiState,
+    caller_graph,
+    patient_simulator,
+    script,
+    skip_reason,
+    stop_after_script,
+)
 from deepeval import assert_test
 from deepeval.dataset import EvaluationDataset
 from deepeval.voice import VoiceConfig
-from metrics import gating_metrics, voice_metrics, word_metrics
+from metrics import drop_phantoms, gating_metrics, voice_metrics, word_metrics
 from playground_api import EvalBusy, Site
 from report import call_record
 from rescore import save_turns
@@ -37,6 +44,14 @@ dataset.add_goldens_from_json_file(file_path=str(HERE / ".dataset.json"))
 # EVAL_DEMOS=coffee,pharmacy runs only those demos; empty runs every golden.
 only = {d for d in os.environ.get("EVAL_DEMOS", "").split(",") if d}
 goldens = [g for g in dataset.goldens if not only or g.additional_metadata["demo"] in only]
+# A demo in caller.SKIPPED_DEMOS is reported as skipped, with its reason, and
+# never reserves a call.
+CASES = [
+    pytest.param(
+        g, id=g.name, marks=[pytest.mark.skip(reason=skip_reason(g))] if skip_reason(g) else []
+    )
+    for g in goldens
+]
 
 RUN = {
     "id": os.environ.get("EVAL_RUN_ID") or f"local-{int(time.time())}",
@@ -97,12 +112,18 @@ def simulate(golden, call, speech):
         max_concurrent=1,
     )
     [case] = simulator.simulate([golden], max_user_simulations=len(script(golden)) + 1)
+    said = connectors[-1].said if connectors else None
     if AUDIO_DIR:
         # Every turn's clip and start time, so rescore.py can score it again.
-        save_turns(case, golden, Path(AUDIO_DIR) / simulator._voice.run_label)
+        save_turns(case, golden, Path(AUDIO_DIR) / simulator._voice.run_label, said)
     heard = connectors[-1].heard if connectors else []
     if connectors:
         describe(golden.name, case, connectors[-1])
+    # Whisper's "you" on a silent clip is not the agent: keep it out of the
+    # transcript, the metrics and the judge.
+    case.turns, dropped = drop_phantoms(case.turns, None if said is None else set(said))
+    if dropped:
+        log.warning("%s: left out silent turn(s) %s", golden.name, dropped)
     return case, heard
 
 
@@ -132,7 +153,7 @@ def describe(name, case, connector) -> None:
         log.warning(line)
 
 
-@pytest.mark.parametrize("golden", goldens, ids=[g.name for g in goldens])
+@pytest.mark.parametrize("golden", CASES)
 def test_demo(golden, site, speech):
     meta = golden.additional_metadata
     try:

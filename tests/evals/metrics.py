@@ -21,6 +21,8 @@ locally, need no paid model and compare words, not audio statistics:
 A silent assistant clip (the agent's transcript arrived but its audio did
 not) is not the agent's voice, so the audio metrics leave it out and name it
 in their reason instead of scoring it as a very quiet turn (see AudibleTurns).
+A silent clip whose only words are whisper's guess ("you") is no turn at all:
+``drop_phantoms`` takes it out of the call before anything is scored.
 
 Goal, relevance, tool use and policy are judged from the transcript by Claude
 (see judge_claude.py and JUDGE.md).
@@ -76,6 +78,52 @@ def silent_turns(turns) -> list[int]:
         for index, turn in enumerate(turns)
         if turn.role == "assistant" and turn.audio is not None and is_silent(turn.audio)
     ]
+
+
+# What faster-whisper writes for a clip with nothing in it, after normalize().
+SILENCE_WORDS = {"", "you", "you you", "thank you", "thanks", "bye", "thanks for watching"}
+
+
+def phantom(turn, agent_said: set[str] | None = None) -> bool:
+    """True when an assistant turn is the agent's silence, not its speech.
+
+    DeepEval transcribes an agent clip with whisper when LiveKit sent no
+    transcript for it, and when the call ends mid-reply. On a silent clip
+    whisper writes "you", so the panel scribe that must stay silent "said"
+    "you you" and calls ended on "You". A turn with voiced audio is speech. A
+    silent one is kept only when its words are the agent's own: one of the
+    final transcripts LiveKit published (``agent_said``), or, when those are
+    unknown (a saved call), any words but whisper's silence words.
+    """
+    if turn.role != "assistant":
+        return False
+    if turn.audio is not None and not is_silent(turn.audio):
+        return False
+    text = (turn.content or "").strip()
+    if agent_said is not None:
+        return text not in agent_said
+    return normalize(text) in SILENCE_WORDS
+
+
+def drop_phantoms(turns, agent_said: set[str] | None = None) -> tuple[list, list[int]]:
+    """The turns without the agent's silences (see ``phantom``), and their old indexes.
+
+    When DeepEval replaced LiveKit's words with whisper's reading of a reply
+    cut off at hang-up, it kept them as ``metadata["intended_content"]``; that
+    turn keeps LiveKit's words instead of being left out.
+    """
+    kept, dropped = [], []
+    for index, turn in enumerate(turns):
+        if not phantom(turn, agent_said):
+            kept.append(turn)
+            continue
+        intended = ((turn.metadata or {}).get("intended_content") or "").strip()
+        if intended and (agent_said is None or intended in agent_said):
+            turn.content = intended
+            kept.append(turn)
+        else:
+            dropped.append(index)
+    return kept, dropped
 
 
 def no_audio_note(indexes: list[int]) -> str:

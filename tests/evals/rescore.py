@@ -15,6 +15,10 @@ overwritten, so it is cut from ``deepeval-conversation.wav`` from its start,
 after taking out every clip that is known exactly; its trailing silence is
 approximate.
 
+Silent turns whose words are whisper's guess ("you") are left out before
+scoring, as in a live run (see metrics.drop_phantoms). For a turns.json call,
+"before" is the call scored as recorded, with them in.
+
 Agent Intelligibility needs faster-whisper. It runs only when the model is
 already cached; nothing is downloaded.
 """
@@ -41,8 +45,14 @@ REPORTED = ["voice_consistency", "agent_intelligibility", "turn_taking_naturalne
 # Saving --------------------------------------------------------------------
 
 
-def save_turns(case: ConversationalTestCase, golden, folder: Path) -> None:
-    """Write each turn's clip and a turns.json that points at it."""
+def save_turns(
+    case: ConversationalTestCase, golden, folder: Path, said: list[str] | None = None
+) -> None:
+    """Write each turn's clip and a turns.json that points at it.
+
+    ``said`` is the agent's own LiveKit transcripts, kept so a rescore can tell
+    its words from whisper's guess at a silent clip (see metrics.phantom).
+    """
     folder.mkdir(parents=True, exist_ok=True)
     out = []
     for index, turn in enumerate(case.turns):
@@ -58,6 +68,8 @@ def save_turns(case: ConversationalTestCase, golden, folder: Path) -> None:
         out.append(item)
     meta = golden.additional_metadata or {}
     body = {"golden": golden.name, "demo": meta.get("demo"), "turns": out}
+    if said is not None:
+        body["agent_said"] = said
     (folder / TURNS_FILE).write_text(json.dumps(body, indent=1))
 
 
@@ -78,7 +90,7 @@ def turn(item: dict, audio: Audio | None) -> Turn:
 
 
 def load_case(folder: Path) -> tuple[str, ConversationalTestCase]:
-    """A test case from a folder the harness wrote turns.json into."""
+    """A test case from a folder the harness wrote turns.json into, as recorded."""
     body = json.loads((folder / TURNS_FILE).read_text())
     turns = []
     for item in body["turns"]:
@@ -221,19 +233,24 @@ def main(argv: list[str]) -> int:
         rows = sorted(
             (r for part in export for r in part["results"]), key=lambda r: r["created_at"]
         )
+    from metrics import drop_phantoms
+
     stt = cached_whisper()
     if stt is None:
         print("faster-whisper is not cached: Agent Intelligibility is skipped.\n")
 
     folders = sorted(p for p in root.glob("simulation-*") if p.is_dir())
     header = " | ".join(f"{key} before / after" for key in REPORTED)
-    print(f"| call | {header} | no audio | rebuild residual |")
-    print("|---" * (len(REPORTED) + 3) + "|")
+    print(f"| call | {header} | no audio | silent turns left out | rebuild residual |")
+    print("|---" * (len(REPORTED) + 4) + "|")
     legacy = iter(rows)
     for folder in folders:
-        before, residual = {}, ""
+        before, residual, said = {}, "", None
         if (folder / TURNS_FILE).exists():
             name, case = load_case(folder)
+            said = json.loads((folder / TURNS_FILE).read_text()).get("agent_said")
+            # Before: the call as recorded, whisper's guesses at silence included.
+            before = {key: value for key, (value, _) in score(case, stt).items()}
         else:
             row = next(legacy, None)
             if row is None:
@@ -246,12 +263,13 @@ def main(argv: list[str]) -> int:
                 continue
             case, level = legacy_case(folder, row)
             name, before, residual = row["golden"], stored(row), f"{level:.0f} dBFS"
+        case.turns, dropped = drop_phantoms(case.turns, None if said is None else set(said))
         after = score(case, stt)
         silent = sorted({i for _, skipped in after.values() for i in skipped})
         cells = " | ".join(
             f"{fmt(before.get(key))} / {fmt(after.get(key, (None, []))[0])}" for key in REPORTED
         )
-        print(f"| {name} | {cells} | {silent or '-'} | {residual or '-'} |")
+        print(f"| {name} | {cells} | {silent or '-'} | {dropped or '-'} | {residual or '-'} |")
     return 0
 
 

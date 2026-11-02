@@ -9,6 +9,7 @@ bottle label: ``{Refill.label.rx|spell}`` is the ``rx`` field of the last
 from __future__ import annotations
 
 import json
+import math
 import re
 from datetime import date
 
@@ -90,6 +91,41 @@ def script(golden: ConversationalGolden) -> list[str]:
     if not isinstance(lines, list) or not lines or not all(isinstance(x, str) for x in lines):
         raise ValueError(f"Golden {golden.name!r} has no caller script.")
     return lines
+
+
+# How long a script takes to say, from the 2026-11-02 sweep of 36 calls. Each
+# line costs the agent's reply (about 2.5 s to first audio, then 6 to 10 s of
+# speech), the caller's 1.5 s wait for quiet, and the line itself at about 2.5
+# words a second. The base covers the greeting and the last reply. Lines took
+# 15 s at the median and 24 s at the slowest.
+CALL_BASE_S = 20
+LINE_S = 18
+WORD_S = 0.4
+
+
+def script_seconds(lines: list[str]) -> int:
+    """Seconds a call needs to say ``lines``, rounded up to 5 and not capped.
+
+    A golden's ``seconds`` is at least this, or the demo's cap on the site
+    when the script needs more (see test_every_call_fits_its_script).
+    """
+    need = CALL_BASE_S + sum(LINE_S + WORD_S * len(line.split()) for line in lines)
+    return 5 * math.ceil(need / 5)
+
+
+# Demos no run calls, site or cloud, with the reason the test report shows.
+# Their goldens stay in .dataset.json for when they can run again.
+SKIPPED_DEMOS = {
+    "concierge": (
+        "The playground cannot start concierge without Spatius avatar keys,"
+        " so no agent ever joins the eval call."
+    ),
+}
+
+
+def skip_reason(golden: ConversationalGolden) -> str | None:
+    """Why the golden's demo is left out of runs, or None when it runs."""
+    return SKIPPED_DEMOS.get((golden.additional_metadata or {}).get("demo"))
 
 
 def caller_graph(ui: UiState) -> SimulationNode:

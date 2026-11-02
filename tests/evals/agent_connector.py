@@ -9,7 +9,8 @@ Two things the stock connector gets wrong for these calls:
    transcript is tagged with the caller's own audio track, so it is kept apart
    here (``heard``) instead of being read as the agent's words. It is what the
    agent's speech to text understood, and ``TranscriptionAccuracyMetric``
-   compares it with the script.
+   compares it with the script. The agent's own final transcripts are kept
+   too (``said``), to tell its words from whisper's guess at a silent clip.
 
 2. DeepEval ends an agent turn after a short silence, then starts the caller's
    next line at once. Agents that pause mid-reply (a tool call, a lookup, a
@@ -41,6 +42,19 @@ FINAL = "lk.transcription_final"
 logger = logging.getLogger(__name__)
 
 
+class _KeptText:
+    """A transcript stream reader that remembers the text it returned."""
+
+    def __init__(self, reader):
+        self.info = getattr(reader, "info", None)
+        self.text = ""
+        self._reader = reader
+
+    async def read_all(self) -> str:
+        self.text = await self._reader.read_all()
+        return self.text
+
+
 class AgentConnector(LiveKitConnector):
     """LiveKitConnector that waits for the agent and keeps what it heard."""
 
@@ -50,6 +64,8 @@ class AgentConnector(LiveKitConnector):
         self.max_wait_s = max_wait_s
         # Final transcripts of the caller's track, in arrival order.
         self.heard: list[str] = []
+        # Final transcripts of the agent's own speech, in arrival order.
+        self.said: list[str] = []
         # Seconds spent waiting for the agent to finish before each caller line.
         self.waits: list[float] = []
         # Transcript streams the agent sent about its own speech.
@@ -109,6 +125,19 @@ class AgentConnector(LiveKitConnector):
         text = (text or "").strip()
         if text:
             self.heard.append(text)
+
+    async def _read_transcript(self, reader) -> None:
+        """The base class's reading, keeping each final transcript in ``said``.
+
+        ``metrics.drop_phantoms`` uses them to tell the agent's words from
+        whisper's guess at a silent clip.
+        """
+        kept = _KeptText(reader)
+        await super()._read_transcript(kept)
+        attributes = getattr(kept.info, "attributes", None) or {}
+        text = (kept.text or "").strip()
+        if text and attributes.get(FINAL) in (True, "true"):
+            self.said.append(text)
 
     def _own_tracks(self) -> set[str]:
         local = getattr(self._room, "local_participant", None)
