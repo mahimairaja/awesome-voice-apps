@@ -437,6 +437,10 @@ class PlaygroundSink(RemoteCollectorSink):
 
 # Transcribed words a caller must say over the agent before it stops talking.
 INTERRUPT_MIN_WORDS = 2
+# Silence before Silero VAD reports the caller stopped (its default is 0.55 s). The
+# endpointing wait only starts after it, so the default added about half a second to
+# every reply. The turn detector, not this, decides whether a pause ends the turn.
+VAD_MIN_SILENCE = 0.3
 # Tool round trips the model may take within one caller turn (the pool's max_tool_steps).
 TOOL_STEPS = 3
 # A call ends when its chat context passes this many bytes of JSON. Tool results
@@ -559,10 +563,12 @@ class HostedGuard:
     # is confirmed; a turn that turns out unfinished discards it. When the detector
     # thinks the caller is not done, the session waits max_delay; a short answer such
     # as a name read that way and waited 2.5 s (the 3 s default). Dynamic endpointing
-    # learns each caller's pauses between min_delay and max_delay.
+    # learns each caller's pauses between min_delay and max_delay. The 2026-11-02 eval
+    # sweep hit the 1.2 s max_delay on a quarter of caller turns, which kept the median
+    # caller-to-agent gap at 1.8 s; 0.8 s still leaves the detector room on a pause.
     turn_handling = {
         "turn_detection": "vad",
-        "endpointing": {"mode": "dynamic", "min_delay": 0.3, "max_delay": 1.2},
+        "endpointing": {"mode": "dynamic", "min_delay": 0.3, "max_delay": 0.8},
         "preemptive_generation": {"preemptive_tts": True},
         "interruption": {
             "mode": "vad",
@@ -2001,6 +2007,9 @@ REALTIME_AGENTS = {"sdr": RealtimeSDR, "interp": RealtimeInterpreter}
 async def before_start(session: AgentSession, agent, ctx) -> None:
     """Wire per-call plumbing after the room connects and before the session starts."""
     if isinstance(agent, HostedGuard):
+        # The worker shares one prewarmed VAD across calls; setting it again is a no-op.
+        if session.vad is not None:
+            session.vad.update_options(min_silence_duration=VAD_MIN_SILENCE)
         session.on("conversation_item_added", log_reply_latency)
         # Avatar demos route the session's audio to a video participant first.
         if hasattr(agent, "start_avatar"):
