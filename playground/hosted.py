@@ -5,6 +5,7 @@ import functools
 import json
 import logging
 import os
+import re
 import sys
 import time
 import uuid
@@ -145,6 +146,7 @@ from livekit.agents import (
     inference,
     utils,
 )
+from livekit.agents.llm import ChatChunk
 from livekit.agents.voice.agent_session import SessionConnectOptions
 from livekit.agents.voice.room_io import RoomOptions
 from livekit.plugins import cartesia, openai
@@ -435,6 +437,47 @@ class PlaygroundSink(RemoteCollectorSink):
 # Transcribed words a caller must say over the agent before it stops talking.
 INTERRUPT_MIN_WORDS = 2
 
+# A token made only of these, standing alone between spaces. A live Coffee eval had
+# the model end two replies with "// // // ...": unspoken, but seconds of dead air
+# and on screen in the transcript. A symbol inside a word or number ("24/7") stays.
+STRAY_SYMBOLS = re.compile(r"(?<!\S)[/\\|#*~`=_]+(?!\S)")
+
+
+class StraySymbols:
+    """Drops stray symbol runs from a reply as it streams.
+
+    A chunk that ends in a partial token of symbols holds it back until the next
+    chunk, so a run split across chunks ("/" then "/ //") is caught whole. Other text
+    passes through in the chunks it came in.
+    """
+
+    def __init__(self) -> None:
+        self.pending = ""
+        # Whether the text already sent ends in a space, so a dropped run leaves one.
+        self.spaced = False
+
+    def feed(self, text: str) -> str:
+        text = self.pending + text
+        cut = max(text.rfind(" "), text.rfind("\n")) + 1
+        tail = text[cut:]
+        if tail and STRAY_SYMBOLS.fullmatch(tail):
+            self.pending, text = tail, text[:cut]
+        else:
+            self.pending = ""
+        return self._clean(text)
+
+    def flush(self) -> str:
+        rest, self.pending = self.pending, ""
+        return self._clean(rest)
+
+    def _clean(self, text: str) -> str:
+        text = re.sub(r" {2,}", " ", STRAY_SYMBOLS.sub("", text))
+        if self.spaced:
+            text = text.lstrip(" ")
+        if text:
+            self.spaced = text.endswith(" ")
+        return text
+
 
 class HostedGuard:
     """Call limits shared by every STT, LLM and TTS demo.
@@ -558,8 +601,17 @@ class HostedGuard:
         ):
             spawn(self._finish())
             return
+        stray = StraySymbols()
         async for chunk in super().llm_node(chat_ctx, tools, model_settings):
+            if isinstance(chunk, str):
+                chunk = stray.feed(chunk)
+                if not chunk:
+                    continue
+            elif isinstance(chunk, ChatChunk) and chunk.delta and chunk.delta.content:
+                chunk.delta.content = stray.feed(chunk.delta.content)
             yield chunk
+        if rest := stray.flush():
+            yield rest
 
     async def tts_node(self, text, model_settings):
         async def bounded_text():
