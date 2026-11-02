@@ -28,9 +28,18 @@ async def test_takes_and_submits_an_order(fake_room, judge_llm):
 
 
 def test_only_names_become_cup_names():
-    from agent import _looks_like_name
+    from agent import _cup_name
 
-    for name in ("Sam", "Priya.", "It's Sam.", "Mary Ann", "Jean-Luc"):
-        assert _looks_like_name(name), name
-    for reply in ("No, that's everything.", "That's all, thanks.", "Yes", ""):
-        assert not _looks_like_name(reply), reply
+    cases = {
+        "Sam": "Sam",
+        "Priya.": "Priya",
+        "It's Sam.": "Sam",
+        "The name is Mary Ann": "Mary Ann",
+        "Jean-Luc": "Jean-Luc",
+        "José": "José",
+        "李": "李",
+    }
+    for reply, name in cases.items():
+        assert _cup_name(reply) == name, reply
+    for reply in ("No, that's everything.", "That's all, thanks.", "I'm done", "Yes", ""):
+        assert _cup_name(reply) is None, reply
