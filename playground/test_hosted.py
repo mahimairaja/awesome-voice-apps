@@ -1231,8 +1231,9 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         with self.assertLogs(hosted.logger, "WARNING") as logs:
             out = "".join(stray.feed(c) for c in chunks) + stray.flush()
         self.assertEqual(out, "Can I have a name for the Thanks... see you.")
-        # Each dropped run is logged with the text around it, for tracing its source.
-        self.assertIn("...", logs.records[0].dropped)
+        # Each drop is logged with its symbols and offset, never the reply text.
+        self.assertIn("...", [symbols for _, symbols in logs.records[0].dropped])
+        self.assertFalse(hasattr(logs.records[0], "text"))
 
     async def test_llm_node_strips_stray_symbols_from_strings_and_chunks(self):
         from livekit.agents import Agent

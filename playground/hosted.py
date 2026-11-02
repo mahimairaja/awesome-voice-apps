@@ -472,11 +472,14 @@ class StraySymbols:
         return self._clean(rest)
 
     def _clean(self, text: str) -> str:
-        dropped = STRAY_SYMBOLS.findall(text)
+        dropped = [(m.start(), m.group()) for m in STRAY_SYMBOLS.finditer(text)]
         if dropped:
-            # A local A/B could not reproduce these runs; the text around them in the
-            # worker log shows which stage of the hosted pipeline makes them.
-            logger.warning("dropped stray symbols", extra={"dropped": dropped, "text": text[:200]})
+            # A local A/B could not reproduce these runs, so log where they land in each
+            # chunk. Only the symbols and offsets: reply text can carry what the caller
+            # said, and the worker keeps transcripts out of its logs.
+            logger.warning(
+                "dropped stray symbols", extra={"dropped": dropped, "chunk_chars": len(text)}
+            )
         text = re.sub(r" {2,}", " ", STRAY_SYMBOLS.sub("", text))
         if self.spaced:
             text = text.lstrip(" ")
