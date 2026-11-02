@@ -70,7 +70,9 @@ uv run python rescore.py recordings
 ANTHROPIC_API_KEY=... PLAYGROUND_EVAL_SECRET=... uv run python judge_claude.py
 ```
 
-`EVAL_DEMOS` picks demo ids; leave it empty to run every golden. `EVAL_SITE`
+`EVAL_DEMOS` picks demo ids; leave it empty to run every golden. A demo in
+`SKIPPED_DEMOS` (`caller.py`) is reported as skipped with its reason and never
+reserves a call: concierge, until the playground has Spatius avatar keys. `EVAL_SITE`
 points at another deployment, such as a preview. `EVAL_RECORDS=calls.json` keeps the scored
 calls in that file instead of posting them, so a trial run never reaches the public
 page; judge it with `judge_claude.py --dry-run calls.json`.

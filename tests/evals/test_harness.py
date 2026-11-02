@@ -59,6 +59,20 @@ def test_every_call_fits_its_script():
         assert meta["seconds"] >= min(cap, script_seconds(script(golden))), golden.name
 
 
+def test_concierge_is_skipped_with_its_reason_and_kept_in_the_dataset():
+    import test_demos
+    from caller import SKIPPED_DEMOS, skip_reason
+
+    assert "concierge" in {g.additional_metadata["demo"] for g in goldens()}
+    for case in test_demos.CASES:
+        [golden] = case.values
+        reasons = [m.kwargs["reason"] for m in case.marks if m.name == "skip"]
+        if golden.additional_metadata["demo"] == "concierge":
+            assert reasons == [SKIPPED_DEMOS["concierge"]] and "Spatius" in reasons[0]
+        else:
+            assert reasons == [] and skip_reason(golden) is None
+
+
 def test_lines_read_values_off_the_screen():
     ui = UiState()
     ui.on_data(packet("Refill", {"label": {"rx": "4471-B", "dob": "1984-03-12"}}))

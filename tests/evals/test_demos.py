@@ -18,7 +18,14 @@ from pathlib import Path
 import deepeval
 import pytest
 from agent_connector import AgentConnector
-from caller import UiState, caller_graph, patient_simulator, script, stop_after_script
+from caller import (
+    UiState,
+    caller_graph,
+    patient_simulator,
+    script,
+    skip_reason,
+    stop_after_script,
+)
 from deepeval import assert_test
 from deepeval.dataset import EvaluationDataset
 from deepeval.voice import VoiceConfig
@@ -37,6 +44,14 @@ dataset.add_goldens_from_json_file(file_path=str(HERE / ".dataset.json"))
 # EVAL_DEMOS=coffee,pharmacy runs only those demos; empty runs every golden.
 only = {d for d in os.environ.get("EVAL_DEMOS", "").split(",") if d}
 goldens = [g for g in dataset.goldens if not only or g.additional_metadata["demo"] in only]
+# A demo in caller.SKIPPED_DEMOS is reported as skipped, with its reason, and
+# never reserves a call.
+CASES = [
+    pytest.param(
+        g, id=g.name, marks=[pytest.mark.skip(reason=skip_reason(g))] if skip_reason(g) else []
+    )
+    for g in goldens
+]
 
 RUN = {
     "id": os.environ.get("EVAL_RUN_ID") or f"local-{int(time.time())}",
@@ -138,7 +153,7 @@ def describe(name, case, connector) -> None:
         log.warning(line)
 
 
-@pytest.mark.parametrize("golden", goldens, ids=[g.name for g in goldens])
+@pytest.mark.parametrize("golden", CASES)
 def test_demo(golden, site, speech):
     meta = golden.additional_metadata
     try:

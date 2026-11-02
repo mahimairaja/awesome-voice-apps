@@ -113,6 +113,21 @@ def script_seconds(lines: list[str]) -> int:
     return 5 * math.ceil(need / 5)
 
 
+# Demos no run calls, site or cloud, with the reason the test report shows.
+# Their goldens stay in .dataset.json for when they can run again.
+SKIPPED_DEMOS = {
+    "concierge": (
+        "The playground cannot start concierge without Spatius avatar keys,"
+        " so no agent ever joins the eval call."
+    ),
+}
+
+
+def skip_reason(golden: ConversationalGolden) -> str | None:
+    """Why the golden's demo is left out of runs, or None when it runs."""
+    return SKIPPED_DEMOS.get((golden.additional_metadata or {}).get("demo"))
+
+
 def caller_graph(ui: UiState) -> SimulationNode:
     """One node, no edges: the runner never asks an LLM which way to go."""
 
