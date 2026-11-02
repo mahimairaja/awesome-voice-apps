@@ -69,3 +69,20 @@ async def test_add_item_keeps_the_size_and_refuses_off_menu_keys(fake_room):
     assert context.userdata["cart"][0]["modifications"] == ["large", "oat milk"]
     assert await agent.add_item(context, "matcha_latte") == "I do not have that item."
     assert len(context.userdata["cart"]) == 1
+
+
+async def test_never_adds_or_claims_an_alternative_it_only_suggested(fake_room):
+    # The 12:35 live eval: "I can treat you to a latte instead. I'll add a latte for
+    # you", with nothing added.
+    async with AgentSession(llm=openai.LLM(model="gpt-4o-mini"), userdata={"cart": []}) as session:
+        await session.start(DriveThruAttendant(fake_room))
+
+        await session.run(user_input="Hi there. Do you have a matcha latte?")
+
+        assert session.userdata["cart"] == []
+        reply = " ".join(
+            m.text_content or ""
+            for m in session.history.items
+            if getattr(m, "role", "") == "assistant"
+        ).lower()
+        assert "added" not in reply and "i'll add" not in reply, reply
