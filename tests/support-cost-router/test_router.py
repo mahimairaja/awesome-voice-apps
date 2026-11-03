@@ -111,3 +111,18 @@ def test_snapshot_is_plain_json():
     assert isinstance(snap["actualUsd"], float)
     assert snap["monthlyBaselineUsd"] >= snap["monthlyActualUsd"]
     assert len(router.snapshot(router.Ledger(), [])["turns"]) == 0
+
+
+def test_plan_questions_mid_dispute_get_the_plan_terms_not_general_practice():
+    # Evidence, 2026-11-02 eval: after a refused credit the dispute stays sticky,
+    # so "Is roaming free in Mexico?" skips the cache and reaches the big model.
+    state = router.initial_state()
+    router.track_dispute(state, router.route("those are duplicates too", None, INDEX, []))
+    roaming = near(("faq", "roaming"))
+    r = router.route("Is roaming free in Mexico?", roaming, INDEX, [], state["dispute_turns"])
+    assert r.tier == "large"
+    # Every tier that answers with a model can read the plan terms.
+    assert all("look_up_plan" in router.TIER_TOOLS[t] for t in ("mini", "large"))
+    terms = router.plan_terms()
+    assert router.faq_answer("roaming") in terms
+    assert all(answer in terms for _, _, answer in router.FAQ)

@@ -2,8 +2,8 @@
 
 A support line for Northvale, a fictional telecom, where the caller says what
 they need instead of pressing 1. A router scores every queue on each caller
-turn, routes when one queue reaches 75%, asks one clarifying question when two
-are close, and never asks more than two. The agent passes a one-line summary to
+turn, routes a first request at 90% or a clarified one at 75%, asks one
+clarifying question otherwise, and never asks more than two. The agent passes a one-line summary to
 the team so the caller does not repeat themselves.
 
 The agent publishes a `Router` UI event with the queue scores, the decision,
@@ -31,12 +31,13 @@ LiveKit client. Provider usage may cost money.
 
 - `agent.py` `PhoneTreeRouter.classify`: one small structured-output call
   that scores every queue and splits the score when two queues fit.
-- `routing.py` `decide`: the policy. Route at 75%, otherwise clarify between
-  the top two, and route to the best guess after two questions.
+- `routing.py` `decide`: the policy. Route a first request at 90% and a
+  clarified one at 75%, otherwise clarify between the top two, and route to
+  the best guess after two questions.
 - `agent.py` `on_user_turn_completed`: the router runs before the reply and
   adds its decision to the turn, so the model asks or transfers as told.
 - `routing.py` `transfer`: the tool sends the caller to the router's queue,
-  never to one the model names.
+  never to one the model names, and never to the same queue twice in a call.
 - `routing.py` `menu_path`: how long a perfect caller spends in the press-1
   menu (read at 150 words a minute, each key pressed the moment its line ends).
 

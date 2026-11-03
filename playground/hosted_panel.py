@@ -15,7 +15,7 @@ import types
 from pathlib import Path
 from typing import Literal
 
-from livekit.agents import RunContext, StopResponse, function_tool
+from livekit.agents import RunContext, StopResponse, ToolError, function_tool
 from pydantic import BaseModel
 
 # The demo imports its Cerebras and Rime plugins at module level. The hosted
@@ -70,8 +70,32 @@ _HANDOFF = re.compile(
 HOSTED_INSTRUCTIONS = (
     " In this public demo one visitor plays the whole panel. Each line is "
     "prefixed with the seat that said it: Hiring manager, Engineer or Recruiter. "
-    "Only give scorecard rows for seats that spoke."
+    "Give a scorecard row for every seat that spoke and none for a seat that did not."
 )
+
+# A note says nothing when it is one of these; anything else must echo the seat.
+_NONE = {"none", "none stated", "none mentioned", "not stated", "not mentioned", "n/a", "-"}
+# Words a model adds to any scorecard, so they never count as echoing a seat.
+_FILLER = frozenset(
+    "about also candidate concern concerns good great hire into just more really recap "
+    "said says scribe some strong that their them they think this very well what with "
+    "would".split()
+)
+
+
+def _stems(text: str) -> set[str]:
+    """Content words cut to five letters, so mentored matches mentoring."""
+    words = re.findall(r"[a-z0-9]+", text.lower())
+    return {w[:5] for w in words if len(w) >= 4 and w not in _FILLER}
+
+
+def unsupported(note: str, lines: str) -> bool:
+    """True when a note shares no content word with what the seat said."""
+    note = note.strip()
+    if note.lower().rstrip(".") in _NONE:
+        return False
+    return not (_stems(note) & _stems(lines))
+
 
 GREETING = (
     "In two short sentences: say this is a hiring-panel simulation where they play "
@@ -162,12 +186,29 @@ class SoloPanelScribe(PanelScribe):
     ) -> str:
         """Render the debrief scorecard on screen.
 
-        rows: one row per interviewer seat that spoke. consensus: one sentence
-        overall hiring lean.
+        rows: one row for every interviewer seat that spoke, with strengths and
+        concerns taken from that seat's own words, or "none stated".
+        consensus: one sentence overall hiring lean.
         """
+        said: dict[str, str] = {}
+        for line in self.transcript:
+            said[line["speaker"]] = f"{said.get(line['speaker'], '')} {line['text']}"
+        # A seat spoke when it said more than "scribe, recap".
+        said = {seat: text for seat, text in said.items() if _stems(text)}
         # Keep only seats the visitor actually spoke as.
-        spoken = [row.model_dump() for row in rows if row.interviewer in self.sidecar.words]
-        _module.publish_scorecard_ui(self.room, spoken, consensus)
+        spoken = {row.interviewer: row for row in rows if row.interviewer in said}
+        problems = [
+            f"add a row for {seat}" for seat in SEATS if seat in said and seat not in spoken
+        ]
+        for seat, row in spoken.items():
+            for field in ("strengths", "concerns"):
+                if unsupported(getattr(row, field), said[seat]):
+                    problems.append(f"{seat} {field} must use what the {seat} said, or none stated")
+        if problems:
+            # The model calls again with the fix; nothing half-made reaches the screen.
+            raise ToolError("Scorecard not published: " + "; ".join(problems) + ".")
+        ordered = [spoken[seat].model_dump() for seat in SEATS if seat in spoken]
+        _module.publish_scorecard_ui(self.room, ordered, consensus)
         return "scorecard published"
 
 

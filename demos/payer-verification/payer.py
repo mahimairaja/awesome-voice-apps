@@ -229,6 +229,10 @@ REQUIRED = (
 # An inactive plan has no benefits to read: only the status and the reference.
 REQUIRED_INACTIVE = ("coverage", "reference")
 MONEY = {"copay": 2000, "deductible": 50000, "deductible_met": 50000}
+# No plan charges a specialist copay of a few dollars: $1.50 is a mishearing.
+MIN_COPAY = 5
+# Fields whose number must be one the rep actually said.
+SPOKEN_NUMBERS = ("copay", "deductible", "deductible_met", "coinsurance")
 
 # Tool argument name -> record field.
 ARGS = {
@@ -256,6 +260,55 @@ def money(value: float) -> str:
     return f"${value:,.0f}" if float(value).is_integer() else f"${value:,.2f}"
 
 
+UNITS = {
+    w: n
+    for n, w in enumerate(
+        "zero one two three four five six seven eight nine ten eleven twelve thirteen "
+        "fourteen fifteen sixteen seventeen eighteen nineteen".split()
+    )
+}
+TENS = {
+    w: 10 * n
+    for n, w in enumerate("twenty thirty forty fifty sixty seventy eighty ninety".split(), 2)
+}
+
+
+def _words_to_number(words: list[str]) -> float:
+    """ "four hundred twenty" is 420; "twenty five hundred" and "two five hundred" are 2500."""
+    total, current = 0, 0
+    for word in words:
+        if word in UNITS or word in TENS:
+            value = UNITS.get(word, TENS.get(word))
+            rest = current % 100
+            if not current or (current >= 100 and not rest):
+                current += value  # four hundred twenty
+            elif rest >= 20 and rest % 10 == 0 and value < 10:
+                current += value  # twenty five
+            else:
+                current = current * (100 if value >= 10 else 10) + value  # two five
+        elif word == "hundred":
+            current = (current or 1) * 100
+        elif word == "thousand":
+            total += (current or 1) * 1000
+            current = 0
+    return float(total + current)
+
+
+def spoken_numbers(text: str) -> set[float]:
+    """Every number in what the rep said, written as digits or as words."""
+    low = re.sub(r"(?<=\d),(?=\d)", "", text.lower())
+    found = {float(n) for n in re.findall(r"\d+(?:\.\d+)?", low)}
+    run: list[str] = []
+    # Punctuation ends a number: "two five hundred. Twenty percent." is two of them.
+    for word in [*re.findall(r"[a-z]+|[.,;:!?]", low), ""]:
+        if word in UNITS or word in TENS or word in {"hundred", "thousand"}:
+            run.append(word)
+        elif run:
+            found.add(_words_to_number(run))
+            run = []
+    return found
+
+
 def normalise(name: str, raw) -> tuple[object, str] | str:
     """Return (value, display) or an error string for the model."""
     if name in MONEY:
@@ -263,7 +316,7 @@ def normalise(name: str, raw) -> tuple[object, str] | str:
             value = round(float(raw), 2)
         except (TypeError, ValueError):
             return f"{LABELS[name]} must be a dollar amount"
-        if not 0 <= value <= MONEY[name]:
+        if not 0 <= value <= MONEY[name] or (name == "copay" and 0 < value < MIN_COPAY):
             return f"{LABELS[name]} of {money(value)} is out of range; ask the rep to repeat it"
         return value, money(value)
     if name == "coinsurance":
@@ -309,15 +362,18 @@ def missing(record: dict) -> list[str]:
     return [n for n in required(record) if record[n]["status"] in {"empty", "conflict"}]
 
 
-def apply(record: dict, updates: dict, source: str) -> str:
+def apply(record: dict, updates: dict, source: str, said: str = "") -> str:
     """Merge what the rep just said into the record. Returns the tool result.
 
     `updates` uses record field names; None means "not mentioned this turn".
     A new value for a filled field is a correction: the old one is kept as
-    `prev` so the page can show it struck through.
+    `prev` so the page can show it struck through. With `said` (the rep's
+    recent words), a number other than the ones they said is refused, not
+    recorded. Words with no number in them leave nothing to check against.
     """
     recorded, problems = [], []
     source = " ".join(source.split())[:140]
+    heard = spoken_numbers(said or "")
     for name, raw in updates.items():
         if raw is None or name not in record:
             continue
@@ -326,6 +382,12 @@ def apply(record: dict, updates: dict, source: str) -> str:
             problems.append(result)
             continue
         value, display = result
+        # Zero is said many ways ("nothing yet", "no copay"), so only nonzero is checked.
+        if heard and name in SPOKEN_NUMBERS and value and value not in heard:
+            problems.append(
+                f"the rep did not say {display} for {LABELS[name]}; ask them to repeat it"
+            )
+            continue
         slot = record[name]
         if slot["value"] == value and slot["status"] != "conflict":
             continue

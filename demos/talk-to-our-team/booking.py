@@ -9,6 +9,14 @@ SLOTS = {
     "friday": ["Friday 11:00", "Friday 15:00"],
 }
 CONFIRM = re.compile(r"(?:yes|yes please|confirm|please confirm|go ahead|book it)[.!?]*", re.I)
+TIMEZONE = "America/Toronto"
+
+
+def spoken(slot: str) -> str:
+    """The slot as the voice reads it back: 'Friday 15:00' is 'Friday at 3 p.m. Toronto time'."""
+    day, clock = slot.split()
+    hour = int(clock.split(":")[0])
+    return f"{day} at {hour % 12 or 12} {'a.m.' if hour < 12 else 'p.m.'} Toronto time"
 
 
 @dataclass
@@ -37,13 +45,32 @@ class Booking:
         if self.booked:
             return {"status": "already_booked", "booking": self.booked}
         self.request_turn = self.user_turn
+        corrected = bool(self.day) and day != self.day
         if (need, day, attendees) != (self.need, self.day, self.attendees):
             self.need, self.day, self.attendees = need, day, attendees
             self.revision += 1
             self.offered.clear()
             self.proposed = ""
             self.offered_revision = -1
+        if corrected:
+            # A day correction re-queries the new day at once, so no lookup for the
+            # old day can be read back as current and the caller hears the new slots.
+            return {"revision": self.revision, "need": self.need, **self._offer(self.revision)}
         return {"revision": self.revision, "need": self.need, "day": self.day}
+
+    def _offer(self, revision: int) -> dict:
+        self.offered = list(SLOTS.get(self.day, []))
+        self.offered_revision = revision
+        self.offered_turn = self.user_turn
+        return {
+            "status": "available",
+            "revision": revision,
+            "day": self.day,
+            "slots": self.offered,
+            "read_back": [spoken(slot) for slot in self.offered],
+            "timezone": TIMEZONE,
+            "simulation": True,
+        }
 
     async def availability(self, revision: int, delay: float = 2) -> dict:
         turn = self.user_turn
@@ -52,22 +79,12 @@ class Booking:
                 "status": "superseded",
                 "message": "Update the request from the latest caller transcript before looking again.",
             }
-        day = self.day
         await asyncio.sleep(delay)
         # Any newer caller turn makes this lookup stale. Let the backend interpret
         # the new request before running a fresh lookup; never guess corrections.
         if revision != self.revision or turn != self.user_turn:
             return {"status": "superseded", "message": "Caller spoke again; check latest request."}
-        self.offered = list(SLOTS.get(day, []))
-        self.offered_revision = revision
-        self.offered_turn = turn
-        return {
-            "status": "available",
-            "revision": revision,
-            "slots": self.offered,
-            "timezone": "America/Toronto",
-            "simulation": True,
-        }
+        return self._offer(revision)
 
     def propose(self, revision: int, slot: str) -> dict:
         if (
@@ -82,8 +99,9 @@ class Booking:
         return {
             "status": "awaiting_confirmation",
             "slot": slot,
-            "timezone": "America/Toronto",
-            "message": "Read this slot and ask for confirm.",
+            "read_back": spoken(slot),
+            "timezone": TIMEZONE,
+            "message": "Read read_back exactly and ask the caller to say confirm.",
         }
 
     def confirm(self, revision: int, slot: str) -> dict:
@@ -102,7 +120,7 @@ class Booking:
         self.booked = {
             "id": "SIM-001",
             "slot": slot,
-            "timezone": "America/Toronto",
+            "timezone": TIMEZONE,
             "need": self.need,
             "attendees": self.attendees,
             "simulation": True,

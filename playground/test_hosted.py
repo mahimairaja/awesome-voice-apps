@@ -922,12 +922,24 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             row = hosted_panel.ScorecardRow(
                 interviewer="Engineer", strengths="design", concerns="none", lean="hire"
             )
+            recruiter = hosted_panel.ScorecardRow(
+                interviewer="Recruiter",
+                strengths="Great with people",
+                concerns="wants remote",
+                lean="hire",
+            )
             unspoken = hosted_panel.ScorecardRow(
                 interviewer="Hiring manager", strengths="-", concerns="-", lean="undecided"
             )
-            await first.publish_scorecard(None, [row, unspoken], "Lean hire.")
+            await first.publish_scorecard(None, [row, recruiter, unspoken], "Lean hire.")
         table = publish.call_args_list[0].kwargs["props"]
-        self.assertEqual(table["rows"], [["Engineer", "design", "none", "hire"]])
+        self.assertEqual(
+            table["rows"],
+            [
+                ["Engineer", "design", "none", "hire"],
+                ["Recruiter", "Great with people", "wants remote", "hire"],
+            ],
+        )
 
     async def test_panel_loads_without_its_original_provider_plugins(self):
         for name in hosted_panel._PROVIDERS:

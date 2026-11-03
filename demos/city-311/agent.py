@@ -28,6 +28,7 @@ import json
 import logging
 import os
 import random
+import re
 from typing import Literal
 
 from dotenv import load_dotenv
@@ -115,9 +116,10 @@ INSTRUCTIONS = (
     "For collection days, ask for their district if they did not say it, then call "
     "collection_schedule. The districts are Vieux-Bellerive, Les Saules, Northgate "
     "and Bord-de-l'Eau. "
-    "If the caller asks to be served in the other language, call set_language. "
-    "Only English and French are offered; say so politely in the current language "
-    "if they ask for another. "
+    "If the caller asks to be served in English or French, call set_language right "
+    "away, without asking them to confirm, then answer in that language. Only "
+    "English and French are offered; if they ask for any other language, say so "
+    "politely in the current language. "
     "Keep replies to one or two short sentences, plain text, no markdown or emojis."
 )
 
@@ -240,6 +242,25 @@ def language_line(lang: str) -> str:
     return f"Language of service: {LANGUAGES[lang]['reply']}. Reply only in that language."
 
 
+# The caller naming the other language, in either language: "speak French with me",
+# "en anglais, s'il vous plaît".
+NAMED = {
+    "en": re.compile(r"\b(english|anglais)\b", re.IGNORECASE),
+    "fr": re.compile(r"\b(french|fran[cç]ais)\b", re.IGNORECASE),
+}
+
+
+def switch_line(text: str, speaking: str) -> str | None:
+    """A nudge to call set_language when the caller names the other language."""
+    for lang, pattern in NAMED.items():
+        if lang != speaking and pattern.search(text):
+            return (
+                f"The caller mentioned {LANGUAGES[lang]['name']}. If they want to be served "
+                f"in it, call set_language with {lang} now, without asking them to confirm."
+            )
+    return None
+
+
 def publish_turn(room: rtc.Room, decision: dict, text: str) -> None:
     speaking = decision["speaking"]
     publish_ui_event(
@@ -305,7 +326,13 @@ class City311Agent(Agent):
         self, turn_ctx: llm.ChatContext, new_message: llm.ChatMessage
     ) -> None:
         # One prompt for both languages; only this line changes per turn.
-        turn_ctx.add_message(role="system", content=language_line(self._router.speaking))
+        speaking = self._router.speaking
+        turn_ctx.add_message(role="system", content=language_line(speaking))
+        # Asked for French, the model once answered "I can only assist you in English
+        # or French" and asked to confirm instead of switching, so naming the other
+        # language gets its own line.
+        if nudge := switch_line(new_message.text_content or "", speaking):
+            turn_ctx.add_message(role="system", content=nudge)
 
     async def tts_node(self, text, model_settings):
         self._sync_voice()
@@ -320,7 +347,9 @@ class City311Agent(Agent):
 
     @function_tool()
     async def set_language(self, context: RunContext[dict], language: Literal["en", "fr"]) -> str:
-        """Switch the language of service when the caller asks for English or French.
+        """Switch the language of service as soon as the caller asks for English or French.
+
+        Call it on the request itself, without asking the caller to confirm.
 
         Args:
             language: "en" for English, "fr" for French.

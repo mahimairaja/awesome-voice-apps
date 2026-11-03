@@ -18,6 +18,7 @@ Run it:
 import asyncio
 import json
 import logging
+import re
 import time
 from typing import Literal
 
@@ -112,6 +113,14 @@ INSTRUCTIONS = (
 )
 
 
+# Caller words that need a policy answer, and the request that knocks a provider out.
+ASKS = {
+    "bags": re.compile(r"\b(bags?|baggage|luggage|suitcases?)\b", re.IGNORECASE),
+    "seat": re.compile(r"\b(seats?|window|aisle)\b", re.IGNORECASE),
+}
+OUTAGE_ASK = re.compile(r"\bknock (out|down) the (voice|model)\b|\bstorm traffic\b", re.IGNORECASE)
+
+
 class Outage:
     """Injected provider failures for one call. Nothing here touches the network."""
 
@@ -181,6 +190,9 @@ def new_state() -> dict:
         "search": "idle",
         "options": [],
         "rebooked": None,
+        # Policy topics the caller asked about, and the ones check_policy answered.
+        "asked": [],
+        "checked": [],
         "providers": {
             part: {"primary": PRIMARY[part], "backup": BACKUP[part], "serving": "primary"}
             for part in ("llm", "tts")
@@ -259,6 +271,22 @@ class FlightRebooker(Agent):
         await self.background.start(room=self.room, agent_session=session)
         session.on("close", lambda _: asyncio.create_task(self.background.aclose()))
 
+    async def on_user_turn_completed(self, turn_ctx: llm.ChatContext, new_message) -> None:
+        # A bag or seat question is answered from check_policy, never from memory or the
+        # flight list; an outage request goes to simulate_outage.
+        text = new_message.text_content or ""
+        asked = [topic for topic, pattern in ASKS.items() if pattern.search(text)]
+        self.state["asked"] = sorted({*self.state["asked"], *asked})
+        notes = []
+        if unchecked := [topic for topic in asked if topic not in self.state["checked"]]:
+            notes.append(
+                f"Call check_policy for {' and '.join(unchecked)} and answer only from it."
+            )
+        if OUTAGE_ASK.search(text):
+            notes.append("The caller asked for an outage: call simulate_outage now.")
+        if notes:
+            turn_ctx.add_message(role="system", content=" ".join(notes))
+
     def begin_outage(self, part: str, reason: str) -> None:
         self.outage.start(part)
         self.log(part, f"{reason}: {PRIMARY[part]} starts failing")
@@ -311,6 +339,7 @@ class FlightRebooker(Agent):
     ) -> str:
         """Answer a question about seats, bags, meals, hotels or refunds. Instant."""
         running = " while the search keeps running" if self.state["search"] == "running" else ""
+        self.state["checked"] = sorted({*self.state["checked"], topic})
         self.log("tool", f"check_policy({topic}) answered{running}")
         return POLICY[topic]
 
@@ -319,6 +348,13 @@ class FlightRebooker(Agent):
         """Rebook the caller onto option A, B or C after they choose it."""
         if not self.state["options"]:
             return "Search first; there are no options yet."
+        if missing := [t for t in self.state["asked"] if t not in self.state["checked"]]:
+            topics = " and ".join(missing)
+            self.log("tool", f"rebook({option}) waits for check_policy({topics})")
+            return (
+                f"blocked: the caller asked about {topics}. Call check_policy for {topics}, "
+                "tell them that answer, then call rebook again."
+            )
         chosen = next(o for o in self.state["options"] if o["id"] == option)
         self.state["rebooked"] = chosen
         self.state["booking"].update(status="rebooked", flight=chosen["flight"])

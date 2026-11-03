@@ -46,16 +46,19 @@ BRAND = "Northbound Home"
 ITEM = "a three-seat sofa"
 # Seconds to wait for the callee to publish a microphone before giving up.
 RING_SECONDS = 25
+# Silence after pickup before the agent opens the call itself. At 6 s it was most of
+# the wait before the first word on a silent pickup; a person says hello well within 3.
+NO_SPEECH_SECONDS = 3.0
 DIGITS = frozenset("0123456789*#")
 
 INSTRUCTIONS = (
     f"You are calling on behalf of {BRAND}, a furniture retailer, to confirm a "
     f"delivery of {ITEM}. You placed this call, so when the customer answers, "
     "say who you are and why you are calling in one sentence, read the current "
-    "window, and tell them they can press 1 to confirm or 2 to reschedule, or "
-    "just say so. To confirm, call confirm_window. To move it, read the other "
-    "windows and call reschedule_window with the id they pick. After either, say "
-    "a one-line goodbye and call end_call. If they ask something you cannot "
+    "window (list_windows returns it), and tell them they can press 1 to confirm or "
+    "2 to reschedule, or just say so. To confirm, call confirm_window. To move it, "
+    "read the other windows and call reschedule_window with the id they pick. After "
+    "either, say a one-line goodbye and call end_call. If they ask something you cannot "
     "help with, say a person from the delivery team will follow up, then end. "
     "Keep every reply to one or two short sentences, plain text, no lists."
 )
@@ -91,6 +94,8 @@ def initial_state(today: datetime.date | None = None) -> dict:
         "windows": windows,
         "outcome": None,
         "mounted": False,
+        # Whether the customer has heard the booked window; a move waits for it.
+        "window_read": False,
     }
 
 
@@ -129,6 +134,14 @@ def window(data: dict, window_id: str) -> dict | None:
 
 def alternatives(data: dict) -> list[dict]:
     return [w for w in data["windows"] if w["id"] != data["order"]["window"]][:3]
+
+
+def opening_text(data: dict) -> str:
+    current = window(data, data["order"]["window"])
+    return (
+        f"Hi, this is {BRAND} calling about your delivery of {ITEM}. It is booked for "
+        f"{current['label']}. Press 1 to confirm or 2 to reschedule, or just say so."
+    )
 
 
 def voicemail_text(data: dict) -> str:
@@ -190,7 +203,7 @@ class DeliveryCaller(Agent):
                 participant_identity=self.callee,
                 ivr_detection=False,
                 suppress_compatibility_warning=True,
-                detection_options={"no_speech_threshold": 6.0},
+                detection_options={"no_speech_threshold": NO_SPEECH_SECONDS},
             ) as detector:
                 result = await detector.execute()
             await self._on_amd(result)
@@ -248,10 +261,10 @@ class DeliveryCaller(Agent):
         data["menu"] = "main"
         self.mark("human")
         if category == "uncertain":
-            # Picked up and said nothing: open the conversation ourselves.
-            self.session.generate_reply(
-                instructions="The customer picked up but is silent. Introduce the call."
-            )
+            # Picked up and said nothing: open the call from code, current window
+            # included, with no model round trip before the first word.
+            data["window_read"] = True
+            self.session.say(opening_text(data))
 
     # region: keypad
 
@@ -345,6 +358,14 @@ class DeliveryCaller(Agent):
         data = context.userdata
         if data["outcome"]:
             return "Already settled. Say goodbye and call end_call."
+        if not data["window_read"]:
+            # The customer must hear what they are moving away from first.
+            data["window_read"] = True
+            current = window(data, data["order"]["window"])
+            return (
+                f"Not moved yet: first tell the customer it is booked for {current['label']}, "
+                "then call reschedule_window again with the window they pick."
+            )
         options = {w["id"]: w for w in alternatives(data)}
         if window_id not in options:
             listed = "; ".join(f"{w['id']}: {w['label']}" for w in options.values())
@@ -354,8 +375,12 @@ class DeliveryCaller(Agent):
 
     @function_tool()
     async def list_windows(self, context: RunContext[dict]) -> str:
-        """List the alternative delivery windows the customer can move to."""
-        return "; ".join(f"{w['id']}: {w['label']}" for w in alternatives(context.userdata))
+        """List the booked delivery window and the alternatives the customer can move to."""
+        data = context.userdata
+        data["window_read"] = True
+        current = window(data, data["order"]["window"])
+        options = "; ".join(f"{w['id']}: {w['label']}" for w in alternatives(data))
+        return f"Booked now: {current['label']}. Alternatives: {options}"
 
     @function_tool()
     async def end_call(self, context: RunContext[dict]) -> None:

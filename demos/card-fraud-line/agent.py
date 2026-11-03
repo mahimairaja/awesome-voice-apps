@@ -47,7 +47,9 @@ BANK = "Larkfield Bank"
 CARDHOLDER = {"name": "Jordan Ellis", "birth_date": "1988-03-14"}
 ALERT = {
     "amount": "$1,240.00",
-    "merchant": "Ribeira Electronics",
+    # A name with one English reading. The model wrote "Ribeira" every time, but
+    # speech to text heard Rivera from the front desk voice and Ribeira from Sam's.
+    "merchant": "Seaview Electronics",
     "city": "Lisbon, Portugal",
     "card": "4417",
 }

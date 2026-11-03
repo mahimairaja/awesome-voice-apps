@@ -300,6 +300,33 @@ class HostedBillTests(unittest.IsolatedAsyncioTestCase):
         publish.assert_called_once_with(agent.room, "BillFocus", {"lines": ["L4"], "total": True})
         await self.close(agent)
 
+    async def test_terms_are_explained_before_any_bill_and_amounts_still_wait(self):
+        # Evidence, 2026-11-02 eval: with no bill yet, "what does you owe mean" only got
+        # "I'll need to see your bill".
+        agent = self.agent()
+        context = MagicMock()
+        self.assertIn("explain_term", agent.instructions)
+        with patch.object(module, "publish_ui_event") as publish:
+            answer = await agent.explain_term(context, ["billed", "Allowed", "you owe"])
+            paid = await agent.explain_term(context, ["plan_paid", "what the plan paid"])
+            unknown = await agent.explain_term(context, ["prognosis"])
+            no_bill = await agent.show_lines(context, ["TOTAL"])
+            dispute = await agent.open_dispute(context, ["L2"], "charged twice")
+        self.assertIn("list price", answer)
+        self.assertIn("negotiated", answer)
+        self.assertIn("allowed minus plan paid", answer)
+        self.assertIn("No bill is on screen yet", answer)
+        self.assertNotIn("$", answer)
+        self.assertEqual(paid.count("Plan paid is"), 1)
+        self.assertIn("Known terms", unknown)
+        self.assertIn("explain_term", no_bill)
+        self.assertIn("nothing can be disputed", dispute)
+        self.assertEqual(agent._disputes, {})
+        publish.assert_not_called()
+        agent._bill = module.normalize(URGENT_CARE)
+        self.assertNotIn("No bill", await agent.explain_term(context, ["deductible"]))
+        await self.close(agent)
+
     async def test_disputes_only_open_on_flagged_lines_once_each(self):
         agent = self.agent()
         context = MagicMock()

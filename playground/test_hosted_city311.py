@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import hosted
 import hosted_city311
+from livekit.agents.llm import ChatMessage
 
 ROOM = "playground-598cd768-86d4-42a1-bb44-adc44fba4207"
 OFFLINE = {
@@ -95,16 +96,49 @@ class HostedCity311(unittest.IsolatedAsyncioTestCase):
             patch.object(type(agent), "session", SimpleNamespace(userdata=state)),
             patch.object(hosted_city311._module, "publish_ui_event") as publish,
         ):
-            agent.hear("fr", "Bonjour, il y a un nid-de-poule sur la rue Principale", 0.91)
+            said = "Bonjour, il y a un nid-de-poule sur la rue Principale"
+            agent.hear("fr", said, 0.91)
             agent._sync_voice()
             turn = MagicMock()
-            await agent.on_user_turn_completed(turn, None)
+            await agent.on_user_turn_completed(turn, ChatMessage(role="user", content=[said]))
         self.assertEqual(agent.tts._opts.language, "fr")
         self.assertEqual(agent.tts._opts.voice, hosted_city311._module.LANGUAGES["fr"]["voice"])
         self.assertIn("Canadian French", turn.add_message.call_args.kwargs["content"])
         props = publish.call_args.kwargs.get("props") or publish.call_args.args[3]
         self.assertEqual((props["outcome"], props["voice"]), ("start", "French voice"))
         self.assertLessEqual(len(props["excerpt"]), 80)
+        await agent.llm.aclose()
+
+    async def test_asking_for_french_points_the_model_at_set_language(self):
+        agent = self.build()
+        self.assertIn("set_language", [tool.info.name for tool in agent.tools])
+        self.assertNotIn("if they ask for another", agent.instructions)
+        state = agent.initial_state()
+        with (
+            patch.object(type(agent), "session", SimpleNamespace(userdata=state)),
+            patch.object(hosted_city311._module, "publish_ui_event"),
+        ):
+            # The 2026-11-02 eval line, tagged English, so the router stays in English.
+            ask = "Thanks. Could you speak French with me from now on?"
+            agent.hear("en", ask, 0.97)
+            turn = MagicMock()
+            await agent.on_user_turn_completed(turn, ChatMessage(role="user", content=[ask]))
+            lines = [c.kwargs["content"] for c in turn.add_message.call_args_list]
+            self.assertIn("English", lines[0])
+            self.assertIn("call set_language with fr", lines[1])
+            done = await agent.set_language(SimpleNamespace(userdata=state), "fr")
+            self.assertIn("Canadian French", done)
+            # Once in French, French words alone add no nudge; asking for English does.
+            turn = MagicMock()
+            await agent.on_user_turn_completed(
+                turn, ChatMessage(role="user", content=["Merci, en français c'est parfait"])
+            )
+            self.assertEqual(turn.add_message.call_count, 1)
+            turn = MagicMock()
+            await agent.on_user_turn_completed(
+                turn, ChatMessage(role="user", content=["En anglais, s'il vous plaît"])
+            )
+            self.assertIn("call set_language with en", turn.add_message.call_args.kwargs["content"])
         await agent.llm.aclose()
 
     async def test_tickets_and_schedules_are_per_call_and_localized(self):

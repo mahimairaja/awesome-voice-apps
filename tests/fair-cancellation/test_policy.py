@@ -146,9 +146,39 @@ def test_refs_avoid_sound_alikes_and_snapshot_is_bounded():
     policy.note_reason(s, "price")
     for _ in range(12):
         policy.make_offer(s)
+    s["offers"][0]["status"] = "declined"
     policy.cancel(s)
     ref = s["outcome"]["ref"]
     assert ref.startswith("CX-") and set(ref[3:].replace("-", "")) <= set("3479ACFHKMRX")
     snap = policy.snapshot(s)
     assert len(snap["log"]) == policy.LOG_LIMIT
     assert snap["clock"] == {"limit": 3, "used": 0, "state": "cancelled"}
+
+
+def test_the_model_cannot_cancel_over_an_open_offer():
+    s = state()
+    policy.observe_caller(s, "I'd like to cancel my membership please.")
+    policy.observe_caller(s, "Honestly it's just gotten too expensive for me.")
+    policy.note_reason(s, "price")
+    policy.make_offer(s)
+    # Asking for a different deal is not a decline.
+    assert not policy.observe_caller(s, "Could you just give me a free month instead?")
+    assert policy.cancel(s).startswith("blocked: the offer is still open")
+    assert s["outcome"] is None and s["offers"][0]["status"] == "offered"
+    assert ("OFFER.CONSENT", "block") in rules(s)
+    # The decline is heard by code, which cancels.
+    assert policy.observe_caller(s, "No thanks, I still want to cancel.")
+    assert policy.cancel(s, by="policy").startswith("cancelled")
+
+
+def test_an_offer_is_available_only_for_a_reason_that_has_one():
+    s = state()
+    assert not policy.offer_available(s)
+    policy.observe_caller(s, "cancel please")
+    assert not policy.offer_available(s)
+    policy.note_reason(s, "switching")
+    assert not policy.offer_available(s)
+    policy.note_reason(s, "price")
+    assert policy.offer_available(s)
+    policy.make_offer(s)
+    assert not policy.offer_available(s)

@@ -59,9 +59,11 @@ INSTRUCTIONS = (
     "twice call credit_duplicate with that line's name. Two travel day passes on "
     "different days are two valid charges. If a request needs a tool you do not have, say "
     "a billing specialist will handle it and ask the caller to describe the problem. "
-    "For general questions about plans, roaming, "
-    "eSIM or stores, answer briefly from common carrier practice and say when something "
-    "varies. Never promise anything a tool did not confirm. This is a demo: nothing is "
+    "For questions about plans, roaming, travel passes, eSIM, hotspot, data speeds, "
+    "autopay, keeping a number or store hours, call look_up_plan and answer only from "
+    f"{router.BRAND}'s terms it returns, stated as facts. Never describe other carriers or "
+    "common practice; if the terms do not cover it, say a specialist can confirm. Never "
+    "promise anything a tool did not confirm. This is a demo: nothing is "
     "really charged or credited. Keep every reply to one or two short spoken sentences, "
     "plain text, no lists, no markdown."
 )
@@ -269,6 +271,14 @@ class CostRouter(Agent):
         if self._turn:
             self._turn.tools.append("look_up_bill")
         return router.bill_summary()
+
+    @function_tool()
+    async def look_up_plan(self, context: RunContext) -> str:
+        """Get the plan's terms: roaming, travel passes, eSIM, hotspot, data, autopay,
+        keeping a number, support and store hours."""
+        if self._turn:
+            self._turn.tools.append("look_up_plan")
+        return router.plan_terms()
 
     @function_tool()
     async def credit_duplicate(self, context: RunContext, item: str) -> str:

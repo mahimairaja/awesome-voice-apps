@@ -1,7 +1,7 @@
 import asyncio
 
 import pytest
-from booking import Booking
+from booking import Booking, spoken
 
 
 async def offer(b):
@@ -107,3 +107,43 @@ async def test_retry_cannot_reuse_unreviewed_request():
     assert (await b.availability(b.revision, 0))["status"] == "superseded"
     b.update("voice", "Monday", "CTO")
     assert (await b.availability(b.revision, 0))["slots"] == ["Monday 10:00", "Monday 14:00"]
+
+
+def test_slots_read_back_in_toronto_time():
+    assert spoken("Friday 11:00") == "Friday at 11 a.m. Toronto time"
+    assert spoken("Friday 15:00") == "Friday at 3 p.m. Toronto time"
+    assert spoken("Monday 10:00") == "Monday at 10 a.m. Toronto time"
+
+
+@pytest.mark.asyncio
+async def test_day_correction_requeries_the_new_day():
+    b = Booking()
+    b.hear("Can we meet Monday morning?")
+    b.update("dental booking agent", "monday", "CTO")
+    lookup = asyncio.create_task(b.availability(b.revision, 0.01))
+    await asyncio.sleep(0)
+    b.hear("Actually, Friday works better than Monday.")
+    result = b.update("dental booking agent", "friday", "CTO")
+    # The correction itself returns Friday's slots; the Monday lookup is stale.
+    assert result["status"] == "available"
+    assert result["slots"] == ["Friday 11:00", "Friday 15:00"]
+    assert result["read_back"] == [
+        "Friday at 11 a.m. Toronto time",
+        "Friday at 3 p.m. Toronto time",
+    ]
+    assert (await lookup)["status"] == "superseded"
+    assert b.offered == ["Friday 11:00", "Friday 15:00"]
+    proposal = b.propose(result["revision"], "Friday 11:00")
+    assert proposal["status"] == "awaiting_confirmation"
+    assert proposal["read_back"] == "Friday at 11 a.m. Toronto time"
+    assert b.propose(result["revision"], "Monday 10:00")["status"] == "rejected"
+    b.hear("Confirm.")
+    assert b.confirm(result["revision"], "Friday 11:00")["booking"]["slot"] == "Friday 11:00"
+
+
+def test_first_request_still_needs_a_lookup():
+    b = Booking()
+    b.hear("Friday please")
+    result = b.update("voice", "friday", "CTO")
+    assert "slots" not in result
+    assert b.propose(b.revision, "Friday 11:00")["status"] == "rejected"

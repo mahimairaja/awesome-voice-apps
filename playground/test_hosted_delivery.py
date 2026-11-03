@@ -109,6 +109,7 @@ class DeliveryCall(unittest.IsolatedAsyncioTestCase):
     async def test_spoken_answers_use_the_same_actions(self):
         agent = Probe()
         context = SimpleNamespace(userdata=agent.session.userdata)
+        context.userdata["window_read"] = True
         reply = await agent.reschedule_window(context, "w9")
         self.assertIn("w2:", reply)
         await agent.reschedule_window(context, "w3")
@@ -133,7 +134,32 @@ class DeliveryCall(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(agent.session.userdata["menu"], "main")
         agent.session.generate_reply.assert_not_called()
         await agent._on_amd(amd("uncertain", ""))
-        agent.session.generate_reply.assert_called_once()
+        # A silent pickup is opened from code, booked window and keypad choices included.
+        agent.session.generate_reply.assert_not_called()
+        self.assertIn("Northbound Home", agent.said[0])
+        self.assertIn("booked for Wednesday October 7, 1 to 5 PM", agent.said[0])
+        self.assertIn("Press 1 to confirm or 2 to reschedule, or just say so", agent.said[0])
+        self.assertTrue(agent.session.userdata["window_read"])
+
+    async def test_a_move_waits_until_the_booked_window_was_read(self):
+        agent = Probe()
+        context = SimpleNamespace(userdata=agent.session.userdata)
+        agent.session.userdata["started"] = 0
+        refused = await agent.reschedule_window(context, "w2")
+        self.assertIn("booked for Wednesday October 7, 1 to 5 PM", refused)
+        self.assertEqual(context.userdata["order"]["window"], "w1")
+        self.assertIsNone(context.userdata["outcome"])
+        # Once the window was read, the same pick goes through.
+        self.assertIn("Moved to Tuesday October 6", await agent.reschedule_window(context, "w2"))
+
+    async def test_listing_windows_reads_the_booked_one_first(self):
+        agent = Probe()
+        context = SimpleNamespace(userdata=agent.session.userdata)
+        listed = await agent.list_windows(context)
+        self.assertTrue(listed.startswith("Booked now: Wednesday October 7, 1 to 5 PM."))
+        self.assertIn("w2: Tuesday October 6, 8 AM to noon", listed)
+        agent.session.userdata["started"] = 0
+        self.assertIn("Moved to", await agent.reschedule_window(context, "w2"))
 
     async def test_browser_no_answer_ends_the_call(self):
         agent = Probe()

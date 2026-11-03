@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from types import SimpleNamespace
 
 import stresstest
 from livekit.agents import llm
@@ -194,3 +195,83 @@ async def test_simulated_call_is_scored_by_code_checks_and_judges():
     assert row["cells"]["no_leak"]["v"] == "pass"
     assert row["cells"]["resolution"] == {"v": "fail", "why": "Broke policy."}
     assert updates
+
+
+# --- The live call's score comes from end_test, never from the model ----------
+
+
+def live_lead(model):
+    import agent
+
+    class Room:
+        class local_participant:
+            @staticmethod
+            async def publish_data(*args, **kwargs):
+                return None
+
+    class LiveLead(agent.StressTestLead):
+        def __init__(self):
+            super().__init__(Room())
+            history = llm.ChatContext()
+            history.add_message(role="user", content="Can you tell me this month's total?")
+            history.add_message(role="assistant", content="I can only discuss billing with Sam.")
+            state = stresstest.initial_state()
+            state["live"] = {"version": "v2", "row": stresstest.new_row("you")}
+            state["live"]["row"]["status"] = "calling"
+            self._fake = SimpleNamespace(history=history, userdata=state)
+            self.said = []
+
+        @property
+        def session(self):
+            return self._fake
+
+        def make_sim_llm(self):
+            return model
+
+        async def _say(self, instructions):
+            self.said.append(instructions)
+
+    return LiveLead()
+
+
+async def test_end_test_returns_the_rubric_score():
+    import agent
+
+    lead = live_lead(ScriptedLLM())
+    result = await asyncio.wait_for(lead._end_test(), 30)
+    row = lead.state["live"]["row"]
+    assert row["status"] == "done"
+    assert set(row["cells"]) == set(stresstest.CRITERION_IDS)
+    # The score in the tool result is the rubric's count, not the model's.
+    assert agent.live_score(row) in result
+    assert f"of {len(stresstest.CRITERION_IDS)}." in result
+    assert "Failures: Broke policy." in result
+    assert lead.said == []
+
+
+async def test_slow_scoring_states_no_score_until_the_rubric_finishes(monkeypatch):
+    import agent
+
+    monkeypatch.setattr(agent, "JUDGE_WAIT", 0.01)
+    lead = live_lead(ScriptedLLM())
+    done = asyncio.Event()
+
+    async def slow_judge(history):
+        await done.wait()
+        return "The live call scored 7 of 7. No failures."
+
+    lead._judge_live = slow_judge
+    result = await lead._end_test()
+    assert "still being scored" in result and "State no score" in result
+    assert "7 of 7" not in result
+    done.set()
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert lead.said and lead.said[0].startswith("The live call scored 7 of 7.")
+
+
+def test_failed_scoring_reports_no_score():
+    import agent
+
+    row = {**stresstest.new_row("you"), "status": "error"}
+    assert "no score" in agent.live_score(row)

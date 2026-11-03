@@ -48,6 +48,13 @@ logger = logging.getLogger("payer-verification")
 AGENT_VOICE = "f786b574-daa5-4673-aa0c-cbe3e8534c02"  # Katie
 IVR_VOICE = "9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"  # Jacqueline
 DECIDE_TIMEOUT = 4.0
+# Spoken by code, not the model, so the rep always hears who is calling first.
+OPENING = (
+    f"Hi, this is {payer.AGENT_NAME}, an AI assistant calling for {payer.PRACTICE} to verify a "
+    "patient's eligibility and benefits."
+)
+# How many of the rep's recent turns a recorded number may come from.
+SAID_TURNS = 4
 
 INSTRUCTIONS = f"""You are {payer.AGENT_NAME}, an AI assistant calling {payer.PAYER} on behalf of \
 {payer.PRACTICE} to verify a patient's eligibility and benefits. You already went through the \
@@ -60,8 +67,9 @@ Case file. Share only what the rep asks for:
 - Provider NPI {" ".join(payer.NPI)}, read digit by digit.
 - Service: {payer.CASE["service"]}, CPT {" ".join(payer.CASE["cpt"])}, plus specialist visits.
 
-Open with one sentence: who you are, that you are an AI assistant, and that you are verifying \
-eligibility and benefits for a patient.
+Your opening sentence, saying who you are, that you are an AI assistant for {payer.PRACTICE} and \
+why you are calling, is spoken for you the moment the rep picks up. Do not repeat it: answer what \
+the rep asked. You are talking to a person now, never to a phone menu.
 
 You need coverage status, the specialist copay, the deductible and how much is met, \
 coinsurance, whether CPT 70551 needs prior authorization, and a call reference number. Plan \
@@ -196,6 +204,7 @@ class PayerCaller(Agent):
         self.room = room
         self.line = payer.PayerLine()
         self.heard = ""
+        self.said: list[str] = []
         self._hung_up = False
         self._call: asyncio.Task | None = None
         self._hold: asyncio.Task | None = None
@@ -390,15 +399,27 @@ class PayerCaller(Agent):
             data["heard"] = (data["heard"] + [text])[-6:]
             if verdict == "human":
                 self.take_over()
-                self.heard = text
+                self.hear(text)
                 return
             publish(self.room, data)
             raise StopResponse()
         if stage in {"human", "verified"}:
-            self.heard = text
+            self.hear(text)
             return
+        if stage in {"dialing", "ivr"} and text:
+            # A rep can pick up before the menu ends: stop the tree, never talk over them.
+            if payer.fallback_verdict(payer.hold_signals(text, data["heard"])) == "human":
+                if self._call and not self._call.done():
+                    self._call.cancel()
+                self.take_over()
+                self.hear(text)
+                return
         # Dialling, the phone tree, or after the call: nobody to answer yet.
         raise StopResponse()
+
+    def hear(self, text: str) -> None:
+        self.heard = text
+        self.said = [*self.said, text][-SAID_TURNS:]
 
     def take_over(self) -> None:
         """A person picked up: stop the hold loop and speak as the agent."""
@@ -410,6 +431,7 @@ class PayerCaller(Agent):
             self._playing.interrupt(force=True)
         self.voice(AGENT_VOICE)
         self.mark("human")
+        self.session.say(OPENING)
 
     # region: tools for the conversation with the rep
 
@@ -445,7 +467,7 @@ class PayerCaller(Agent):
         given = locals()
         data = context.userdata
         updates = {field: given[arg] for arg, field in payer.ARGS.items()}
-        result = payer.apply(data["record"], updates, self.heard)
+        result = payer.apply(data["record"], updates, self.heard, " ".join(self.said))
         publish(self.room, data)
         return result
 
