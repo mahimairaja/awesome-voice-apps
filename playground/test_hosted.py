@@ -135,7 +135,9 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         agent._llm_turns = 6
         agent._tts_bytes = 0
         agent._finish = AsyncMock()
-        context = SimpleNamespace(to_dict=dict)
+        # The seventh caller message of a 60 s call (6 turns allowed).
+        caller = [SimpleNamespace(type="message", role="user") for _ in range(7)]
+        context = SimpleNamespace(items=caller, to_dict=dict)
         chunks = [chunk async for chunk in agent.llm_node(context, [], None)]
         self.assertEqual(chunks, [])
         await asyncio.sleep(0)
@@ -1298,7 +1300,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
 
     @staticmethod
     def chat(*types):
-        items = [SimpleNamespace(type=t) for t in types]
+        items = [SimpleNamespace(type=t, role="user" if t == "message" else None) for t in types]
         return SimpleNamespace(items=items, to_dict=lambda: {"items": [{} for _ in items]})
 
     async def test_tool_follow_ups_do_not_spend_caller_turns(self):
@@ -1320,12 +1322,14 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(agent._llm_turns, 12)
             # A thirteenth caller turn stops the call, and the log says which cap.
             with self.assertLogs(hosted.logger, "WARNING") as logs:
-                out = [c async for c in agent.llm_node(self.chat("message"), [], None)]
+                out = [c async for c in agent.llm_node(self.chat(*["message"] * 13), [], None)]
         self.assertEqual(out, [])
         self.assertEqual(logs.records[-1].reason, "llm_turns")
         self.assertNotIn("text", vars(logs.records[-1]))
-        # Follow-up passes still have a hard cap: TOOL_STEPS per allowed turn.
-        agent = self.coffee_guard(turns=1, requests=12 * (1 + hosted.TOOL_STEPS))
+        # Follow-up passes still have a hard cap per allowed turn.
+        agent = self.coffee_guard(
+            turns=1, requests=12 * (1 + hosted.TOOL_STEPS + hosted.PREEMPTIVE_DRAFTS)
+        )
         with (
             patch.object(Agent, "llm_node", fake_llm),
             self.assertLogs(hosted.logger, "WARNING") as logs,
@@ -1333,6 +1337,21 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
             out = [c async for c in agent.llm_node(self.chat("function_call_output"), [], None)]
         self.assertEqual(out, [])
         self.assertEqual(logs.records[-1].reason, "llm_requests")
+
+    async def test_preemptive_drafts_of_one_caller_turn_count_once(self):
+        from livekit.agents import Agent
+
+        async def fake_llm(_agent, _ctx, _tools, _settings):
+            yield "Sure."
+
+        agent = self.coffee_guard()
+        with patch.object(Agent, "llm_node", fake_llm):
+            # Three drafts on interim transcripts, then the final reply, all for turn 2.
+            for _ in range(4):
+                out = [c async for c in agent.llm_node(self.chat("message", "message"), [], None)]
+                self.assertEqual(out, ["Sure."])
+        self.assertEqual(agent._llm_turns, 2)
+        self.assertEqual(agent._llm_requests, 4)
 
     async def test_cascade_calls_shorten_the_vad_silence(self):
         agent = object.__new__(hosted.HostedFraud)
