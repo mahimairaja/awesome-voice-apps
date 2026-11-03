@@ -449,6 +449,21 @@ TOOL_STEPS = 3
 CONTEXT_BYTES = 32_000
 
 
+# Discarded preemptive drafts a caller turn may cost on top of its reply and tool
+# passes, in the request cap. Each is cancelled once the final transcript differs.
+PREEMPTIVE_DRAFTS = 2
+
+
+def caller_turns(chat_ctx) -> int:
+    """How many caller messages the request's context holds (its turn number)."""
+    items = getattr(chat_ctx, "items", None) or []
+    return sum(
+        1
+        for item in items
+        if getattr(item, "type", None) == "message" and getattr(item, "role", None) == "user"
+    )
+
+
 def after_tool(chat_ctx) -> bool:
     """Whether this request is the model's pass over a tool result, not a new turn."""
     items = getattr(chat_ctx, "items", None) or []
@@ -651,14 +666,17 @@ class HostedGuard:
         follow_up = after_tool(chat_ctx)
         self._llm_requests += 1
         if not follow_up:
-            self._llm_turns = getattr(self, "_llm_turns", 0) + 1
+            # A turn is a caller message, not a request: preemptive generation drafts
+            # a reply on interim transcripts and can call this several times for one
+            # caller turn, which ended a 12-turn call at about 76 s.
+            self._llm_turns = max(getattr(self, "_llm_turns", 0), caller_turns(chat_ctx))
         turns = max(1, int(self.llm_budget * self.approval["seconds"] / 120))
         context_bytes = len(json.dumps(chat_ctx.to_dict()).encode())
         reason = (
             "llm_turns"
             if getattr(self, "_llm_turns", 0) > turns
             else "llm_requests"
-            if self._llm_requests > turns * (1 + TOOL_STEPS)
+            if self._llm_requests > turns * (1 + TOOL_STEPS + PREEMPTIVE_DRAFTS)
             else "context_bytes"
             if context_bytes > CONTEXT_BYTES
             else None
