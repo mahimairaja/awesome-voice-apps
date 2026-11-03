@@ -611,6 +611,63 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
         await agent.llm.aclose()
         await agent._embeddings.close()
 
+    def tenant_guide(self):
+        guide = object.__new__(hosted_tenant.TenantGuide)
+        guide._heard, guide._prefetched = [], {}
+        guide.meter_embedding = MagicMock()
+        guide._embeddings = None
+        return guide
+
+    async def test_tenant_question_embedding_starts_on_the_final_transcript(self):
+        guide = self.tenant_guide()
+        embedded = AsyncMock(return_value=([[0.5, 0.5]], 7))
+        with patch.object(hosted_tenant, "embed", embedded):
+            guide.prefetch_question(SimpleNamespace(is_final=False, transcript="Can my"))
+            guide.prefetch_question(SimpleNamespace(is_final=True, transcript="Can my landlord"))
+            guide.prefetch_question(SimpleNamespace(is_final=True, transcript="keep my deposit?"))
+            await asyncio.sleep(0)
+            self.assertEqual(embedded.await_count, 2)
+            vector = await guide.embed_question("Can my landlord  keep my deposit?")
+        self.assertEqual(vector, [0.5, 0.5])
+        # The turn reused the prefetched request instead of sending a third.
+        self.assertEqual(embedded.await_count, 2)
+        self.assertEqual(embedded.await_args.args[1], ["Can my landlord keep my deposit?"])
+        self.assertEqual(guide._prefetched, {})
+        self.assertEqual(guide._heard, [])
+
+    async def test_only_tenant_prefetches_question_embeddings(self):
+        for cls, expected in ((hosted.HostedTenant, 1), (hosted.HostedCost, 0)):
+            agent = object.__new__(cls)
+            session = MagicMock()
+            agent.load_index = AsyncMock()
+            agent.meter_embedding = MagicMock()
+            with (
+                patch.object(type(agent), "session", session, create=True),
+                patch.object(hosted.HostedGuard, "on_enter", AsyncMock()),
+            ):
+                await agent.on_enter()
+            events = [c.args[0] for c in session.on.call_args_list]
+            self.assertEqual(events.count("user_input_transcribed"), expected, cls.__name__)
+
+    async def test_tenant_question_embeds_again_when_the_turn_text_differs(self):
+        guide = self.tenant_guide()
+        embedded = AsyncMock(return_value=([[1.0]], 3))
+        with patch.object(hosted_tenant, "embed", embedded):
+            guide.prefetch_question(SimpleNamespace(is_final=True, transcript="deposit"))
+            await asyncio.sleep(0)
+            vector = await guide.embed_question("Can I withhold rent?")
+        self.assertEqual(vector, [1.0])
+        self.assertEqual(embedded.await_args.args[1], ["Can I withhold rent?"])
+
+    async def test_tenant_question_falls_back_when_the_prefetch_fails(self):
+        guide = self.tenant_guide()
+        embedded = AsyncMock(side_effect=[RuntimeError(), ([[2.0]], 3)])
+        with patch.object(hosted_tenant, "embed", embedded):
+            guide.prefetch_question(SimpleNamespace(is_final=True, transcript="deposit"))
+            await asyncio.sleep(0)
+            vector = await guide.embed_question("deposit")
+        self.assertEqual(vector, [2.0])
+
     async def test_tenant_index_retries_after_failure(self):
         hosted_tenant._index = None
         failing = AsyncMock(side_effect=RuntimeError())

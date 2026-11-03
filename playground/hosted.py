@@ -829,6 +829,7 @@ class HostedTenant(HostedGuard, TenantGuide):
         publish_tenant(self.room, self._index)
 
     async def on_enter(self) -> None:
+        self.session.on("user_input_transcribed", self.prefetch_question)
         await self.load_index()
         await super().on_enter()
 
@@ -1324,6 +1325,10 @@ class HostedBill(HostedGuard, BillExplainer):
         spawn(self.sink.report())
 
 
+# Hosted Pronounce end-of-turn wait (seconds); see HostedPronounce.__init__.
+PRONOUNCE_ENDPOINTING = {"min_delay": 0.5, "max_delay": 2.0}
+
+
 class HostedPronounce(HostedGuard, PronunciationCoach):
     demo = "pronounce"
     # Every read is a scored turn plus a coaching reply: about ten reads a call.
@@ -1335,6 +1340,15 @@ class HostedPronounce(HostedGuard, PronunciationCoach):
         self._instructions = pronounce_instructions()
         # Plain Nova-3 (no keyterms, so errors stay visible) and multilingual Sonic 3.
         self.update_options(stt=pronounce_stt(), tts=pronounce_tts())
+        # The standalone demo ends turns on VAD alone, so it waits 0.9 to 3.0 s in case
+        # a learner pauses mid-line. Hosted calls end turns on LiveKit's turn detector,
+        # which reads the words and keeps waiting on an unfinished line, so the floor
+        # can drop. The 2026-11-02 evals measured a 0.9 s median end-of-turn wait and
+        # 3.0 s at p90 here. Agent has no public setter for endpointing; the
+        # activity reads it from _turn_handling, and the delays mirror it.
+        self._turn_handling = {**self._turn_handling, "endpointing": dict(PRONOUNCE_ENDPOINTING)}
+        self._min_endpointing_delay = PRONOUNCE_ENDPOINTING["min_delay"]
+        self._max_endpointing_delay = PRONOUNCE_ENDPOINTING["max_delay"]
 
     def initial_state(self) -> dict:
         return pronounce_state()

@@ -8,6 +8,7 @@ NIM. The demo's NVIDIA and turn-detector imports are never used here, so they
 are satisfied with placeholders while its files load instead of being installed.
 """
 
+import asyncio
 import importlib.util
 import logging
 import sys
@@ -140,6 +141,10 @@ class TenantGuide(_module.RentersGuide):
         from openai import AsyncOpenAI
 
         self._embeddings = AsyncOpenAI(max_retries=0, timeout=5)
+        # Question embeddings started from final transcripts, keyed by the text so
+        # far this turn (see prefetch_question).
+        self._heard: list[str] = []
+        self._prefetched: dict[str, asyncio.Task] = {}
 
     def meter_embedding(self, tokens: int) -> None:
         """Bill question embeddings to this call; the hosted class overrides it."""
@@ -147,12 +152,45 @@ class TenantGuide(_module.RentersGuide):
     async def load_index(self) -> None:
         self._index = await tenant_index(self._embeddings)
 
-    async def embed_question(self, text: str) -> list[float]:
+    async def _embed_one(self, text: str) -> list[float]:
         vectors, tokens = await embed(self._embeddings, [text])
         self.meter_embedding(tokens)
         return vectors[0]
 
+    def prefetch_question(self, event) -> None:
+        """Start embedding the caller's words as soon as a final transcript lands.
+
+        The demo embeds the question in on_user_turn_completed, after the turn has
+        ended, so the OpenAI round trip sat in front of every reply (Tenant's e2e
+        was 1.86 s with a 0.41 s LLM first token). Starting it here overlaps it with
+        the endpointing wait. A turn whose text differs embeds again as before.
+        """
+        if not getattr(event, "is_final", False):
+            return
+        text = (getattr(event, "transcript", "") or "").strip()
+        if not text:
+            return
+        self._heard.append(text)
+        key = " ".join(self._heard)
+        if key not in self._prefetched:
+            self._prefetched[key] = asyncio.ensure_future(self._embed_one(key))
+
+    async def embed_question(self, text: str) -> list[float]:
+        prefetched, self._prefetched, self._heard = self._prefetched, {}, []
+        task = prefetched.pop(" ".join(text.split()), None)
+        for other in prefetched.values():
+            other.cancel()
+        if task is not None:
+            try:
+                return await task
+            except Exception:  # noqa: BLE001 - fall back to a fresh request
+                logger.warning("Prefetched question embedding failed; retrying")
+        return await self._embed_one(text)
+
     async def on_exit(self) -> None:
+        for task in self._prefetched.values():
+            task.cancel()
+        self._prefetched.clear()
         await self._embeddings.close()
 
     async def on_user_turn_completed(self, turn_ctx, new_message) -> None:
