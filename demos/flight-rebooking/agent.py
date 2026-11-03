@@ -6,7 +6,7 @@ search runs. The search also sets off a simulated provider outage: the primary
 LLM fails, a fallback model answers, and the primary comes back once a recovery
 probe passes. Say "knock out the voice" to fail the primary TTS the same way.
 
-Stack: Deepgram Nova-3 STT, OpenAI gpt-4o-mini (fallback gpt-4.1-nano),
+Stack: Deepgram Nova-3 STT, OpenAI gpt-4o-mini (fallback gpt-4.1-mini),
 Cartesia Sonic-2 TTS (fallback OpenAI tts-1). The airline is fictional.
 
 Run it:
@@ -54,7 +54,8 @@ OUTAGE_SECONDS = 15.0
 MAX_EVENTS = 14
 
 PRIMARY = {"llm": "gpt-4o-mini", "tts": "Cartesia Sonic-2"}
-BACKUP = {"llm": "gpt-4.1-nano", "tts": "OpenAI tts-1"}
+# The backup must be a model OpenAI still serves: gpt-4.1-nano was retired.
+BACKUP = {"llm": "gpt-4.1-mini", "tts": "OpenAI tts-1"}
 
 BOOKING = {
     "ref": "K7Q2PX",

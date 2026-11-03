@@ -3,7 +3,7 @@
 A fictional carrier's support line. Every caller turn is embedded once, and
 that one vector does two jobs: it looks the question up in a semantic answer
 cache (a hit is spoken with no model call at all), and it picks a model tier
-by comparing the turn to example turns. Small talk goes to gpt-4.1-nano,
+by comparing the turn to example turns. Small talk goes to gpt-4o-mini,
 account questions to gpt-4.1-mini, disputes and churn risks to gpt-4.1. Each
 turn is priced as it ran and as it would have run on gpt-4.1, and the ledger
 is published as a UI event so a client can show the difference live.

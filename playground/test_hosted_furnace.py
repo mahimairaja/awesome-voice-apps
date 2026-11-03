@@ -46,6 +46,27 @@ class FurnaceReachesDispatch(unittest.IsolatedAsyncioTestCase):
         self.assertIn("read back the digits", last)
         self.assertIn("once they confirm that read-back, call dispatch_technician", last)
 
+    async def test_resent_address_and_number_do_not_ask_for_another_read_back(self):
+        # The 2026-11-03 eval call: update_ticket six times, each re-sending the
+        # address and number, so every result asked for a read-back and it never dispatched.
+        furnace, context = line()
+        with patch.object(agent, "publish_ui_event"):
+            await furnace.update_ticket(
+                context,
+                problem="no heat",
+                address="42 Maple Crescent, Barrie",
+                callback_number="705 555 0193",
+                gas_smell=False,
+            )
+            last = await furnace.update_ticket(
+                context,
+                address="42 Maple Crescent, Barrie",
+                callback_number="705 555 0193",
+                vulnerable_occupant=False,
+            )
+        self.assertNotIn("read back", last)
+        self.assertIn("call dispatch_technician now", last)
+
     def test_a_gas_smell_never_points_to_dispatch(self):
         ticket = {"problem": "x", "address": "1 A St", "callback": "y", "safety": "z", "gas": True}
         self.assertIn("do not dispatch", agent.next_step(ticket))

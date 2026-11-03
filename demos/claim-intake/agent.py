@@ -147,12 +147,25 @@ def validate_date_of_loss(value: str, today: date | None = None) -> tuple[bool, 
     return True, d.isoformat()
 
 
+_UNSURE = ("not sure", "don't know", "unsure", "no idea")
+_NEGATIONS = _NO | {"nobody", "none", "not", "never", "neither", "nothing"}
+
+
 def normalize_yesno(value: str) -> tuple[bool, str]:
-    v = value.strip().lower().rstrip(".!")
-    if v in _YES:
-        return True, "yes"
-    if v in _NO:
-        return True, "no"
+    """Read a yes or no from the caller's own words.
+
+    The first yes or no word decides, so "No. Nobody was hurt." is no and
+    "Yeah, my passenger" is yes. "No one" counts as a no.
+    """
+    text = value.lower().replace("\u2019", "'")
+    if any(phrase in text for phrase in _UNSURE):
+        return False, "answer needs to be yes or no"
+    words = re.findall(r"[a-z']+", text.replace("no one", "nobody"))
+    for word in words:
+        if word in _YES:
+            return True, "yes"
+        if word in _NEGATIONS or word.endswith("n't"):
+            return True, "no"
     return False, "answer needs to be yes or no"
 
 
