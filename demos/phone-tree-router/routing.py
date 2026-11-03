@@ -5,8 +5,8 @@ Three pieces live here so they can be tested on their own:
 - the classic press-1 menu, and how long a caller who knows exactly which keys
   to press still spends getting through it;
 - the router's decision policy: route when one department is clearly ahead,
-  otherwise ask one clarifying question, and never loop the caller more than
-  twice;
+  otherwise ask one clarifying question, never loop the caller more than
+  twice, and never send a caller to the same queue twice;
 - the per-call state and the snapshot the agent publishes to the screen.
 
 The model never picks the queue. A separate router call scores every queue
@@ -54,6 +54,9 @@ QUEUES = [*DEPARTMENTS, UNCLEAR]
 
 # Route when the top department scores this much. Below it, ask.
 ROUTE_AT = 0.75
+# A first turn has to be this clear to route with no question: "it's about my
+# internet appointment" can score past ROUTE_AT and still need one question.
+DIRECT_AT = 0.9
 # A runner-up below this is noise: confirm the top queue instead of offering two.
 RUNNER_UP_AT = 0.15
 # After this many clarifying questions, route to the best guess and flag it.
@@ -243,7 +246,7 @@ def decide(scores: dict[str, float], clarified: int) -> dict:
     confidence = scores.get(top, 0.0)
     if scores.get(UNCLEAR, 0.0) > confidence:
         return {"action": "listen", "target": None, "between": None, "confidence": confidence}
-    if confidence >= ROUTE_AT:
+    if confidence >= (ROUTE_AT if clarified else DIRECT_AT):
         return {"action": "route", "target": top, "between": None, "confidence": confidence}
     if clarified >= MAX_CLARIFY:
         # Two questions is the limit. A best guess beats a third question.
@@ -377,6 +380,13 @@ def transfer(state: dict, summary: str, now: float) -> str:
     if not decision or decision["action"] != "route":
         return "Not transferred: the router has not chosen a queue. Follow the router note."
     target = decision["target"]
+    label = DEPARTMENTS[target]["label"]
+    if any(sent["department"] == target for sent in state["history"]):
+        # The caller adding detail to a request already sent there is not a new transfer.
+        return (
+            f"Not transferred: this caller was already sent to {label}. Say in one sentence "
+            "that team has their request, then ask if there is anything else."
+        )
     summary = " ".join(summary.split())[:200] or "No summary given."
     seconds = round(now - state["started"], 1)
     menu = menu_path(target)
@@ -392,7 +402,6 @@ def transfer(state: dict, summary: str, now: float) -> str:
         *state["history"],
         {"department": target, "agent": seconds, "menu": menu["total"], "keys": len(menu["keys"])},
     ][-3:]
-    label = DEPARTMENTS[target]["label"]
     return (
         f"Transferred to {label}, with your summary. In one sentence tell the caller they are "
         f"being connected to {label} and will not need to repeat themselves. This is a demo, "

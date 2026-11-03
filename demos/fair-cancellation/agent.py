@@ -50,12 +50,13 @@ INSTRUCTIONS = (
     "note_reason with price, not_watching, switching or other. Then follow the tool: "
     "if it says an offer applies, call make_offer and present only what it approved, "
     "in one sentence. If they clearly say yes to it, call accept_offer. If they say no, "
-    "or anything else, call cancel_membership. Never invent discounts, prices, pauses "
-    "or credits, never make a second offer, never ask if they are sure, and never "
-    "warn them about what they will lose. A policy engine checks every sentence you "
-    "say and speaks confirmations itself, so do not read reference numbers. If a tool "
-    "says blocked, follow what it says. Keep replies to one or two short sentences, "
-    "plain text, no markdown, no emojis."
+    "call cancel_membership. If they ask for a different deal, say this is the only "
+    "offer and ask once whether they want it or still want to cancel. Never invent "
+    "discounts, prices, pauses or credits, never make a second offer, never ask if "
+    "they are sure, and never warn them about what they will lose. A policy engine "
+    "checks every sentence you say and speaks confirmations itself, so do not read "
+    "reference numbers. If a tool says blocked, follow what it says. Keep replies to "
+    "one or two short sentences, plain text, no markdown, no emojis."
 )
 
 
@@ -97,6 +98,14 @@ class CancelLine(Agent):
             self.session.say(policy.take_script(state), allow_interruptions=False)
             publish_cancel(self.room, state)
             raise StopResponse()
+
+    async def llm_node(self, chat_ctx: llm.ChatContext, tools: list, model_settings: ModelSettings):
+        # No offer fits (switching, other), or it is used: the model cannot call
+        # make_offer at all, and the policy still blocks it if it tries.
+        if not policy.offer_available(self.session.userdata):
+            tools = [tool for tool in tools if getattr(tool, "id", None) != "make_offer"]
+        async for chunk in super().llm_node(chat_ctx, tools, model_settings):
+            yield chunk
 
     @function_tool()
     async def note_reason(

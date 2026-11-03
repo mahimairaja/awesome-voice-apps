@@ -85,6 +85,37 @@ def test_policy_routes_clarifies_listens_and_stops_asking():
     }
 
 
+def test_a_vague_first_turn_gets_a_question_even_past_the_route_bar():
+    # Evidence, 2026-11-02 eval: "Hi, it's about my internet appointment." was
+    # transferred at once, with no clarifying question.
+    first = routing.decide(probs(visit=0.8, internet=0.2), 0)
+    assert first["action"] == "clarify" and first["between"] == ["visit", "internet"]
+    assert routing.decide(probs(visit=0.8, internet=0.2), 1)["action"] == "route"
+    assert routing.decide(probs(billing=routing.DIRECT_AT), 0)["action"] == "route"
+    state = routing.initial_state(now=0.0)
+    routing.record(state, "it's about my internet appointment", probs(visit=0.8), 300)
+    assert state["clarified"] == 1
+    assert "has not chosen" in routing.transfer(state, "Internet appointment.", 4.0)
+
+
+def test_a_caller_is_never_sent_to_the_same_queue_twice():
+    # Evidence, 2026-11-02 eval: the missed technician detail was transferred to
+    # Technician visits a second time.
+    state = routing.initial_state(now=0.0)
+    routing.record(state, "the technician never showed up", probs(visit=0.95), 250)
+    assert "Technician visits" in routing.transfer(state, "Technician missed the visit.", 6.0)
+    routing.new_round(state, 10.0)
+    routing.record(state, "it was supposed to be yesterday", probs(visit=0.95), 250)
+    again = routing.transfer(state, "Technician missed yesterday.", 12.0)
+    assert again.startswith("Not transferred: this caller was already sent to Technician visits")
+    assert state["routed"] is None and state["handoff"] is None
+    assert [sent["department"] for sent in state["history"]] == ["visit"]
+    routing.new_round(state, 20.0)
+    routing.record(state, "I'm moving next month", probs(moving=0.95), 250)
+    assert "Moving and new service" in routing.transfer(state, "Moving next month.", 24.0)
+    assert [sent["department"] for sent in state["history"]] == ["visit", "moving"]
+
+
 def test_transfer_only_goes_where_the_router_says():
     state = routing.initial_state(now=100.0)
     assert "has not chosen" in routing.transfer(state, "wants billing", 101.0)
@@ -135,7 +166,7 @@ def test_snapshot_shape_and_router_notes():
     }
     assert [s["id"] for s in snap["scores"]][-1] == routing.UNCLEAR
     assert "Ask one short question" in routing.instruction(decision)
-    assert "Call transfer" in routing.instruction(routing.decide(probs(cancel=0.8), 0))
+    assert "Call transfer" in routing.instruction(routing.decide(probs(cancel=0.8), 1))
     assert "best guess" in routing.instruction(routing.decide(probs(cancel=0.4), 2))
     assert "unavailable" in routing.instruction(routing.record_error(state, "hello"))
 

@@ -29,7 +29,9 @@ A two-second lookup delay makes corrections observable; set `SDR_LOOKUP_DELAY=0`
 for an immediate lookup. VAD cuts local playback during interruptions.
 
 The example rejects lookup results after a newer finalized caller transcript and
-requires a fresh standalone confirmation for a proposed slot. Speech recognition
+requires a fresh standalone confirmation for a proposed slot. A day correction
+re-queries the new day inside `update_request`, and every slot comes back with a
+`read_back` line in Toronto time for the voice to read. Speech recognition
 and model tool selection are probabilistic: offline tests establish the state
 machine rules, not real audio accuracy or production readiness. A real calendar
 would additionally need persistent operation IDs and provider-side idempotency.

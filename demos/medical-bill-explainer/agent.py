@@ -140,6 +140,57 @@ TERMS = (
     "Plan paid is the plan's share of the allowed amount. You owe is what is left: "
     "for in-network care, at most allowed minus plan paid."
 )
+# What each bill term means, general to every bill, so no bill is needed to ask.
+GLOSSARY = {
+    "billed": "Billed is the provider's full list price, before the plan's discount.",
+    "allowed": (
+        "Allowed is the price the plan negotiated with the provider. It is usually lower "
+        "than billed, and the difference is written off, not owed."
+    ),
+    "plan_paid": "Plan paid is the plan's share of the allowed amount.",
+    "you_owe": (
+        "You owe is what is left after the plan paid: copay, deductible or coinsurance. For "
+        "in-network care it is at most allowed minus plan paid."
+    ),
+    "deductible": "The deductible is what you pay each year before the plan starts paying.",
+    "copay": "A copay is a fixed amount you pay for a service, such as an office visit.",
+    "coinsurance": (
+        "Coinsurance is your percentage of the allowed amount once the deductible is met."
+    ),
+    "balance_billing": (
+        "Balance billing is an in-network provider charging you more than allowed minus "
+        "plan paid. That extra should not be billed to you."
+    ),
+    "eob": (
+        "An explanation of benefits is the plan's statement of what it paid. It is not a "
+        "bill; the provider sends the bill."
+    ),
+}
+TERM_WORDS = {
+    "billed": "billed",
+    "charge": "billed",
+    "charges": "billed",
+    "allowed": "allowed",
+    "plan paid": "plan_paid",
+    "paid": "plan_paid",
+    "you owe": "you_owe",
+    "owe": "you_owe",
+    "patient responsibility": "you_owe",
+    "deductible": "deductible",
+    "copay": "copay",
+    "coinsurance": "coinsurance",
+    "balance billing": "balance_billing",
+    "explanation of benefits": "eob",
+    "eob": "eob",
+}
+
+
+def define(term: str) -> str | None:
+    """The glossary key for a term as the member or model puts it."""
+    words = " ".join(str(term).lower().replace("_", " ").replace("-", " ").split())
+    if words.replace(" ", "_") in GLOSSARY:
+        return words.replace(" ", "_")
+    return next((key for phrase, key in TERM_WORDS.items() if phrase in words), None)
 
 
 def money(value) -> Decimal:
@@ -307,8 +358,11 @@ class BillExplainer(Agent):
             instructions=(
                 "You are Ivy, member services at Kestrel Health, a health plan. You "
                 "help a member understand a medical bill or explanation of benefits "
-                "they share on screen. Until a bill arrives, ask them to upload a photo "
-                "of one or pick a sample on screen. Lines have ids like L1 and L2. "
+                "they share on screen. When they ask what a term means, such as billed, "
+                "allowed, plan paid or you owe, call explain_term and answer from it, bill "
+                "or no bill. Until a bill arrives, answer term questions that way, then ask "
+                "them to upload a photo of one or pick a sample on screen; never state an "
+                "amount, line or finding before it arrives. Lines have ids like L1 and L2. "
                 "Every time you talk about a line, call show_lines for it first, even "
                 "if you saw it before: it highlights the line on the member's screen "
                 "and returns its figures. Only use amounts it returns, never estimate "
@@ -469,7 +523,10 @@ class BillExplainer(Agent):
         line_ids: line ids such as L1 and L3, or TOTAL for the totals.
         """
         if not self._bill:
-            return "No bill yet. Ask them to upload a photo or pick a sample on screen."
+            return (
+                "No bill yet, so no amounts or lines to read. Explain any term they asked "
+                "about with explain_term, then ask them to upload a photo or pick a sample."
+            )
         wanted = [clip(i, 8).upper() for i in line_ids][:4]
         lines = [line for line in map(self._line, wanted) if line]
         if not lines and "TOTAL" not in wanted:
@@ -514,6 +571,26 @@ class BillExplainer(Agent):
         return " ".join(parts)
 
     @function_tool()
+    async def explain_term(self, context: RunContext, terms: list[str]) -> str:
+        """Explain what bill terms mean in general. Works before any bill is shared.
+
+        terms: words the member asked about, such as billed, allowed, plan paid, you owe,
+            deductible, copay or coinsurance.
+        """
+        keys = list(dict.fromkeys(filter(None, (define(clip(t, 40)) for t in terms[:4]))))
+        if not keys:
+            return "Not a bill term here. Known terms: " + ", ".join(
+                key.replace("_", " ") for key in GLOSSARY
+            )
+        parts = [GLOSSARY[key] for key in keys]
+        if not self._bill:
+            parts.append(
+                "No bill is on screen yet, so no amounts from their bill: ask them to "
+                "upload a photo or pick a sample to see their own figures."
+            )
+        return " ".join(parts)
+
+    @function_tool()
     async def open_dispute(self, context: RunContext, line_ids: list[str], reason: str) -> str:
         """Open a billing dispute for flagged lines, only after the member agrees.
 
@@ -521,7 +598,10 @@ class BillExplainer(Agent):
         reason: the problem in a few words, as the member would put it.
         """
         if not self._bill:
-            return "No bill yet."
+            return (
+                "No bill yet, so nothing can be disputed and no duplicate is confirmed. Ask "
+                "them to upload the bill or pick a sample, then check the line together."
+            )
         wanted = sorted({clip(i, 8).upper() for i in line_ids})
         flagged = [f for f in self._findings if set(f["lines"]) & set(wanted)]
         if not wanted or not flagged:

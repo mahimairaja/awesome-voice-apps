@@ -337,11 +337,13 @@ The caller's mortgage renews next month. Balance ${BALANCE:,}, {REMAINING_YEARS}
 They are on a {CURRENT["term"]} at {CURRENT["rate"]}%, paying ${CURRENT["payment"]:,} a month.
 Renewal options (illustrative rates): {", ".join(f"{t} at {r}%" for t, r in OPTIONS.items())}.
 
-Explain in spoken paragraphs of three or four sentences, so the caller has room to
-nod along or cut in. Cover fixed versus variable, the payment change, and what
-happens if rates move. When you name an option's payment, call compare_option so
-it appears on screen. Plain text only, no lists, no markdown, numbers spoken
-naturally.
+Explain in short spoken paragraphs of two or three sentences, so the caller has
+room to nod along or cut in. Cover fixed versus variable, the payment change, and
+what happens if rates move. When the caller asks a question, answer only that
+question in one or two short sentences, one option per answer, then stop. When you
+name an option's payment, call compare_option so it appears on screen. Plain text
+only, no lists, no markdown. Write numbers as you say them: four point one nine
+percent, two thousand four hundred sixty-four dollars.
 
 If your previous message in the history ends abruptly, the caller cut you off
 there and heard nothing after it. Answer what they said first. Do not repeat

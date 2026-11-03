@@ -65,13 +65,16 @@ class CascadeInterviewer(Agent):
 
     architecture = "cascade"
 
-    def __init__(self, label: str, question: str, *, stt=None, llm=None, tts=None) -> None:
+    def __init__(
+        self, label: str, question: str, *, stt=None, llm=None, tts=None, turn_handling=None
+    ) -> None:
         super().__init__(
             instructions=instructions(label, question),
             stt=stt or deepgram.STT(model="nova-3"),
             llm=llm or openai.LLM(model="gpt-4o-mini", max_completion_tokens=120),
             tts=tts or cartesia.TTS(model="sonic-3"),
-            turn_handling={"turn_detection": "vad"},
+            # A host with its own turn detector passes {} to keep the session's.
+            turn_handling={"turn_detection": "vad"} if turn_handling is None else turn_handling,
         )
         self.seat = label
         self.question = question
@@ -232,6 +235,11 @@ class InterviewDesk:
         if self.answers and self.user_metrics is not None:
             self.publish_turn(metrics)
         self.user_metrics = None
+        if getattr(item, "interrupted", False) and self.answers:
+            # The candidate talked over the reply, so they were mid-answer: the next
+            # part of the same answer must not count as a second one.
+            self.answers -= 1
+            self.publish_round()
         elapsed = time.monotonic() - self.round_started
         if (
             self.answers >= ANSWERS_PER_ROUND

@@ -12,7 +12,6 @@ _demo = Path(__file__).resolve().parents[1] / "demos" / "interview-coach"
 _spec = importlib.util.spec_from_file_location("playground_interview_agent", _demo / "agent.py")
 _module = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_module)
-InterviewDesk = _module.InterviewDesk
 CascadeInterviewer = _module.CascadeInterviewer
 DuplexInterviewer = _module.DuplexInterviewer
 ROUND_SECONDS = _module.ROUND_SECONDS
@@ -32,6 +31,29 @@ def order_for(reservation: str) -> tuple[str, str]:
 def round_seconds(call_seconds: int) -> float:
     # Two rounds share the call; a short allowance shortens both.
     return max(20.0, min(ROUND_SECONDS, call_seconds / 2 - 8))
+
+
+class InterviewDesk(_module.InterviewDesk):
+    """The demo's desk, handing the call from the lobby to interviewer A for real.
+
+    The lobby builds interviewer A inside its own on_enter, which runs inside
+    session.start(). An update_agent made before the session has started only
+    records the agent, so on 2026-11-02 the silent lobby answered the candidate as
+    "A" and A never asked its question. The session's first state change marks the
+    end of start(), so the handoff is made again then.
+    """
+
+    _first: Agent | None = None
+
+    def first_agent(self) -> Agent:
+        self._first = super().first_agent()
+        return self._first
+
+    def _on_agent_state(self, event) -> None:
+        first, self._first = self._first, None
+        if first is not None and event.old_state == "initializing":
+            self.session.update_agent(first)
+        super()._on_agent_state(event)
 
 
 class Lobby(Agent):
@@ -56,6 +78,9 @@ def bounded_builder(stop, spawn):
                     model="openai/gpt-4o-mini", extra_kwargs={"max_completion_tokens": 120}
                 ),
                 tts=inference.TTS(model="cartesia/sonic-3"),
+                # Raw VAD ended a turn at every pause in a long answer, so A replied
+                # over the candidate. The session's turn detector reads the words.
+                turn_handling={},
             )
             self._llm_requests = 0
             self._tts_bytes = 0

@@ -288,10 +288,11 @@ INSTRUCTIONS = (
     "word scribe, for example scribe recap or scribe give us the scorecard. "
     "When that happens, review the whole conversation so far, where each line is "
     "prefixed with the speaker like Speaker 1 or Speaker 2, and call "
-    "publish_scorecard once. Give one row per interviewer with their strengths, "
-    "their concerns, and their lean toward hiring, plus a one sentence panel "
-    "consensus. After the tool call, say a short spoken summary in one or two "
-    "sentences. Keep speech plain text, no markdown, no emojis."
+    "publish_scorecard once. Give one row per interviewer who spoke with their "
+    "strengths, their concerns, and their lean toward hiring, using only what "
+    "that interviewer said (write none stated where they gave none), plus a one "
+    "sentence panel consensus. After the tool call, say a short spoken summary "
+    "in one or two sentences. Keep speech plain text, no markdown, no emojis."
 )
 
 
@@ -326,6 +327,11 @@ class PanelScribe(Agent):
         loop = asyncio.get_running_loop()
         publish_talk_time(self.room, self.sidecar.talk_time_items(now=loop.time()))
         if TRIGGER not in text.lower():
+            # StopResponse drops the turn from the chat context, so keep the line
+            # here, or the recap sees only the line that said scribe.
+            chat_ctx = self.chat_ctx.copy()
+            chat_ctx.items.append(new_message)
+            await self.update_chat_ctx(chat_ctx)
             raise StopResponse()
 
     @function_tool()

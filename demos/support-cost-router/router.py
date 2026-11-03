@@ -209,8 +209,8 @@ CLASS_TIER = {"chat": "nano", "account": "mini", "general": "mini", "escalate": 
 # mistake can cost a better answer but never a wrong credit.
 TIER_TOOLS = {
     "nano": (),
-    "mini": ("look_up_bill",),
-    "large": ("look_up_bill", "credit_duplicate"),
+    "mini": ("look_up_bill", "look_up_plan"),
+    "large": ("look_up_bill", "look_up_plan", "credit_duplicate"),
 }
 
 # Words that always mean money or a churn risk is on the line. Escalation by
@@ -520,6 +520,15 @@ def bill_summary() -> str:
         f"{ACCOUNT['due_date']}, total ${total:.2f} (last month ${ACCOUNT['previous_total_usd']:.2f}). "
         f"Lines: {lines}. New since last bill: {'; '.join(ACCOUNT['new_since_last_bill'])}. "
         f"Data used this cycle: {ACCOUNT['data_used_gb']} GB."
+    )
+
+
+def plan_terms() -> str:
+    """The plan's own terms, so a model answers from them and not from other carriers."""
+    terms = " ".join(f"{key.replace('_', ' ').capitalize()}: {answer}" for key, _, answer in FAQ)
+    return (
+        f"{BRAND} terms for every plan, including {ACCOUNT['plan']}. {terms} Anything not "
+        "listed here is not in the plan terms."
     )
 
 

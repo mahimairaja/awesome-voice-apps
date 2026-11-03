@@ -182,6 +182,18 @@ def note_reason(state: dict, reason: str) -> str:
     return f"noted {reason}. One offer applies: call make_offer, or cancel if they decline."
 
 
+def offer_available(state: dict) -> bool:
+    """Whether make_offer could approve anything now. When not, the model never sees it."""
+    return (
+        not state["outcome"]
+        and state["intent_turn"] is not None
+        and state["reason"] is not None
+        and OFFERS[state["reason"]] is not None
+        and not state["offers"]
+        and not state["declined"]
+    )
+
+
 def make_offer(state: dict) -> str:
     """The one retention offer, if the policy allows it. Returns the tool result."""
     if state["outcome"]:
@@ -242,6 +254,15 @@ def cancel(state: dict, by: str = "agent") -> str:
     if state["outcome"]:
         return "blocked: the caller kept the membership with the offer."
     offer = _open_offer(state)
+    if offer and by == "agent":
+        # A decline or a cancel request is heard by code, which then cancels itself
+        # (observe_caller). Anything else, such as asking for a different deal, is
+        # not a decision yet.
+        _log(state, "OFFER.CONSENT", "block", "Cancel refused: the offer is open, no decline.")
+        return (
+            "blocked: the offer is still open and the caller has not declined it. Say it "
+            "is the only offer, then ask once: keep it, or cancel?"
+        )
     if offer:
         offer["status"] = "declined"
     used = state["turn"] - state["intent_turn"]

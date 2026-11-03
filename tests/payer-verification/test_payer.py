@@ -114,6 +114,32 @@ def test_bad_values_are_refused(field, raw):
     assert record[field]["status"] == "empty"
 
 
+def test_numbers_the_rep_never_said_are_refused():
+    # Evidence, 2026-11-02 eval: the agent heard "The specialist copy is dollar
+    # fifty." and recorded a copay of 1.5 instead of 50.
+    said = "The specialist copy is dollar fifty. The deductible is dollar two five hundred."
+    assert payer.spoken_numbers(said) == {50.0, 2500.0}
+    record = payer.new_record()
+    note = payer.apply(record, {"copay": 1.5, "deductible": 2500}, said, said)
+    assert "Problems" in note and "ask the rep to repeat" in note
+    assert record["copay"]["status"] == "empty"
+    assert record["deductible"]["display"] == "$2,500"
+    payer.apply(record, {"copay": 50, "coinsurance": 0.2}, said, said + " Twenty percent.")
+    assert (record["copay"]["display"], record["coinsurance"]["display"]) == ("$50", "20%")
+    # Spoken and written forms both count; zero and number-free words are not checked.
+    assert payer.spoken_numbers("met four hundred twenty, $1,500 total") == {420.0, 1500.0}
+    assert payer.spoken_numbers("fifteen hundred and twenty-five hundred") == {1500.0, 2500.0}
+    assert "Recorded" in payer.apply(payer.new_record(), {"deductible_met": 0}, "", said)
+    assert "Recorded" in payer.apply(payer.new_record(), {"copay": 40}, "", "Dana here.")
+
+
+def test_a_copay_of_a_few_dollars_is_a_mishearing():
+    record = payer.new_record()
+    assert "out of range" in payer.apply(record, {"copay": 1.5}, "")
+    assert record["copay"]["status"] == "empty"
+    assert "Recorded" in payer.apply(record, {"copay": 0}, "")
+
+
 def test_complete_record_and_inactive_plans():
     record = payer.new_record()
     payer.apply(

@@ -37,9 +37,13 @@ client. Provider usage may cost money.
 - `PayerCaller.classify` and `payer.hold_signals`: while on hold, each
   transcript is classified as a recording or a person. Repeated announcements
   count as recordings whatever the model says.
+- `PayerCaller.take_over`: when a person picks up, even mid-menu, the phone
+  tree stops and code speaks the opening line, so the rep always hears that an
+  AI assistant is calling for the clinic.
 - `payer.apply`: what the rep says is normalised, range-checked, cross-checked
-  (met cannot exceed the deductible), kept with the words it came from, and
-  corrections keep the old value.
+  (met cannot exceed the deductible), checked against the numbers the rep
+  actually said, kept with the words it came from, and corrections keep the
+  old value.
 - `finish_verification`: the call closes only when every required field is in.
 
 To call a real payer, dial out through a SIP trunk (`create_sip_participant`)

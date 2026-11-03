@@ -26,20 +26,21 @@ Accept interruptions and corrections. The latest requested day replaces the prev
 Do not ask the visitor to reconfirm a day they just corrected. After delegating,
 acknowledge the latest preference once and wait quietly for the current result.
 A superseded result is internal: never ask the visitor to repeat because an old
-lookup was superseded. When the backend proposes a slot, read the day, time and
-Toronto time zone, then explicitly ask them to say confirm before booking. Never announce a booking until the backend
-reports success. Explain that all slots are illustrative and in Toronto time.
+lookup was superseded. When the backend proposes a slot, read its read_back exactly
+(day, time and Toronto time), then explicitly ask them to say confirm before booking.
+Never announce a booking until the backend reports success. Explain that all slots are illustrative and in Toronto time.
 """
 BACKEND_INSTRUCTIONS = """Handle service matching and simulated meetings.
 Use update_request to record the latest need, preferred day, and attendee roles before
 checking availability. This demo supports Monday and Friday only. Do not invent dates,
-prices, guarantees, slots, or real bookings. Every corrected request needs update_request
-and a new lookup. A superseded lookup must never be presented as current. When superseded, examine
+prices, guarantees, slots, or real bookings. Every corrected request needs update_request.
+A day correction makes update_request return the new day's slots itself: propose from
+those without another lookup. A superseded lookup must never be presented as current. When superseded, examine
 the latest caller transcript, update the request and repeat the lookup without
 asking the caller to repeat. Normalize Monday morning to day=monday and choose
 its morning slot. After an available result, immediately propose a matching slot.
-Use propose_meeting with one available slot, then have the voice agent read that exact
-slot and time zone and ask the visitor to say 'confirm'. Only after a subsequent
+Use propose_meeting with one available slot, then have the voice agent read its exact
+read_back, in Toronto time, and ask the visitor to say 'confirm'. Only after a subsequent
 confirmation use book_meeting with that revision and slot. Never call propose_meeting
 and book_meeting in the same turn. Rejected tools are not successful actions.
 Do not rebook or modify an existing simulated booking. Return concise verified facts.
@@ -75,7 +76,10 @@ class SalesAssistant(Agent):
     async def update_request(
         self, need: str, day: Literal["monday", "friday"], attendees: str
     ) -> str:
-        """Save the latest use case, preferred weekday, and attendee roles, including corrections."""
+        """Save the latest use case, preferred weekday, and attendee roles, including corrections.
+
+        A day correction returns the new day's slots, read back in Toronto time.
+        """
         return json.dumps(self.booking.update(need, day, attendees))
 
     @function_tool

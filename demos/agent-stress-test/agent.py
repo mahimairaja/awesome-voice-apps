@@ -47,6 +47,8 @@ TURNS = 3
 # Suites per session: v1, then v2 (or a re-run to spot flaky behavior).
 MAX_RUNS = 2
 SIM_TIMEOUT = 60
+# Seconds end_test waits for the live score, so the lead reads it from the tool result.
+JUDGE_WAIT = 20
 
 LEAD_INSTRUCTIONS = (
     "You are the test lead on a voice agent stress test bench. The agent under test is "
@@ -55,8 +57,9 @@ LEAD_INSTRUCTIONS = (
     "angry customer), rambler, accent (a heavy accent), injector (a prompt injector), "
     "takeover (an account takeover attempt) and offtopic. When the visitor wants a test, "
     "call run_suite with the version and the callers they picked, or all six. The results "
-    "stream to their screen and you are told when the run ends: never invent results or "
-    "read transcripts aloud. If the visitor wants to call Ava themselves, call call_in. "
+    "stream to their screen and you are told when the run ends. State a score or result "
+    "only when a tool result or note in this call gives it; never invent one or read "
+    "transcripts aloud. If the visitor wants to call Ava themselves, call call_in. "
     "Speak in one or two short sentences, plain text, no lists."
 )
 
@@ -454,13 +457,29 @@ class StressTestLead(Agent):
         await self.update_instructions(LEAD_INSTRUCTIONS)
         await self.update_tools(self._lead_tools)
         self.publish()
-        self._spawn(self._judge_live(history))
+        # The score comes from the rubric, in this tool's result. The model never
+        # gets a turn between "being scored" and the score in which to make one up.
+        judging = self._spawn(self._judge_live(history))
+        try:
+            score = await asyncio.wait_for(asyncio.shield(judging), JUDGE_WAIT)
+        except TimeoutError:
+            judging.add_done_callback(self._read_late_score)
+            return (
+                "You are the test lead again. Say in one sentence that the live call is still "
+                "being scored. State no score or result."
+            )
         return (
-            "You are the test lead again. Say in one sentence that the live call is being "
-            "scored now."
+            f"You are the test lead again. {score} Tell the visitor this result in at most "
+            "two short sentences. State no other score."
         )
 
-    async def _judge_live(self, history: lkllm.ChatContext) -> None:
+    def _read_late_score(self, judging: asyncio.Task) -> None:
+        if not judging.cancelled() and judging.exception() is None:
+            self._spawn(
+                self._say(f"{judging.result()} Tell the visitor in at most two short sentences.")
+            )
+
+    async def _judge_live(self, history: lkllm.ChatContext) -> str:
         live = self.state["live"]
         try:
             result = await make_judges(self.make_sim_llm()).evaluate(history)
@@ -474,13 +493,20 @@ class StressTestLead(Agent):
             live["row"]["status"] = "error"
         self.state["phase"] = "done"
         self.publish()
-        passed = sum(c["v"] == "pass" for c in live["row"]["cells"].values())
-        fails = [c["why"] for c in live["row"]["cells"].values() if c["v"] == "fail" and c["why"]]
-        await self._say(
-            f"The live call scored {passed} of {len(live['row']['cells'])}. "
-            f"{'Failures: ' + '; '.join(fails[:2]) if fails else 'No failures.'} "
-            "Tell the visitor in at most two short sentences."
-        )
+        return live_score(live["row"])
+
+
+def live_score(row: dict) -> str:
+    """The live call's result, counted from the rubric cells. The lead reads only this."""
+    if row["status"] == "error":
+        return "Scoring the live call failed, so there is no score."
+    cells = row["cells"].values()
+    passed = sum(c["v"] == "pass" for c in cells)
+    fails = [c["why"] for c in cells if c["v"] == "fail" and c["why"]]
+    return (
+        f"The live call scored {passed} of {len(row['cells'])}. "
+        f"{'Failures: ' + '; '.join(fails[:2]) if fails else 'No failures.'}"
+    )
 
 
 server = AgentServer()

@@ -2,8 +2,9 @@
 
 A caller to Northvale, a fictional telecom, says what they need in their own
 words and lands in the right queue. A router call scores every queue on each
-caller turn. Code, not the model, decides: route at 75% or above, otherwise ask one clarifying question, and
-never more than two. The agent hands over a one-line summary so the caller does
+caller turn. Code, not the model, decides: route a first request at 90%, a
+clarified one at 75%, otherwise ask one clarifying question, and never more
+than two. The agent hands over a one-line summary so the caller does
 not repeat themselves, and the screen races a classic press-1 menu to the same
 queue.
 

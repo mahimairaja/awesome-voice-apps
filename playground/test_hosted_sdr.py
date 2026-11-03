@@ -67,6 +67,18 @@ class SDRSafety(unittest.IsolatedAsyncioTestCase):
         await pending[0]
         finish.assert_awaited_once()
 
+    async def test_day_correction_reads_back_a_friday_slot_in_toronto_time(self):
+        agent = HostedSDR(SimpleNamespace(), {}, AsyncMock(), lambda coro: coro.close(), None)
+        agent.hear("Can we meet with your team Monday morning?")
+        await agent.update_request("dental booking agent", "monday", "CTO")
+        agent.hear("Actually, Friday works better than Monday.")
+        result = json.loads(await agent.update_request("dental booking agent", "friday", "CTO"))
+        self.assertEqual(result["status"], "available")
+        self.assertEqual(result["slots"], ["Friday 11:00", "Friday 15:00"])
+        proposal = json.loads(await agent.propose_meeting(result["revision"], "Friday 11:00"))
+        self.assertEqual(proposal["read_back"], "Friday at 11 a.m. Toronto time")
+        self.assertEqual(meeting_state(agent.booking)["day"], "friday")
+
     async def test_instances_do_not_share_booking_state(self):
         a = HostedSDR(SimpleNamespace(), {}, AsyncMock(), asyncio.create_task, None)
         b = HostedSDR(SimpleNamespace(), {}, AsyncMock(), asyncio.create_task, None)

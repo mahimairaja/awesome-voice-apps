@@ -17,7 +17,8 @@ provider, and scores every call on a seven-line rubric.
   (LiveKit's built-in safety judge, plus scope and resolution judges that grade
   against the business policy rather than the agent's own prompt).
 - **Regression:** run v1, then v2, and get what the fix repaired and what it
-  broke. Or ask to call Ava yourself and get scored live.
+  broke. Or ask to call Ava yourself and get scored live: `end_test` waits for
+  the rubric and returns the score, so the lead never states one of its own.
 
 Results stream to a `StressTest` UI event (optional; the voice conversation runs
 without it). Brands, accounts and callers are fictional.
