@@ -114,6 +114,11 @@ def spoken_digits(phone: str) -> str:
     return ", ".join(" ".join(group) for group in (digits[:3], digits[3:6], digits[6:]))
 
 
+def _address_words(value: str) -> str:
+    """Lowercase words and numbers of an address, so case and commas never differ."""
+    return " ".join(re.findall(r"\w+", value.lower()))
+
+
 def normalize_address(value: str) -> tuple[bool, str]:
     address = " ".join(value.split()).strip(" ,.")
     if not _STREET.match(address):
@@ -259,7 +264,7 @@ class FurnaceLine(Agent):
             notes.append("recorded the problem")
         if address:
             ok, value = normalize_address(address)
-            if ok and ticket.get("address") == value:
+            if ok and _address_words(ticket.get("address") or "") == _address_words(value):
                 notes.append("address already confirmed")
             elif ok:
                 ticket["address"] = value

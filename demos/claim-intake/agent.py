@@ -147,25 +147,35 @@ def validate_date_of_loss(value: str, today: date | None = None) -> tuple[bool, 
     return True, d.isoformat()
 
 
-_UNSURE = ("not sure", "don't know", "unsure", "no idea")
+_UNSURE = ("not sure", "don't know", "unsure", "no idea", "can't tell", "cannot tell", "can't say")
 _NEGATIONS = _NO | {"nobody", "none", "not", "never", "neither", "nothing"}
 
 
 def normalize_yesno(value: str) -> tuple[bool, str]:
     """Read a yes or no from the caller's own words.
 
-    The first yes or no word decides, so "No. Nobody was hurt." is no and
-    "Yeah, my passenger" is yes. "No one" counts as a no.
+    "No. Nobody was hurt." is no and "Yeah, my passenger" is yes. An answer
+    with both a yes and a no, or an unsure one, is rejected so the agent asks again.
+
+    Args:
+        value: The caller's answer, in their own words.
+
+    Returns:
+        (True, "yes" or "no") when the answer is clear, otherwise (False, the
+        reason to tell the caller).
     """
     text = value.lower().replace("\u2019", "'")
     if any(phrase in text for phrase in _UNSURE):
         return False, "answer needs to be yes or no"
     words = re.findall(r"[a-z']+", text.replace("no one", "nobody"))
+    answers = set()
     for word in words:
         if word in _YES:
-            return True, "yes"
-        if word in _NEGATIONS or word.endswith("n't"):
-            return True, "no"
+            answers.add("yes")
+        elif word in _NEGATIONS or word.endswith("n't"):
+            answers.add("no")
+    if len(answers) == 1:
+        return True, answers.pop()
     return False, "answer needs to be yes or no"
 
 

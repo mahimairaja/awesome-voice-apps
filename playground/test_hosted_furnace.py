@@ -60,7 +60,7 @@ class FurnaceReachesDispatch(unittest.IsolatedAsyncioTestCase):
             )
             last = await furnace.update_ticket(
                 context,
-                address="42 Maple Crescent, Barrie",
+                address="42 maple crescent barrie",
                 callback_number="705 555 0193",
                 vulnerable_occupant=False,
             )

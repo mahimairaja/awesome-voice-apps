@@ -56,7 +56,13 @@ class ClaimSpokenAnswers(unittest.IsolatedAsyncioTestCase):
         }
         for said, expected in cases.items():
             self.assertEqual(agent.normalize_yesno(said), (True, expected), said)
-        for unsure in ("Not sure", "I don't know", "Someone was hurt"):
+        for unsure in (
+            "Not sure",
+            "I don't know",
+            "Someone was hurt",
+            "I can't tell if anyone was hurt",
+            "No, wait, yes, my passenger was hurt",
+        ):
             self.assertFalse(agent.normalize_yesno(unsure)[0], unsure)
 
     async def test_hosted_record_field_takes_the_callers_words(self):
