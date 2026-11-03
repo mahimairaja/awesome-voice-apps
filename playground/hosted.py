@@ -2069,6 +2069,34 @@ def log_reply_latency(event) -> None:
         logger.info("turn latency", extra={"role": event.item.role, **timings})
 
 
+class _EotPredictions(logging.Filter):
+    """Let LiveKit's per-turn "eot prediction" debug line through, and no other debug line.
+
+    The 2026-11-03 eval run ended most late turns on the 0.8 s max_delay with no
+    detector error logged. That happens when the detector's end-of-turn probability
+    is under its unlikely threshold, which LiveKit only logs at DEBUG.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.levelno >= logging.INFO or record.getMessage() == "eot prediction"
+
+
+def log_eot_predictions() -> None:
+    """Log each turn's end-of-turn probability, threshold and chosen delay at debug level."""
+    audio = logging.getLogger("livekit.agents")
+    if not any(isinstance(f, _EotPredictions) for f in audio.filters):
+        audio.addFilter(_EotPredictions())
+    if audio.getEffectiveLevel() <= logging.DEBUG:
+        return
+    # Child loggers (livekit.agents.<module>) would inherit DEBUG and skip this
+    # filter, so pin them to INFO first.
+    for name, child in logging.Logger.manager.loggerDict.items():
+        if name.startswith("livekit.agents.") and isinstance(child, logging.Logger):
+            if child.level == logging.NOTSET:
+                child.setLevel(logging.INFO)
+    audio.setLevel(logging.DEBUG)
+
+
 @functools.cache
 def end_of_turn_detector() -> inference.TurnDetector:
     """One cloud turn detector for the worker; each session opens its own stream.
@@ -2077,6 +2105,7 @@ def end_of_turn_detector() -> inference.TurnDetector:
     (about 108 MB) out of the worker: if the gateway fails, turns end on the endpointing
     delay instead.
     """
+    log_eot_predictions()
     return inference.TurnDetector(version="v1", local_fallback=False)
 
 

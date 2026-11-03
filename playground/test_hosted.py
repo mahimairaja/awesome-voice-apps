@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import os
 import sys
 import time
@@ -3081,6 +3082,35 @@ class InterviewDemo(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(agent._closing)
         control.assert_awaited_with("finish", ID)
         room.disconnect.assert_awaited_once()
+
+
+class EotPredictionLog(unittest.TestCase):
+    def test_only_the_eot_prediction_debug_line_passes(self):
+        keep = hosted._EotPredictions()
+
+        def record(level, msg):
+            return logging.LogRecord("livekit.agents", level, __file__, 1, msg, None, None)
+
+        self.assertTrue(keep.filter(record(logging.DEBUG, "eot prediction")))
+        self.assertFalse(keep.filter(record(logging.DEBUG, "received user transcript")))
+        self.assertTrue(keep.filter(record(logging.INFO, "anything at info")))
+
+    def test_logging_predictions_keeps_child_loggers_at_info(self):
+        audio = logging.getLogger("livekit.agents")
+        child = logging.getLogger("livekit.agents.eot_test_child")
+        saved = (audio.level, list(audio.filters), child.level)
+        try:
+            audio.setLevel(logging.INFO)
+            child.setLevel(logging.NOTSET)
+            hosted.log_eot_predictions()
+            hosted.log_eot_predictions()
+            self.assertTrue(audio.isEnabledFor(logging.DEBUG))
+            self.assertEqual(sum(isinstance(f, hosted._EotPredictions) for f in audio.filters), 1)
+            self.assertFalse(child.isEnabledFor(logging.DEBUG))
+        finally:
+            audio.setLevel(saved[0])
+            audio.filters[:] = saved[1]
+            child.setLevel(saved[2])
 
 
 if __name__ == "__main__":
