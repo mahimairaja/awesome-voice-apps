@@ -10,7 +10,7 @@ vector does two jobs:
   answered by a model and cached for the rest of the call, so asking it again
   is free.
 - **Per-turn model routing.** Otherwise the turn goes to the cheapest model
-  whose example turns it resembles: small talk to `gpt-4.1-nano`, account
+  whose example turns it resembles: small talk to `gpt-4o-mini`, account
   questions to `gpt-4.1-mini`, disputes and churn risks to `gpt-4.1`. Dispute
   words always escalate, and a dispute stays on the big model until it is
   resolved.

@@ -114,6 +114,11 @@ def spoken_digits(phone: str) -> str:
     return ", ".join(" ".join(group) for group in (digits[:3], digits[3:6], digits[6:]))
 
 
+def _address_words(value: str) -> str:
+    """Lowercase words and numbers of an address, so case and commas never differ."""
+    return " ".join(re.findall(r"\w+", value.lower()))
+
+
 def normalize_address(value: str) -> tuple[bool, str]:
     address = " ".join(value.split()).strip(" ,.")
     if not _STREET.match(address):
@@ -250,20 +255,30 @@ class FurnaceLine(Agent):
         """
         ticket = context.userdata["ticket"]
         notes: list[str] = []
+        # The model re-sends the address and number on later calls. Only a new
+        # or changed value needs a read-back; asking again every call stalled
+        # the confirmation loop and the dispatch never happened.
+        readback = False
         if problem:
             ticket["problem"] = " ".join(problem.split())[:80]
             notes.append("recorded the problem")
         if address:
             ok, value = normalize_address(address)
-            if ok:
+            if ok and _address_words(ticket.get("address") or "") == _address_words(value):
+                notes.append("address already confirmed")
+            elif ok:
                 ticket["address"] = value
+                readback = True
                 notes.append(f"address: read back '{value}' and ask if it is right")
             else:
                 notes.append(f"address rejected: {value}")
         if callback_number:
             ok, value = normalize_phone(callback_number)
-            if ok:
+            if ok and ticket.get("callback") == value:
+                notes.append("callback already confirmed")
+            elif ok:
                 ticket["callback"] = value
+                readback = True
                 notes.append(f"callback: read back the digits {spoken_digits(value)}")
             else:
                 notes.append(f"callback rejected: {value}; ask them to repeat it")
@@ -278,7 +293,7 @@ class FurnaceLine(Agent):
         if ticket.get("gas"):
             notes.append("GAS: tell them to leave now and call the gas utility or 911 outside")
         publish_ticket(self.room, context.userdata)
-        notes.append(next_step(ticket, readback=bool(address or callback_number)))
+        notes.append(next_step(ticket, readback=readback))
         return "; ".join(notes)
 
     @function_tool()

@@ -1743,7 +1743,7 @@ class HostedSafety(unittest.IsolatedAsyncioTestCase):
                 text = "".join([c.delta.content async for c in stream if c.delta])
             self.assertEqual(text, "ok")
             self.assertEqual(agent.state["providers"]["llm"]["serving"], "backup")
-            self.assertIn("gpt-4.1-nano took the next request", agent.state["events"][-1]["text"])
+            self.assertIn("gpt-4.1-mini took the next request", agent.state["events"][-1]["text"])
             # A passed recovery probe hands traffic back; the voice lane reports alike.
             adapter.emit("llm_availability_changed", SimpleNamespace(llm=primary, available=True))
             self.assertEqual(agent.state["providers"]["llm"]["serving"], "primary")

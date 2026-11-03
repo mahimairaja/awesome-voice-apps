@@ -22,7 +22,7 @@ EMBED_MODEL = "text-embedding-3-small"
 # Published USD per 1M tokens: (input, cached input, output). These match the
 # voice-prices catalogue the playground meters with (checked 2026-10-09).
 PRICES: dict[str, tuple[Decimal, Decimal, Decimal]] = {
-    "gpt-4.1-nano": (Decimal("0.10"), Decimal("0.025"), Decimal("0.40")),
+    "gpt-4o-mini": (Decimal("0.15"), Decimal("0.075"), Decimal("0.60")),
     "gpt-4.1-mini": (Decimal("0.40"), Decimal("0.10"), Decimal("1.60")),
     "gpt-4.1": (Decimal("2.00"), Decimal("0.50"), Decimal("8.00")),
 }
@@ -31,7 +31,9 @@ MILLION = Decimal(1_000_000)
 
 # The tiers, cheapest first. "cache" answers without any model call.
 TIERS = ("cache", "nano", "mini", "large")
-MODELS = {"nano": "gpt-4.1-nano", "mini": "gpt-4.1-mini", "large": "gpt-4.1"}
+# OpenAI retired gpt-4.1-nano (404 model_not_found), so small talk runs on
+# gpt-4o-mini, the cheapest current chat model this demo is tested with.
+MODELS = {"nano": "gpt-4o-mini", "mini": "gpt-4.1-mini", "large": "gpt-4.1"}
 BASELINE = "gpt-4.1"
 
 # Cosine thresholds for text-embedding-3-small, measured on 2026-10-09 with

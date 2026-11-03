@@ -46,6 +46,25 @@ class ClaimSpokenAnswers(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(agent.validate_date_of_loss("tomorrow", today)[0])
         self.assertFalse(agent.validate_date_of_loss("2026-11-03", today)[0])
 
+    def test_yes_or_no_answers_read_the_callers_words(self):
+        cases = {
+            "No. Nobody was hurt.": "no",
+            "no one was injured": "no",
+            "It isn't": "no",
+            "Yeah, my passenger": "yes",
+            "yes": "yes",
+        }
+        for said, expected in cases.items():
+            self.assertEqual(agent.normalize_yesno(said), (True, expected), said)
+        for unsure in (
+            "Not sure",
+            "I don't know",
+            "Someone was hurt",
+            "I can't tell if anyone was hurt",
+            "No, wait, yes, my passenger was hurt",
+        ):
+            self.assertFalse(agent.normalize_yesno(unsure)[0], unsure)
+
     async def test_hosted_record_field_takes_the_callers_words(self):
         intake = hosted_claim.ClaimIntake(SimpleNamespace())
         context = SimpleNamespace(userdata=hosted_claim.initial_state())
