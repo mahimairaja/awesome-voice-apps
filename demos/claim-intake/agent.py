@@ -18,7 +18,7 @@ import json
 import logging
 import re
 import uuid
-from datetime import date, datetime
+from datetime import date, timedelta
 from typing import Callable, Literal
 
 from dotenv import load_dotenv
@@ -68,6 +68,23 @@ FIELD_LABELS: dict[str, str] = {
 }
 
 POLICY_RE = re.compile(r"^[A-Z]{2}\d{6,8}$")
+# Speech to text often writes a spelled policy number as words: "A B one two three".
+DIGIT_WORDS = {
+    "zero": "0",
+    "oh": "0",
+    "one": "1",
+    "two": "2",
+    "three": "3",
+    "four": "4",
+    "five": "5",
+    "six": "6",
+    "seven": "7",
+    "eight": "8",
+    "nine": "9",
+}
+MONTHS = (
+    "january february march april may june july august september october november december"
+).split()
 _YES = {"yes", "y", "yeah", "yep", "yup", "true", "correct", "affirmative"}
 _NO = {"no", "n", "nope", "nah", "false", "negative"}
 
@@ -78,18 +95,53 @@ def _nonempty(value: str) -> tuple[bool, str]:
 
 
 def validate_policy_number(value: str) -> tuple[bool, str]:
-    v = value.strip().upper().replace(" ", "").replace("-", "")
+    words = re.findall(r"[a-z0-9]+", value.lower())
+    v = "".join(DIGIT_WORDS.get(w, w) for w in words).upper()
     if POLICY_RE.match(v):
         return True, v
-    return False, "a policy number is two letters then six to eight digits, like AB123456"
+    return False, (
+        f"heard {v or 'nothing'}, but a policy number is two letters then six to eight "
+        "digits, like AB123456"
+    )
+
+
+def parse_date(value: str, today: date) -> date | None:
+    """Read "yesterday", "June 28, 2026", "28 June 2026", "2026-06-28" or "06/28/2026"."""
+    text = re.sub(r"\b(\d{1,2})(st|nd|rd|th)\b", r"\1", value.strip().lower())
+    text = " ".join(re.sub(r"\b(the|of|on|it|was|happened)\b|[,.]", " ", text).split())
+    relative = {"today": 0, "yesterday": 1, "day before yesterday": 2}
+    if text in relative:
+        return today - timedelta(days=relative[text])
+    if m := re.fullmatch(r"(\d{4})[-/](\d{1,2})[-/](\d{1,2})", text):
+        year, month, day = m.groups()
+    elif m := re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", text):
+        month, day, year = m.groups()
+    elif m := re.fullmatch(r"([a-z]+) (\d{1,2})(?: (\d{4}))?", text):
+        month, day, year = m.groups()
+    elif m := re.fullmatch(r"(\d{1,2}) ([a-z]+)(?: (\d{4}))?", text):
+        day, month, year = m.groups()
+    else:
+        return None
+    if not month.isdigit():
+        names = [name for name in MONTHS if name.startswith(month[:3])]
+        if len(month) < 3 or not names:
+            return None
+        month = MONTHS.index(names[0]) + 1
+    try:
+        d = date(int(year or today.year), int(month), int(day))
+    except ValueError:
+        return None
+    # A date given without a year is the most recent one.
+    if year is None and d > today:
+        d = d.replace(year=d.year - 1)
+    return d
 
 
 def validate_date_of_loss(value: str, today: date | None = None) -> tuple[bool, str]:
     today = today or TODAY
-    try:
-        d = datetime.strptime(value.strip(), "%Y-%m-%d").date()
-    except ValueError:
-        return False, "give the date of loss as year-month-day, like 2026-06-30"
+    d = parse_date(value, today)
+    if d is None:
+        return False, "that is not a date; ask which day it happened"
     if d > today:
         return False, "the date of loss cannot be in the future"
     return True, d.isoformat()
@@ -215,8 +267,9 @@ INSTRUCTIONS = (
     "policy number, date of loss, where it happened, the vehicle (year, make, "
     "and model), what happened, whether anyone was injured, and whether the car "
     "is drivable. Ask for one field at a time and call record_field for each "
-    "answer, using the exact field name. Convert any spoken date into "
-    "year-month-day form before recording date_of_loss. If record_field rejects "
+    "answer, using the exact field name. Pass each answer as the caller said it, "
+    "like A B one two three four five six or yesterday: record_field checks and "
+    "converts it, so never reject a value yourself. If record_field rejects "
     "a value, tell the caller the reason in one sentence and ask again. Never "
     "invent a value. When every field is recorded, read the whole claim back; "
     "once the caller confirms it is correct, call file_claim and tell them their "
@@ -234,7 +287,8 @@ class ClaimIntake(Agent):
     async def record_field(self, context: RunContext[dict], field: FieldName, value: str) -> str:
         """Record one field of the auto claim.
 
-        Use the exact field name. Pass date_of_loss as YYYY-MM-DD.
+        Use the exact field name and the caller's own words. Spelled policy
+        numbers and dates like "yesterday" or "June 28" are converted here.
         """
         ok, result = VALIDATORS[field](value)
         if not ok:

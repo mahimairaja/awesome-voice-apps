@@ -49,7 +49,8 @@ INSTRUCTIONS = (
     "code, and which store they will pick up from. The caller reads these from the "
     "bottle label on their screen. For every answer call capture with the exact field "
     "name. Pass rx_number and postal_code as the characters you heard, like 4471-B or "
-    "M5V 2T6, and date_of_birth as YYYY-MM-DD. If the caller gives several details at "
+    "M5V 2T6, and date_of_birth as the date they said, like June 28, 1981: the tool "
+    "reads spoken dates, so never ask the caller for a format. If they give several at "
     "once, capture each. After a capture, read the value back exactly as the tool says "
     "and ask if it is right. Only when the caller says yes, call confirm for that field. "
     "If they correct you, apologise in a few words and capture the corrected value. "
@@ -91,7 +92,7 @@ class RefillLine(Agent):
         """Record what the caller said for one field, before they confirm it.
 
         Use the exact field name. rx_number and postal_code as characters,
-        date_of_birth as YYYY-MM-DD.
+        date_of_birth as spoken (June 28, 1981) or as YYYY-MM-DD.
         """
         result = refill.capture(context.userdata, field, value)
         publish_refill(self.room, context.userdata)

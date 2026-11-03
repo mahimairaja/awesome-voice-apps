@@ -114,6 +114,28 @@ class DeskTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(props["credited"], 17.0)
         self.assertIn("specialist", await desk.apply_credit(None, "roaming"))
 
+    async def test_roaming_after_protection_goes_to_the_specialist(self):
+        desk = make_desk()
+        credited = await desk.apply_credit(None, "protection")
+        self.assertIn("$58.00 of your limit is left", credited)
+        self.assertIn("do not offer a credit for US roaming, 9 days", credited)
+        self.assertIn("transfer_to_specialist", credited)
+        explained = await desk.explain_charge(None, "roaming")
+        self.assertIn("Over your limit", explained)
+        self.assertNotIn("Creditable now", explained)
+        refused = await desk.apply_credit(None, "roaming")
+        self.assertIn("Do not offer or promise it", refused)
+        self.assertIn("transfer_to_specialist", refused)
+        self.assertEqual(agent.bill_props(desk.bill)["credited"], 17.0)
+        self.assertFalse(desk.handed_off)
+        await desk.transfer_to_specialist(None)
+        self.assertTrue(desk.handed_off)
+
+    async def test_explain_charge_shows_a_credit_that_still_fits(self):
+        desk = make_desk()
+        self.assertIn("Creditable now: $63.00", await desk.explain_charge(None, "roaming"))
+        self.assertIn("Creditable now: $0.00", await desk.explain_charge(None, "plan"))
+
 
 if __name__ == "__main__":
     unittest.main()

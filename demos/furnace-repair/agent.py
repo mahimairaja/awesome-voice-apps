@@ -131,6 +131,22 @@ def priority(ticket: dict) -> str:
     return "emergency, no heat"
 
 
+def next_step(ticket: dict, readback: bool = False) -> str:
+    """What update_ticket tells the model to do next, so a full ticket ends in a dispatch."""
+    missing = [LABELS[f] for f in TICKET_FIELDS if not ticket.get(f)]
+    if missing:
+        return f"still needed: {', '.join(missing)}"
+    if ticket.get("gas"):
+        return "ticket complete; do not dispatch, the caller must leave the home first"
+    # Each field was already read back when it was recorded: a second read-back of
+    # the whole ticket spent the rest of a timed call and never reached the dispatch.
+    if readback:
+        return (
+            "ticket complete: once they confirm that read-back, call dispatch_technician right away"
+        )
+    return "ticket complete: call dispatch_technician now, without reading the ticket back"
+
+
 def new_ticket() -> dict:
     return {"ticket": {}, "ref": None}
 
@@ -169,9 +185,9 @@ INSTRUCTIONS = (
     "When update_ticket returns a read-back, read the address and the phone digits "
     "back exactly as given and ask if they are right. If anyone smells gas, tell "
     "them to leave the home now and call their gas utility's emergency line or 911 "
-    "from outside, and do not book a visit. Otherwise, once everything is recorded "
-    "and confirmed, call dispatch_technician and tell them the ticket number and the "
-    "arrival window. One short question at a time. Plain text, no markdown or emojis."
+    "from outside, and do not book a visit. Otherwise, when update_ticket says the "
+    "ticket is complete, call dispatch_technician and tell them the ticket number and "
+    "the arrival window. One short question at a time. Plain text, no markdown or emojis."
 )
 
 
@@ -262,13 +278,12 @@ class FurnaceLine(Agent):
         if ticket.get("gas"):
             notes.append("GAS: tell them to leave now and call the gas utility or 911 outside")
         publish_ticket(self.room, context.userdata)
-        missing = [LABELS[f] for f in TICKET_FIELDS if not ticket.get(f)]
-        notes.append(f"still needed: {', '.join(missing)}" if missing else "ticket complete")
-        return "; ".join(notes) or "nothing recorded"
+        notes.append(next_step(ticket, readback=bool(address or callback_number)))
+        return "; ".join(notes)
 
     @function_tool()
     async def dispatch_technician(self, context: RunContext[dict]) -> str:
-        """Book the emergency visit once the caller has confirmed the ticket."""
+        """Book the emergency visit as soon as update_ticket says the ticket is complete."""
         data = context.userdata
         ticket = data["ticket"]
         missing = [LABELS[f] for f in TICKET_FIELDS if not ticket.get(f)]

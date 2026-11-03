@@ -200,17 +200,25 @@ class Concierge(Agent):
         try:
             if granted:
                 if on_file:
-                    return "consent already on file"
+                    return "consent already on file; call remember for the note you asked about"
                 self._apply(
                     state,
                     await self.store.save(
                         "consent", "Keep notes between calls.", "Client said yes on the call."
                     ),
                 )
-                return "consent recorded; you may keep notes now"
+                # Consent alone keeps nothing; the note is a separate remember call.
+                return (
+                    "consent recorded, but nothing is kept yet. Call remember now for the "
+                    "note you asked about, and only say it is on file once remember returns "
+                    "kept."
+                )
             if on_file:
                 self._apply(state, await self.store.forget(on_file["id"], "caller"))
                 return "consent withdrawn and every note deleted"
+        except ValueError as problem:
+            logger.warning("consent not recorded: %s", problem)
+            return f"not recorded: {problem}. Tell the client nothing was kept."
         except Exception:
             logger.exception("memory store unavailable")
             return "the client file is unavailable right now; say so"
@@ -219,6 +227,9 @@ class Concierge(Agent):
     @function_tool()
     async def remember(self, context: RunContext[dict], kind: NoteKind, note: str, why: str) -> str:
         """Keep one short note for the client's next call. Needs consent first.
+
+        Nothing is on file until this returns kept, so call it before you tell the
+        client a note is saved.
 
         Args:
             kind: preference, task (something still open) or context (time-bound fact).

@@ -61,7 +61,7 @@ INSTRUCTIONS = (
     "short sentence, otherwise leave note empty. If they answer several questions at "
     "once, record each. If a tool rejects a value, say why in one sentence and ask "
     "again. Never ask again for something already answered unless the caller wants to "
-    "change it. When every question is answered, read back the amount and the use of "
+    "change it; then record the new value for that field. When every question is answered, read back the amount and the use of "
     "funds and ask whether to submit; on yes call submit_application and give the "
     "reference. Plain text only, no markdown, no emojis."
 )
@@ -288,15 +288,18 @@ class LoanCallback(Agent):
         publish_ui_event(self.room, "Resume", self.view())
 
     @function_tool()
-    async def record_answer(self, field: FieldName, value: str, note: str = "") -> str:
-        """Record the caller's answer to one application question.
+    async def record_answer(
+        self, field: FieldName, value: str, note: str = "", caller_words: str = ""
+    ) -> str:
+        """Record the caller's answer to one application question, or a correction to it.
 
         Args:
             field: The question being answered.
             value: The answer. Years and money as plain numbers, like 4 or 250000.
             note: One short sentence worth keeping for later, or empty.
+            caller_words: The caller's own words for this answer.
         """
-        result = application.record(self.state, field, value, note)
+        result = application.record(self.state, field, value, note, caller_words)
         if result.startswith("rejected"):
             self.publish()
             return result

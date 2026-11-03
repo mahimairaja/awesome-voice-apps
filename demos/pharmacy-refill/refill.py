@@ -260,12 +260,40 @@ def normalize_postal(heard: str) -> tuple[bool, str]:
     return True, f"{chars[:3]} {chars[3:]}"
 
 
+# Written and spoken date forms, tried in order. Slashes read month first, as
+# in North America; the read-back catches a day-first date that also parses.
+_DATE_FORMATS = (
+    "%Y-%m-%d",
+    "%B %d %Y",
+    "%b %d %Y",
+    "%d %B %Y",
+    "%d %b %Y",
+    "%m/%d/%Y",
+    "%d/%m/%Y",
+    "%Y/%m/%d",
+)
+
+
+def parse_date(heard: str) -> date | None:
+    """Read "June 28, 1981", "the 28th of June 1981", "1981-06-28" or "06/28/1981"."""
+    text = heard.strip().lower().replace(",", " ").replace(".", " ")
+    text = re.sub(r"\b(\d{1,2})(?:st|nd|rd|th)\b", r"\1", text)
+    text = re.sub(r"\b(?:the|of)\b", " ", text)
+    text = re.sub(r"\bsept\b", "sep", text)
+    text = re.sub(r"\s*([/-])\s*", r"\1", " ".join(text.split()))
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
 def normalize_dob(heard: str, today: date | None = None) -> tuple[bool, str]:
     today = today or date.today()
-    try:
-        d = datetime.strptime(heard.strip(), "%Y-%m-%d").date()
-    except ValueError:
-        return False, "pass the date of birth as year-month-day, like 1982-03-14"
+    d = parse_date(heard)
+    if d is None:
+        return False, "that did not come through as a full date; ask for the date of birth again"
     if not date(today.year - 120, 1, 1) <= d < today:
         return False, "that date of birth is not possible"
     return True, d.isoformat()

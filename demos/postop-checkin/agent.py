@@ -45,8 +45,8 @@ INSTRUCTIONS = (
     "record tool with what they said; if they answer several questions at once, record "
     "each. Pass patient_words as a short quote of their own words. Temperature readings "
     "are numbers like 101.8 or 38.2; if they have no thermometer, pass no reading and ask "
-    "about chills or sweats. Wound and pain questions have several parts: ask for the "
-    "missing part before recording. You never judge whether something is serious, never "
+    "about chills or sweats. Wound and pain questions have several parts: pass null for "
+    "any part they have not answered, and the tool tells you which part to ask. You never judge whether something is serious, never "
     "reassure, and never give medical advice: the tools decide, and you say what they "
     "tell you to say. If a tool says EMERGENCY, say its script word for word and ask "
     "nothing else. If the patient asks for advice, say the nurse can help with that. "
@@ -110,12 +110,13 @@ class CheckInCall(Agent):
         context: RunContext[dict],
         reading: float | None,
         unit: TempUnit,
-        chills_or_sweats: bool,
+        chills_or_sweats: bool | None,
         patient_words: str,
     ) -> str:
         """Record the temperature reading, or null when they have none.
 
         unit is F or C when the patient says it, otherwise unknown.
+        chills_or_sweats: only asked when there is no reading; null until they answer it.
         """
         value = {"reading": reading, "unit": unit, "chills_or_sweats": chills_or_sweats}
         return self._record(context, "temperature", value, patient_words)
@@ -124,12 +125,12 @@ class CheckInCall(Agent):
     async def record_wound(
         self,
         context: RunContext[dict],
-        redness_spreading: bool,
-        drainage: Drainage,
-        edges_opening: bool,
+        redness_spreading: bool | None,
+        drainage: Drainage | None,
+        edges_opening: bool | None,
         patient_words: str,
     ) -> str:
-        """Record how the incision looks.
+        """Record how the incision looks. Pass null for any part not answered yet.
 
         drainage: none, clear, spotting (a little blood), or cloudy_or_pus.
         """
@@ -144,11 +145,14 @@ class CheckInCall(Agent):
     async def record_pain(
         self,
         context: RunContext[dict],
-        score: int,
-        medication_helping: bool,
+        score: int | None,
+        medication_helping: bool | None,
         patient_words: str,
     ) -> str:
-        """Record the pain score from 0 to 10 and whether the medication helps."""
+        """Record the pain score from 0 to 10 and whether the medication helps.
+
+        Pass null for either part not answered yet.
+        """
         value = {"score": score, "medication_helping": medication_helping}
         return self._record(context, "pain", value, patient_words)
 

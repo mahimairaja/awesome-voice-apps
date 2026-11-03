@@ -117,6 +117,12 @@ def panel(data: dict, line: PhoneLine) -> dict:
     }
 
 
+def as_heard(address: str, heard: str) -> bool:
+    """True when every word of the address is in the transcript, in order."""
+    wanted = tokens(address)
+    return matched(wanted, tokens(heard)) == len(wanted)
+
+
 class OutageLine(Agent):
     def __init__(self, room: rtc.Room) -> None:
         super().__init__(instructions=INSTRUCTIONS)
@@ -222,6 +228,14 @@ class OutageLine(Agent):
         card = data["card"]
         if data["ticket"]:
             return f"Already logged as {data['ticket']['ref']}."
+        # The report carries the transcript's spelling, not a corrected one: the
+        # whole point is to show what reached the agent over the line.
+        heard = data["readings"][-1]["heard"] if data["readings"] else ""
+        if heard and not as_heard(street_address, heard):
+            return (
+                f"That address is not in the caller's words as they came through: {heard!r}. "
+                "Call report_outage again with the address spelled exactly as it is there."
+            )
         if digits(account_number) != digits(card["account"]):
             return (
                 "No account matches that number. Ask them to read the account number again, "
@@ -288,7 +302,9 @@ class OutageLine(Agent):
             for frame in frames(audio, self.line.rate):
                 yield frame
 
-        context.session.say("(playback of the caller's line)", audio=clip(), add_to_chat_ctx=False)
+        # No text: whatever is passed here is published as the agent's transcript,
+        # and the clip is the caller's voice, not something the agent said.
+        context.session.say("", audio=clip(), add_to_chat_ctx=False)
         return "Playing it now. After it ends, say one short sentence about what they heard."
 
 

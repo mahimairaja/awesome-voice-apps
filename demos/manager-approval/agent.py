@@ -205,6 +205,12 @@ def refund(case: dict, amount: float, to: str, authority: Literal["agent", "mana
         allowed = within_own_limit(amount) or bool(
             approved and amount <= approved["amount"] and to == approved["to"]
         )
+    if not allowed and case["request"] and not case["decision"]:
+        # Only a decision from the console or the policy fallback sets approved.
+        raise ToolError(
+            "Still waiting for the manager: no decision yet, so nothing is approved. Tell "
+            "the caller you are still waiting and do not say or hint that it is approved."
+        )
     if not allowed:
         raise ToolError(
             "That refund is over your limit and not approved. Call ask_manager instead."
@@ -368,7 +374,12 @@ class RefundDesk(Agent):
         if not case["found"]:
             raise ToolError("Look up the order first.")
         if case["request"]:
-            return "The manager already has this request. Keep the caller company."
+            if not case["decision"]:
+                return (
+                    "Still waiting for the manager: the request is open and nothing is "
+                    "approved yet. Keep the caller company."
+                )
+            return "The manager already decided this request. Act on that decision."
         if not 0 < amount <= ORDER["price"]:
             raise ToolError(f"The amount must be between $0 and {money(ORDER['price'])}.")
         request = {
@@ -391,8 +402,9 @@ class RefundDesk(Agent):
         else:
             self._hold_task = self._spawn(self._hold(request["id"]))
         return (
-            "The manager has the request. Tell the caller you are checking with your "
-            "manager and will stay on the line with them. One or two sentences."
+            "The manager has the request and has not decided. Tell the caller you are "
+            "checking with your manager and will stay on the line with them. Do not say or "
+            "hint that it is approved. One or two sentences."
         )
 
     @function_tool()
@@ -526,15 +538,22 @@ class RefundDesk(Agent):
             return
         reason = f" Their note: {note}." if note else ""
         amount, to = money(request["amount"]), request["to"].replace("_", " ")
+        # Say who decided: when no manager answered, the written policy did, and
+        # the caller must not hear that a manager approved it.
+        source = (
+            "Manager decision"
+            if by == "you"
+            else "No manager answered, so the store's written policy decided"
+        )
+        decider = f"{MANAGER}, the manager," if by == "you" else "the store's written policy"
         message = {
-            "approve": f"Manager decision: APPROVED {amount} to {to}.{reason}",
-            "counter": f"Manager decision: COUNTEROFFER {amount} as store credit, "
-            f"not to the card.{reason}",
-            "decline": f"Manager decision: DECLINED.{reason}",
+            "approve": f"{source}: APPROVED {amount} to {to}.{reason}",
+            "counter": f"{source}: COUNTEROFFER {amount} as store credit, not to the card.{reason}",
+            "decline": f"{source}: DECLINED.{reason}",
         }[verdict]
         next_step = {
-            "approve": "Tell the caller it is approved, then call issue_refund for that "
-            "amount and method right away.",
+            "approve": f"Tell the caller {decider} approved it, then call issue_refund for "
+            "that amount and method right away.",
             "counter": "Offer the store credit plainly. If they accept, call "
             "issue_refund with store_credit. If not, offer to put the manager on.",
             "decline": "Tell the caller it was declined and why, then offer to put "
